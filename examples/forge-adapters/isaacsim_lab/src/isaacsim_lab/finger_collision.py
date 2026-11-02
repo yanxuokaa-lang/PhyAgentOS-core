@@ -1,4 +1,4 @@
-"""Adapter-private conservative bounds of PhysX cooked finger solids.
+"""Adapter-private conservative bounds of PhysX cooked gripper solids.
 
 Each slab contains the *solid* convex intersection, not just vertices within
 the slab. Bounding all edge/plane intersections preserves its interior. Sweeping
@@ -15,7 +15,7 @@ from scipy.spatial import ConvexHull, QhullError
 def _points(value):
     points = np.array(value, dtype=float, copy=True)
     if points.ndim != 2 or points.shape[1] != 3 or len(points) < 4 or not np.isfinite(points).all():
-        raise ValueError("cooked finger convex must contain finite 3D vertices")
+        raise ValueError("cooked gripper convex must contain finite 3D vertices")
     return points
 
 
@@ -27,7 +27,7 @@ def cooked_convex_points(request, stage_id, prim_id, valid_result):
         # Native callback boundaries can swallow exceptions; report afterwards.
         try:
             if result != valid_result or not convexes:
-                raise ValueError("PhysX did not return valid cooked finger geometry")
+                raise ValueError("PhysX did not return valid cooked gripper geometry")
             results.extend(_points(convex.vertices) for convex in convexes)
         except Exception as exc:
             errors.append(exc)
@@ -37,7 +37,7 @@ def cooked_convex_points(request, stage_id, prim_id, valid_result):
     if errors:
         raise ValueError(str(errors[0])) from errors[0]
     if not results:
-        raise ValueError("PhysX cooking returned no synchronous finger evidence")
+        raise ValueError("PhysX cooking returned no synchronous gripper evidence")
     return results
 
 
@@ -49,7 +49,7 @@ def convex_slice_boxes(vertices, maximum_slice_m):
     try:
         hull = ConvexHull(points)
     except QhullError as exc:
-        raise ValueError("cooked finger convex must enclose a 3D solid") from exc
+        raise ValueError("cooked gripper convex must enclose a 3D solid") from exc
     axis = int(np.argmax(np.ptp(points, axis=0)))
     lower, upper = points[:, axis].min(), points[:, axis].max()
     edges = sorted({tuple(sorted(pair)) for face in hull.simplices for pair in combinations(face, 2)})
@@ -68,3 +68,43 @@ def convex_slice_boxes(vertices, maximum_slice_m):
         # Outward numerical rounding is separate from the unchanged safety margin.
         boxes.append((clipped.min(0) - 1e-10, clipped.max(0) + 1e-10))
     return boxes
+
+
+def cooked_body_boxes(stage, body, maximum_slice_m):
+    """Read current composed rigid-body colliders; return private bounds/evidence."""
+    from omni.physx import get_physx_cooking_interface
+    from omni.physx.bindings._physx import PhysxCollisionRepresentationResult
+    from pxr import PhysicsSchemaTools, Usd, UsdGeom, UsdPhysics, UsdUtils
+
+    colliders = [prim for prim in Usd.PrimRange(body, Usd.TraverseInstanceProxies())
+                 if prim.HasAPI(UsdPhysics.CollisionAPI)
+                 and UsdPhysics.CollisionAPI(prim).GetCollisionEnabledAttr().Get()]
+    if not colliders:
+        raise ValueError("rigid gripper body has no active collider")
+    boxes, evidence = [], []
+    bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render", "proxy"])
+    for collider in colliders:
+        if collider.IsA(UsdGeom.Mesh):
+            parts = cooked_convex_points(
+                get_physx_cooking_interface().request_convex_collision_representation,
+                UsdUtils.StageCache.Get().GetId(stage).ToLongInt(),
+                PhysicsSchemaTools.sdfPathToInt(collider.GetPath()),
+                PhysxCollisionRepresentationResult.RESULT_VALID,
+            )
+            relative = np.asarray(
+                UsdGeom.Xformable(collider).ComputeLocalToWorldTransform(0)
+                * UsdGeom.Xformable(body).ComputeLocalToWorldTransform(0).GetInverse()
+            ).T
+            parts = [points @ relative[:3, :3].T + relative[:3, 3] for points in parts]
+            component_boxes = [box for points in parts for box in convex_slice_boxes(points, maximum_slice_m)]
+            evidence.append({"collider_path": str(collider.GetPath()),
+                             "representation": "physx_cooked_convex_slices",
+                             "body_frame_convexes_m": [points.tolist() for points in parts],
+                             "slice_count": len(component_boxes)})
+        else:
+            box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
+            component_boxes = [(np.asarray(box.GetMin()), np.asarray(box.GetMax()))]
+            evidence.append({"collider_path": str(collider.GetPath()),
+                             "representation": "analytic_primitive_bound", "slice_count": 1})
+        boxes.extend(component_boxes)
+    return boxes, evidence

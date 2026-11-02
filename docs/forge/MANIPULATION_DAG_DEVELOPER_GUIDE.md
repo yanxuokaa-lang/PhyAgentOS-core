@@ -212,6 +212,22 @@ references. Historical receipt replay is diagnostic only and cannot replace a
 fresh capture or authorize motion. A clear intermediate sample is not a safe
 final grasp or a successfully acquired object.
 
+Before the Isaac short-approach probe searches pre-grasp IK, it checks each exact
+candidate final TCP pose against current cooked palm and full-travel finger
+geometry, with the same padding and intentional source-contact exemption as
+the grasp stage. One check per axial orientation serves all approach distances.
+An obstructed endpoint cannot be repaired by another IK seed for that same pose.
+The private receipt marks this failure as `final_grasp`, records the full TCP
+matrix and queried geometry, and does not invent a joint solution. A clear
+endpoint is only a necessary condition: workspace, IK/continuity, self-collision,
+the whole approach and subsequent full-route preparation still apply. No
+candidate coordinates, grip regions or opening-clearance thresholds are edited.
+
+Public probe errors summarize codes, stages and counts and retain the opaque
+feasibility reference; precise simulator paths and numerical geometry remain
+inside private receipts. Receipt inspection handles joint samples and pose-only
+preflight samples separately, without commanding either into the simulator.
+
 The Adapter/Runtime owns gripper geometry, not Core or AgentLoop. A controller
 target is not a measured joint position. Readiness predicts physically bounded
 open endpoints. Without future holding-width evidence, preparation retains the

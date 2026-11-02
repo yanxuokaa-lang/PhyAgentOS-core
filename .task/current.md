@@ -1,5 +1,24 @@
 # Current Task: LabUtopia R03/R04 full-chain grasp coverage
 
+## v16.6.3 local repair validated / 手掌与终态诊断修复已验证
+
+- Diagnosis: `.task/labutopia-palm-collision-repair-20261102.md`.
+- Actual cooked palm at five recorded failures is 0.57–1.34 mm below tabletop
+  height. The old sphere rejection cannot simply be removed as a false positive.
+- Adapter now checks exact final gripper geometry before pregrasp IK and keeps
+  all downstream route checks. No candidate shift, sphere reduction or opening
+  rule relaxation. Public failure summaries no longer expose USD paths.
+- Native fresh-capture no-motion run:
+  `out/lab-fullchain-truth-20261102-final-gripper-no-motion-r1/` completed.
+- Task `task_4972b9d477f048d2` cancelled after R03 task-affordance unavailable:
+  four aperture failures; six candidates × four final orientations reject on
+  cooked-palm padded bounds/table. Reused across two backoffs: 48 attempts.
+- 450 affected tests pass. Native motion remains disabled with no controller
+  outcomes. Final-pose preflight fixes failure attribution/early rejection; it
+  does not yet supply a usable grasp candidate or complete the two pours/stir.
+- Empty-source replay filtering is fixed with four reproduced regression cases;
+  historical replay remains diagnostic, not current preparation authority.
+
 ## v16.6.2 completed local repair / 当前局部修复结果
 
 - Saved diagnosis: `.task/labutopia-finger-envelope-repair-20261102.md`.

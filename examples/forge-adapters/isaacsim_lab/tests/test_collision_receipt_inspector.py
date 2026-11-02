@@ -25,3 +25,14 @@ def test_private_receipt_inspector_accepts_structured_and_legacy_without_inventi
     assert samples[0][2] == pytest.approx([1, 2, 3, 4, 5, 6, 7])
     assert samples[1][2] == pytest.approx([7, 6, 5, 4, 3, 2, 1])
     assert samples[2][2] == pytest.approx([1] * 7)
+
+
+def test_final_grasp_inspector_keeps_pose_only_evidence_without_inventing_joints():
+    import numpy as np
+
+    receipt = {"attempts": [{"collision_diagnostic": {
+        "stage": "final_grasp", "checked_tcp": np.eye(4).tolist()}}]}
+    assert list(inspector().checked_samples(receipt)) == []
+    samples = list(inspector().checked_final_poses(receipt))
+    assert len(samples) == 1 and samples[0][0] == 0
+    np.testing.assert_array_equal(samples[0][2], np.eye(4))

@@ -678,6 +678,7 @@ def _grasp_approach_probe_fixture():
     )
     model._collisions = lambda *_args, **_kwargs: None
     model._artifact = lambda _kind, _value: "artifact://labutopia/grasp-approach/test.json"
+    model.check_final_gripper_pose = lambda *_args: None
     target = {
         "world_from_control": {
             "translation_m": [0., 0., 0.],
@@ -752,6 +753,49 @@ def test_grasp_approach_probe_fails_closed_when_all_final_approaches_are_unavail
     assert result["world_change_started"] is False
 
 
+def test_obstructed_final_gripper_pose_rejects_before_any_ik_search():
+    model, arguments = _grasp_approach_probe_fixture()
+    checks, receipts = [], []
+
+    def blocked(pose, source):
+        checks.append((pose.copy(), source))
+        raise PhaseMotionError("route_collision", "final_grasp: palm/table",
+                               diagnostics={"stage": "final_grasp", "checked_tcp": pose.tolist()})
+
+    model.check_final_gripper_pose = blocked
+    model.solver.compute_inverse_kinematics = lambda *_a, **_k: pytest.fail("blocked endpoint must precede IK")
+    model._artifact = lambda _kind, data: receipts.append(data) or "artifact://endpoint/check"
+    result = model.qualify_grasp_approach(arguments)
+    assert result["status"] == "unavailable" and result["world_change_started"] is False
+    assert len(checks) == 2  # One preflight per axial orientation, reused across backoffs.
+    assert len(receipts[0]["attempts"]) == 4
+    for attempt in receipts[0]["attempts"]:
+        assert attempt["collision_diagnostic"]["stage"] == "final_grasp"
+        assert "checked_joints" not in attempt["collision_diagnostic"]
+        assert np.array(attempt["grasp_pose_world"]).shape == (4, 4)
+
+
+def test_clear_endpoint_still_requires_approach_qualification():
+    model, arguments = _grasp_approach_probe_fixture()
+    checks = []
+    model.check_final_gripper_pose = lambda pose, _source: checks.append(pose.copy())
+    model.qualify = lambda *_a, **_k: (_ for _ in ()).throw(PhaseMotionError("self_collision", "arm overlap"))
+    result = model.qualify_grasp_approach(arguments)
+    assert len(checks) == 2
+    assert result["status"] == "unavailable"
+    assert "self_collision" in result["error"]
+
+
+def test_missing_palm_geometry_cannot_become_a_clear_endpoint():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.check_final_gripper_pose = lambda *_a: (_ for _ in ()).throw(
+        PhaseMotionError("palm_geometry_unavailable", "cooking failed"))
+    model.solver.compute_inverse_kinematics = lambda *_a, **_k: pytest.fail("missing geometry must precede IK")
+    result = model.qualify_grasp_approach(arguments)
+    assert result["status"] == "unavailable"
+    assert "palm_geometry_unavailable" in result["error"]
+
+
 def test_approach_collision_geometry_stays_in_private_receipt():
     model, arguments = _grasp_approach_probe_fixture()
     diagnostic = {"evidence_kind": "collision_model_overlap", "frame_id": "world",
@@ -759,7 +803,7 @@ def test_approach_collision_geometry_stays_in_private_receipt():
     saved = []
 
     def collide(*_args, **_kwargs):
-        raise PhaseMotionError("route_collision", "model overlap", diagnostics=diagnostic)
+        raise PhaseMotionError("route_collision", "model overlaps /World/table/mesh", diagnostics=diagnostic)
 
     model._collisions = collide
     model._artifact = lambda _kind, value: saved.append(value) or "artifact://diagnostic/collision"
@@ -769,6 +813,8 @@ def test_approach_collision_geometry_stays_in_private_receipt():
     assert all(item["collision_diagnostic"] == diagnostic for item in saved[0]["attempts"])
     assert "collision_diagnostic" not in result
     assert result["feasibility_ref"] == "artifact://diagnostic/collision"
+    assert "/World/table/mesh" not in result["error"]
+    assert "/World/table/mesh" in saved[0]["attempts"][0]["error"]
 
 
 def test_route_qualification_can_start_from_probe_seed_without_reading_live_joints():

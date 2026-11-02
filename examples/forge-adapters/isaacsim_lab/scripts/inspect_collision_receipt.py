@@ -29,9 +29,18 @@ def checked_samples(receipt):
             yield index, attempt, np.asarray(json.loads(match.group(1)), dtype=float)
 
 
+def checked_final_poses(receipt):
+    """Pose-only preflight evidence has no IK solution or checked joint vector."""
+    for index, attempt in enumerate(receipt.get("attempts", [])):
+        diagnostic = attempt.get("collision_diagnostic") or {}
+        if diagnostic.get("stage") == "final_grasp" and "checked_joints" not in diagnostic:
+            yield index, attempt, np.asarray(diagnostic.get("checked_tcp"), dtype=float)
+
+
 def inspect(model, receipt):
     from pxr import Usd, UsdGeom, UsdPhysics
 
+    from isaacsim_lab.finger_collision import cooked_body_boxes
     from isaacsim_lab.phase_motion import PhaseMotionError
 
     cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render", "proxy"])
@@ -72,10 +81,29 @@ def inspect(model, receipt):
                 UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0)).T
             mesh_points.append((number, str(prim.GetPath()), points @ relative[:3, :3].T + relative[:3, 3]))
     samples = []
+    rigid_parts = {}
     for index, attempt, joints in checked_samples(receipt):
         if joints.shape != model.joints().shape or not np.isfinite(joints).all():
             raise ValueError(f"attempt {index} has invalid checked joints")
         hand = model.tcp(joints) @ np.linalg.inv(model.hand_from_tcp)
+        diagnostic = attempt.get("collision_diagnostic") or {}
+        reported_link = diagnostic.get("link")
+        rigid_geometry = []
+        if reported_link and reported_link != "finger":
+            if reported_link not in rigid_parts:
+                body = stage.GetPrimAtPath(model.robot.prim_path + "/" + reported_link)
+                parts = []
+                _, evidence = cooked_body_boxes(stage, body, model.config["collision_margin_m"])
+                for item in evidence:
+                    parts.extend((item["collider_path"], np.asarray(points))
+                                 for points in item.get("body_frame_convexes_m", []))
+                rigid_parts[reported_link] = parts
+            position, rotation = model.solver.compute_forward_kinematics(reported_link, joints)
+            for path, points in rigid_parts[reported_link]:
+                world = points @ rotation.T + position
+                rigid_geometry.append({"path": path, "world_min_m": world.min(0).tolist(),
+                                       "lowest_vertex_world_m": world[np.argmin(world[:, 2])].tolist(),
+                                       "world_max_m": world.max(0).tolist()})
         boxes = []
         for lower, upper in model.finger_boxes():
             corners = np.asarray(list(product(*zip(lower, upper))))
@@ -100,7 +128,20 @@ def inspect(model, receipt):
                       "collision_diagnostic": exc.diagnostics}
         samples.append({"attempt_index": index, "original_error": attempt.get("error"),
                         "joints": joints.tolist(), "tcp_world": model.tcp(joints).tolist(),
+                        "reported_link_cooked_geometry": rigid_geometry,
                         "finger_sweep_boxes": boxes, "finger_meshes": meshes, "replay": replay})
+    final_samples = []
+    for index, attempt, pose in checked_final_poses(receipt):
+        if pose.shape != (4, 4) or not np.isfinite(pose).all():
+            raise ValueError(f"attempt {index} has invalid final-grasp pose")
+        try:
+            model.check_final_gripper_pose(pose, "")
+            replay = {"status": "clear"}
+        except PhaseMotionError as exc:
+            replay = {"status": "rejected", "code": exc.code, "error": str(exc),
+                      "collision_diagnostic": exc.diagnostics}
+        final_samples.append({"attempt_index": index, "original_error": attempt.get("error"),
+                              "tcp_world": pose.tolist(), "replay": replay})
     unchanged = bool(np.array_equal(initial_joints, model.robot.get_joint_positions()))
     return {"captured_at": datetime.now(timezone.utc).isoformat(),
             "evidence_kind": "historical_joint_geometry_diagnostic",
@@ -113,7 +154,8 @@ def inspect(model, receipt):
             "finger_geometry_evidence": model.finger_geometry_evidence,
             "overlap_replay_policy": "no source-contact exemption; diagnostic only",
             "obstacle_bounds": obstacles, "samples": samples,
-            "unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples)}
+            "final_pose_samples": final_samples,
+            "unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples) - len(final_samples)}
 
 
 def main():

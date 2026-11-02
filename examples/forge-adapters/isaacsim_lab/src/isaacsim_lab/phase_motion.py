@@ -716,16 +716,13 @@ class IsaacPhaseMotion:
         """Cooked convex slab bounds and prismatic joints in the body frame."""
         from itertools import product
 
-        from omni.physx import get_physx_cooking_interface
-        from omni.physx.bindings._physx import PhysxCollisionRepresentationResult
-        from pxr import PhysicsSchemaTools, Usd, UsdGeom, UsdPhysics, UsdUtils
+        from pxr import UsdPhysics
 
-        from .finger_collision import convex_slice_boxes, cooked_convex_points
+        from .finger_collision import cooked_body_boxes
 
         def joint_pose(position, quaternion):
             return pose_matrix(list(position), [*quaternion.GetImaginary(), quaternion.GetReal()])
 
-        bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render", "proxy"])
         geometry = []
         self.finger_geometry_evidence = []
         for number in (1, 2):
@@ -736,48 +733,60 @@ class IsaacPhaseMotion:
             parent_from_joint = joint_pose(joint.GetLocalPos0Attr().Get(), joint.GetLocalRot0Attr().Get())
             body_from_joint = joint_pose(joint.GetLocalPos1Attr().Get(), joint.GetLocalRot1Attr().Get())
             axis = {"X": 0, "Y": 1, "Z": 2}[joint.GetAxisAttr().Get()]
-            colliders = [child for child in Usd.PrimRange(body, Usd.TraverseInstanceProxies())
-                         if child.HasAPI(UsdPhysics.CollisionAPI)
-                         and UsdPhysics.CollisionAPI(child).GetCollisionEnabledAttr().Get()]
-            if not colliders:
-                raise PhaseMotionError("finger_geometry_unavailable", "finger link has no active collider")
-            for collider in colliders:
-                if collider.IsA(UsdGeom.Mesh):
-                    try:
-                        parts = cooked_convex_points(
-                            get_physx_cooking_interface().request_convex_collision_representation,
-                            UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt(),
-                            PhysicsSchemaTools.sdfPathToInt(collider.GetPath()),
-                            PhysxCollisionRepresentationResult.RESULT_VALID,
-                        )
-                        relative = np.asarray(
-                            UsdGeom.Xformable(collider).ComputeLocalToWorldTransform(0)
-                            * UsdGeom.Xformable(body).ComputeLocalToWorldTransform(0).GetInverse()
-                        ).T
-                        parts = [points @ relative[:3, :3].T + relative[:3, 3] for points in parts]
-                        boxes = [box for points in parts for box in
-                                 convex_slice_boxes(points, self.config["collision_margin_m"])]
-                    except (ValueError, RuntimeError) as exc:
-                        raise PhaseMotionError("finger_geometry_unavailable", str(exc)) from exc
-                    self.finger_geometry_evidence.append({
-                        "collider_path": str(collider.GetPath()), "finger_joint": number,
-                        "representation": "physx_cooked_convex_slices",
-                        "body_frame_convexes_m": [points.tolist() for points in parts],
-                        "slice_count": len(boxes),
-                    })
-                else:
-                    # Analytic primitive colliders retain their original bounds.
-                    box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
-                    boxes = [(np.asarray(box.GetMin()), np.asarray(box.GetMax()))]
-                    self.finger_geometry_evidence.append({
-                        "collider_path": str(collider.GetPath()), "finger_joint": number,
-                        "representation": "analytic_primitive_bound", "slice_count": 1,
-                    })
-                for lower, upper in boxes:
-                    local_corners = np.array([*product(*zip(lower, upper))])
-                    geometry.append((number, local_corners, parent_from_joint, body_from_joint, axis,
-                                     (joint.GetLowerLimitAttr().Get(), joint.GetUpperLimitAttr().Get())))
+            try:
+                boxes, evidence = cooked_body_boxes(self.stage, body, self.config["collision_margin_m"])
+            except (ValueError, RuntimeError) as exc:
+                raise PhaseMotionError("finger_geometry_unavailable", str(exc)) from exc
+            self.finger_geometry_evidence.extend({**item, "finger_joint": number} for item in evidence)
+            for lower, upper in boxes:
+                local_corners = np.array([*product(*zip(lower, upper))])
+                geometry.append((number, local_corners, parent_from_joint, body_from_joint, axis,
+                                 (joint.GetLowerLimitAttr().Get(), joint.GetUpperLimitAttr().Get())))
         return geometry
+
+    @cached_property
+    def palm_boxes(self):
+        from .finger_collision import cooked_body_boxes
+
+        body = self.stage.GetPrimAtPath(self.robot.prim_path + "/panda_hand")
+        try:
+            boxes, self.palm_geometry_evidence = cooked_body_boxes(
+                self.stage, body, self.config["collision_margin_m"])
+        except (ValueError, RuntimeError) as exc:
+            raise PhaseMotionError("palm_geometry_unavailable", str(exc)) from exc
+        return boxes
+
+    def check_final_gripper_pose(self, tcp, source_path):
+        """Reject obstructed final geometry before IK; this never proves a route."""
+        import carb
+        from omni.physx import get_physx_scene_query_interface
+
+        hand = tcp @ np.linalg.inv(self.hand_from_tcp)
+        query = get_physx_scene_query_interface()
+        robot_path = self.robot.prim_path + "/"
+
+        def ignore(path):
+            # Grasp contact with the bound source is intentional. All other
+            # objects/support remain obstacles, exactly as at the grasp stage.
+            return path.startswith(robot_path) or bool(source_path and (
+                path == source_path or path.startswith(source_path + "/")))
+
+        for link, boxes in (("panda_hand", self.palm_boxes), ("finger", self.finger_boxes())):
+            for index, (lower, upper) in enumerate(boxes):
+                center = hand[:3, 3] + hand[:3, :3] @ ((lower + upper) / 2)
+                half = (upper - lower) / 2 + self.config["collision_margin_m"]
+                orientation = Rotation.from_matrix(hand[:3, :3]).as_quat()
+                found = collision_hits(query.overlap_box, carb.Float3(*half), carb.Float3(*center),
+                                       carb.Float4(*orientation), ignore=ignore)
+                if found:
+                    raise PhaseMotionError("route_collision", f"final_grasp: {link} overlaps {found[0]}",
+                        diagnostics={"evidence_kind": "collision_model_overlap", "frame_id": "world",
+                                     "stage": "final_grasp", "checked_tcp": np.asarray(tcp).tolist(),
+                                     "link": link, "obstacle_path": found[0], "primitive": "oriented_box",
+                                     "center_m": center.tolist(), "half_extents_m": half.tolist(),
+                                     "orientation_xyzw": orientation.tolist(), "gripper_box_index": index,
+                                     "collision_margin_m": self.config["collision_margin_m"],
+                                     "finger_opening_mode": "full_travel_sweep"})
 
     @cached_property
     def maximum_gripper_opening_m(self):
@@ -1234,6 +1243,11 @@ class IsaacPhaseMotion:
                 continue
             direction /= norm
             candidate_relation = np.linalg.inv(variant_desired) @ body
+            final_error = None
+            try:
+                self.check_final_gripper_pose(variant_desired, source)
+            except PhaseMotionError as exc:
+                final_error = exc
             for distance_order, distance in enumerate(approach_distances):
                 pre = variant_desired.copy()
                 pre[:3, 3] -= direction * distance
@@ -1241,10 +1255,13 @@ class IsaacPhaseMotion:
                     "axial_symmetry_angle_rad": symmetry_angle,
                     "approach_distance_m": distance,
                     "grasp_position_world_m": variant_desired[:3, 3].tolist(),
+                    "grasp_pose_world": variant_desired.tolist(),
                     "pregrasp_position_world_m": pre[:3, 3].tolist(),
                     "approach_direction_world": direction.tolist(),
                 }
                 try:
+                    if final_error is not None:
+                        raise final_error
                     if (np.any(pre[:3, 3] < self.config["workspace_min_m"])
                             or np.any(pre[:3, 3] > self.config["workspace_max_m"])):
                         raise PhaseMotionError(
@@ -1312,6 +1329,7 @@ class IsaacPhaseMotion:
             "workspace_min_m": self.config["workspace_min_m"],
             "workspace_max_m": self.config["workspace_max_m"],
             "finger_geometry_evidence": getattr(self, "finger_geometry_evidence", []),
+            "palm_geometry_evidence": getattr(self, "palm_geometry_evidence", []),
             "attempts": attempts,
         }
         if not candidates:
@@ -1324,6 +1342,13 @@ class IsaacPhaseMotion:
                 f"approach_distance={examples[code][1]}: {examples[code][2][:400]}"
                 for code in sorted(counts)
             ) or "no grasp approach variant was configured"
+            final_count = sum(
+                (attempt.get("collision_diagnostic") or {}).get("stage") == "final_grasp"
+                for attempt in attempts
+            )
+            public_detail = "; ".join(f"{code} count={counts[code]}" for code in sorted(counts))
+            if final_count:
+                public_detail += f"; final_grasp rejected approaches={final_count}"
             evidence = self._artifact("grasp-approach-feasibility", {
                 **evidence_context,
                 "status": "unavailable",
@@ -1340,7 +1365,7 @@ class IsaacPhaseMotion:
                 "calibration_ref": arguments["calibration_ref"],
                 "feasibility_ref": evidence,
                 "failure_code": "grasp_approach_unavailable",
-                "error": detail,
+                "error": public_detail or "no grasp approach variant was configured",
                 "motion_authorized": False,
                 "world_change_started": False,
             }

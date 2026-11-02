@@ -148,3 +148,46 @@ def test_sliced_finger_covers_transformed_solid_and_measured_opening_uncertainty
             transformed = points @ transform[:3, :3].T + transform[:3, 3]
             assert all(any(np.all(p >= lo - 1e-9) and np.all(p <= hi + 1e-9)
                            for lo, hi in boxes) for p in transformed)
+
+
+@pytest.mark.parametrize('source,obstacle,rejected', [('/source', '/source/mesh', False),
+    ('/source', '/robot/hand', False), ('/source', '/source-neighbor/mesh', True),
+    ('/source', '/table/mesh', True), ('', '/table/mesh', True), ('', '/source/mesh', True)])
+@pytest.mark.parametrize('part', ['palm', 'finger'])
+def test_final_gripper_preflight_retains_margin_and_only_intended_contact_exemptions(monkeypatch, source, obstacle, rejected, part):
+    import sys
+    import types
+
+    from isaacsim_lab.phase_motion import IsaacPhaseMotion, PhaseMotionError, pose_matrix
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = {'collision_margin_m': .003}
+    model.robot = SimpleNamespace(prim_path='/robot')
+    model.hand_from_tcp = pose_matrix([0, 0, .1], [0, 0, 0, 1])
+    boxes = [(np.array([-.01, -.02, -.03]), np.array([.01, .02, .03]))]
+    model.palm_boxes = boxes if part == 'palm' else []
+    model.finger_boxes = lambda: boxes if part == 'finger' else []
+    queried = []
+    def query(half, center, rotation, report, _any):
+        queried.append((half, center))
+        report(SimpleNamespace(collision=obstacle))
+    carb = types.ModuleType('carb')
+    carb.Float3 = carb.Float4 = lambda *v: v
+    physx = types.ModuleType('omni.physx')
+    physx.get_physx_scene_query_interface = lambda: SimpleNamespace(overlap_box=query)
+    monkeypatch.setitem(sys.modules, 'carb', carb)
+    monkeypatch.setitem(sys.modules, 'omni.physx', physx)
+    pose = pose_matrix([0, 0, 1.], [0, 0, 0, 1])
+    if rejected:
+        with pytest.raises(PhaseMotionError) as caught:
+            model.check_final_gripper_pose(pose, source)
+        evidence = caught.value.diagnostics
+        assert evidence['stage'] == 'final_grasp'
+        assert evidence['obstacle_path'] == obstacle
+        assert evidence['checked_tcp'] == pose.tolist()
+        assert 'checked_joints' not in evidence
+        assert evidence['finger_opening_mode'] == 'full_travel_sweep'
+    else:
+        model.check_final_gripper_pose(pose, source)
+    assert queried[0][0] == pytest.approx([.013, .023, .033])
+    assert queried[0][1] == pytest.approx([0, 0, .9])

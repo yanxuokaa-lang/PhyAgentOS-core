@@ -48,6 +48,94 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.6.3 (2026-11-02 12:38) - codex
+
+### 预期修改 / Planned Changes [完成局部修复；可用抓取候选仍缺失 / Local repair complete; usable grasp candidate still missing]
+- [docs] [docs] 根据用户继续修复的指令，保存 v16.6.2 新捕获中的手掌球/桌面、较低夹指位置与 IK 阻塞诊断，不把碰撞球模型重叠描述成实测接触。 / Following the user's continuation request, save the fresh palm-sphere/table, lower-finger and IK blockers without describing model overlap as measured contact. (local)
+- [env] [fix] 先用当前 cooked 刚体几何复核具体失败姿态，再在 Isaac Adapter 内修复已证明的碰撞表示或规划分支缺陷；保留同捕获、完整路径、原裕量和现有生命周期。 / First compare current cooked rigid-body geometry at failed poses, then repair evidenced collision-representation or planning-branch defects inside Isaac Adapter, preserving lineage, full routes, margins and lifecycle. (local)
+- [eval] [chore] 增加实际缺陷复现、机制替代、失败与零动作测试，运行原生无动作验证；保存精确 Diff/行号，提交并推送当前分支。 / Add defect, substitution, failure and no-motion tests, run native validation, record exact diffs/ranges, and commit/push the current branch. (local)
+- [env] [fix] 原生复核已发现手掌 cooked 凸体低于桌面 0.57–1.34 mm，不缩小碰撞球；新增最终夹爪位姿预检，在 pregrasp IK 前用真实手掌/夹指及完整开合扫掠拒绝终态阻塞，保留后续全部检查。 / Native measurement finds the cooked palm below tabletop by 0.57–1.34 mm; do not shrink spheres. Add final-gripper-pose preflight using actual palm/fingers and full opening sweep before pregrasp IK, retaining all subsequent checks. (local)
+- [policy] [fix] 复现现有 probe error 字符串泄漏 USD 路径的问题；公共错误仅保留失败码/阶段/计数与 opaque 回执，精确路径和几何保留私有制品。 / Reproduce USD-path leakage through existing probe error text; public errors retain only failure codes/stages/counts and the opaque receipt, with exact paths/geometry in private artifacts. (local)
+- [eval] [fix] 复核发现新回放传空 source 时路径前缀会匹配全部绝对路径；先补回归，再让空 source 表示不豁免任何物体。正式绑定的非空 source 行为不变。 / Review found that the new replay's empty source matched every absolute path; add a regression then make empty source exempt no object, retaining bound nonempty-source behavior. (local)
+
+### 架构与实施结果 / Architecture and Implementation
+- [env] [fix] 将真实 cooked 刚体提取复用于手掌和夹指；每个轴对称终态只做一次无动作预检，结果复用于不同接近距离。终态失败保留精确 TCP 与私有几何，不伪造关节解。 / Reuse cooked-body extraction for palm/fingers and preflight each axial final pose once across approach distances; retain exact TCP/private geometry without inventing joints. (local)
+- [policy] [fix] AgentLoop、公共 Tool schema、候选身份与生命周期不变；公共 probe 错误仅汇总失败码/阶段/计数，USD 路径留在 opaque 引用对应的私有制品。 / AgentLoop, public Tool schemas, candidate identities and lifecycle remain unchanged; public probe errors summarize codes/phases/counts, with USD details behind opaque private receipts. (local)
+- [env] [fix] 保留 3 mm 逐轴裕量、完整夹指开合扫掠、原碰撞球及后续全部 IK/连续性/自碰撞/环境与载荷/完整路径检查；不挪动候选、不放松瓶口排除区、不新增 hash 或共享 gate。 / Preserve 3 mm per-axis padding, full finger travel, existing spheres and every downstream IK/continuity/collision/full-route check; no shifted candidates, relaxed opening exclusions, hashes or shared gates. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/finger_collision.py` L1-L52、L73-L110
+- [env] [refactor] 提取 `cooked_body_boxes`，遍历当前组合刚体的实际 collider，保留所有 cooked 凸体组件与 analytic bounds；通用错误文字由 finger 改为 gripper。 / Extract current-body cooked collider traversal, retaining every convex component and analytic bounds; generalize private wording from finger to gripper. (local)
+```diff
+-# Mesh cooking/traversal lived only in IsaacPhaseMotion.finger_geometry.
++def cooked_body_boxes(stage, body, maximum_slice_m):
++    # Copy all cooked components, transform collider -> body, conservatively slice.
++    return boxes, evidence
+```
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L719-L790、L1246-L1264、L1332-L1368
+- [env] [fix] 夹指复用提取函数，新增 cached palm geometry 与 final-grasp preflight；空 source 不豁免任何外部物体。 / Reuse extraction for fingers and add cached palm geometry/final-grasp preflight; empty source exempts no external object. (local)
+```diff
+-# Probe began with pregrasp workspace / IK checks.
++try:
++    self.check_final_gripper_pose(variant_desired, source)
++except PhaseMotionError as exc:
++    final_error = exc
++# Each distance keeps this final-pose result, then all original checks if clear.
++if final_error is not None:
++    raise final_error
+```
+```diff
+-return path.startswith(robot_path) or path == source_path or path.startswith(source_path + "/")
++return path.startswith(robot_path) or bool(source_path and (
++    path == source_path or path.startswith(source_path + "/")))
+-"error": detail,
++"error": public_detail or "no grasp approach variant was configured",
+```
+- [docs] [docs] 第二段前两行是本次实现复核发现并修正的中间版本；公共错误 Diff 针对最终返回值，私有制品继续保存 detail。 / The first comparison in the second block records the intermediate review correction; the error comparison applies to the public return only, retaining private detail. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py` L32-L43、L84-L106、L131-L158
+- [eval] [feat] 回放支持被报告刚体的 cooked 几何与最低顶点；区分有 checked joints 和仅 final TCP 的证据，禁止伪造关节，全部为无动作诊断。 / Replay reported-body cooked geometry/lowest vertices and distinguish checked-joint from final-TCP-only evidence without inventing joints or commanding motion. (local)
+```diff
++def checked_final_poses(receipt):
++    # Only final_grasp diagnostics without checked_joints.
++    ...
++model.check_final_gripper_pose(pose, "")
++"final_pose_samples": final_samples,
+-"unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples)
++"unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples) - len(final_samples)
+```
+
+#### [修改 / Modified] 测试 / Tests
+- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L681,L756-L798,L806-L817`：失败终态必须先于 IK、clear 不能跳过 approach、缺失几何必须 unavailable、公共 error 无 USD 路径。 / Assert blocked final poses precede IK, clear endpoints still require approach, missing geometry is unavailable and public errors omit USD paths. (local)
+- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_finger_collision.py:L153-L193`：手掌/夹指的替代 overlap 查询，验证 TCP→hand、原裕量、源物体/机器人豁免与邻物/空源拒绝。 / Substitute overlap queries for palm/fingers and verify TCP-to-hand, original padding, intended source/robot exemptions, neighbor/empty-source rejection. (local)
+- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_collision_receipt_inspector.py:L30-L39`：仅位姿回执不变造 checked joints。 / Pose-only receipts never invent checked joints. (local)
+```diff
++model.solver.compute_inverse_kinematics = lambda *_a, **_k: pytest.fail("blocked endpoint must precede IK")
++assert "checked_joints" not in attempt["collision_diagnostic"]
++assert "/World/table/mesh" not in result["error"]
++assert "/World/table/mesh" in saved[0]["attempts"][0]["error"]
+```
+
+#### [新增/修改 / Added/Modified] 文档 / Documentation
+- [docs] [docs] 新增 `.task/labutopia-palm-collision-repair-20261102.md:L1-L128`：保存历史/新捕获诊断、职责、修复、候选分布、下一步 Provider 覆盖改进路线。 / Add diagnosis, ownership, implementation, fresh candidate distribution and next Provider-coverage work. (local)
+- [docs] [docs] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V16_6_3.md:L1-L100`：发现处置、架构、分层证据与复现命令；修改 `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L215-L230`：终态预检和公共/私有证据边界；修改 `.task/current.md:L3-L21`：最新结果及未完成的抓取目标。 / Add findings/architecture/evidence/reproduction review, document final-pose and public/private evidence boundaries, and update task status including the unresolved grasp goal. (local)
+```diff
++Before the Isaac short-approach probe searches pre-grasp IK, it checks each exact
++candidate final TCP pose against current cooked palm and full-travel finger
++geometry, with the same padding and intentional source-contact exemption as
++the grasp stage.
+```
+
+### 验证与剩余阻塞 / Validation and Remaining Blocker
+- [eval] [chore] 受影响回归 450 passed（24.49s），Ruff/compileall/`git diff --check` 通过；缺少 preflight、公共路径泄漏、空 source 豁免均先复现失败后修复。 / 450 affected regressions pass (24.49s), with Ruff/compileall/whitespace checks passing; missing preflight, public path leakage and empty-source exemption were reproduced before fixes. (local)
+- [eval] [exp] 新捕获 workspace `out/lab-fullchain-truth-20261102-final-gripper-no-motion-r1/`，task `task_4972b9d477f048d2`，revision `revision_d41e73623a814c98`，session `cli:lab-ca9ce2f70682`：R03 工艺查询/准备 available；task-affordance unavailable，任务 cancelled，host exit 1。 / Fresh workspace/task/revision/session has available R03 process queries/preparation but unavailable task-affordance; task cancelled, host exit 1. (local)
+- [eval] [exp] 候选 4/16/44/57 超开口；10/17/23/27/52/55 各四种轴向终态均为手掌 padded cooked bounds/table 拒绝，24 次终态检查复用于两种接近距离，形成 48 条记录。旧 workspace/IK/自碰撞检查没有被证明已消失，也不代表所有可能抓取无解。 / Four candidates exceed aperture; six candidates each reject at four final orientations on padded cooked-palm/table overlap, giving 24 endpoint checks reused for two backoffs and 48 records. Earlier workspace/IK/self limitations are not disproven, and all possible grasps are not ruled out. (local)
+- [eval] [exp] 原生仅位姿回放 `out/lab-final-gripper-geometry-20261102-r1/geometry.json` exit 0；8 条终态拒绝重现、无未回放记录、关节/物理时间未变、控制命令 0；初始 FK/USD 平移最大误差 2.01e-7 m。 / Native pose-only replay exits 0, reproduces eight endpoint rejections, leaves no unplayed attempts, changes neither joints nor physics time and issues zero commands; initial FK/USD position error is at most 2.01e-7 m. (local)
+- [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`；无抓取、R04 倾倒或搅拌执行证据。Kit 材质/GPU particle 错误保留，未验证液体/粒子动力学。 / Motion remains disabled with empty controller outcomes and no grasp/R04 pour/stir execution evidence; Kit material/GPU particle errors remain, and liquid/particle dynamics are unvalidated. (local)
+- [docs] [docs] 后续应在 Grasp/Task-Affordance Provider 改善真实几何下的可抓区域覆盖与工艺净空，生成新的合格 opaque 候选；不得在 Action recovery 内平移候选或恢复被排除的 raw 集合。 / Next improve geometry-grounded grasp-region coverage/process clearance in Providers and generate newly qualified opaque candidates, never shifting poses or restoring rejected raw candidates inside Action recovery. (local)
+
 ## v16.6.2 (2026-11-02 12:24) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；完整抓取仍受阻 / Local repair complete; full grasp remains blocked]
@@ -297,56 +385,3 @@
 - Receipt: this log-only follow-up records the implementation commit and corrects the task-file line references; the rolling index contains the same complete entry. / 本次纯日志跟进回填实现提交并校正任务文件行号，滚动索引保留同一完整记录。
 - Push command: `git push origin feature/planning-loop` (current branch; no branch switch). / 推送当前分支，不切换分支。
 - First push attempt: `timeout 60s git push origin feature/planning-loop` ended with exit `124` and no remote acknowledgement. Commits remain local; one bounded retry follows this receipt. / 首次推送 60 秒超时且无远端确认；提交保留本地，记录后进行一次有界重试。
-
-## v16.4.0 (2026-11-01 20:57) - codex
-
-### 变更摘要 / Summary [完成 / Completed; no motion]
-- [env] [feat] 在 Isaac Adapter 内将 acquire 路线搜索从单一固定 XY 的 `staging_reorient -> approach` 扩展为配置驱动的 staging 高度、沿 approach 的额外后退距离与切向偏移候选；候选继续使用原始 task-affordance opaque grasp 引用，不修改 AgentLoop 或共享 Tool contract。 / Extend Isaac Adapter acquire route search from one fixed-XY staging/approach corridor to configuration-driven staging heights, additional approach backoffs, and tangential offsets while preserving the original task-affordance opaque grasp refs and leaving AgentLoop/shared Tool contracts unchanged. (local)
-- [env] [fix] 对每个新路线候选继续执行 workspace、完整姿态 IK、`0.5 rad` 连续性、关节限位、自碰撞、环境碰撞、payload collision 与 possession 门禁；不放宽阈值，不将失败转换为成功。 / Run every new route candidate through the unchanged workspace, full-pose IK, `0.5 rad` continuity, joint-limit, self/environment collision, payload-collision, and possession gates without weakening thresholds or converting failures to success. (local)
-- [env] [refactor] 将 staging/approach 候选的配置解析、几何构造与确定性排序提取为 Adapter 私有帮助函数，避免在 `prepare` 中继续扩张嵌套且便于替换测试。 / Extract Adapter-private configuration parsing, geometry construction, and deterministic ordering helpers for staging/approach candidates instead of expanding nested preparation logic. (local)
-- [test] [test] 增加配置拒绝、几何候选生成、切向偏移、额外后退、完整安全资格化、确定性排序及全部路线失败保持零动作的测试；先运行离线单元测试和 no-motion preparation，只有至少一条完整 R03 路线通过后才允许再次 `--execute`。 / Add tests for invalid configuration, geometric candidate generation, tangential offsets, extra backoff, complete safety qualification, deterministic ordering, and zero-motion all-route failure; run offline tests and no-motion preparation before any new `--execute`. (local)
-- [docs] [docs] 保存主因诊断、PAOS 所有权/替换边界、证据新鲜度、失败优先路径和验证命令，并更新当前任务与最近五版本。 / Save the root-cause diagnosis, PAOS ownership/substitution boundary, evidence freshness, failure-first paths, and validation commands, then update the current task and latest-five index. (local)
-
-### 架构与安全边界 / Architecture and Safety Boundary
-- 通用层继续只拥有任务语义、opaque 引用、生命周期、恢复与 settlement；staging/approach 几何、IK 种子、关节与碰撞全部留在 Isaac Adapter。 / The generic layer continues to own only task semantics, opaque refs, lifecycle, recovery, and settlement; staging/approach geometry, IK seeds, joints, and collision remain inside the Isaac Adapter.
-- 新候选由最终 grasp pose、approach 向量和配置生成，不读取 R03/R04 标签或硬编码物体坐标。 / New candidates derive from the final grasp pose, approach vector, and Adapter configuration without reading R03/R04 labels or hard-coding object coordinates.
-- 本轮先完成 no-motion qualification；未经完整 preparation 通过，不启动控制器。 / This iteration completes no-motion qualification first and does not start the controller until full preparation passes.
-
-### 实际实现 / Implementation
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L242-L374,L617-L620,L921-L974` 新增 Adapter 私有 corridor 配置验证、基于最终 grasp/approach 的 pre-grasp 与 staging 几何、确定性路线选择，以及有界失败聚合；旧 profile 缺少新字段时回退到原单 corridor。 / Add Adapter-private corridor validation, final-grasp/approach-derived pre-grasp and staging geometry, deterministic route selection, and bounded failure aggregation with legacy single-corridor fallback. (local)
-- [env] [tune] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json:L13-L34` 配置 4 个有界候选：旧 `0.12 m` approach、`0.18 m` approach + `0.08 m` backoff，以及 `-0.06/0/+0.06 m` 水平切向偏移。 / Configure four bounded candidates covering the legacy approach plus longer approach/backoff and signed horizontal tangential offsets. (local)
-- [test] [test] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L10-L22,L176-L517` 覆盖旧配置回退、去重、非法数值、水平/垂直 approach、逐 corridor 完整 qualification、确定性选择、全部失败零动作及 96 路线错误摘要上限。 / Cover legacy fallback, deduplication, invalid values, horizontal/vertical approaches, complete per-corridor qualification, deterministic selection, zero-motion all-route failure, and bounded 96-route diagnostics. (local)
-- [docs] [docs] `.task/labutopia-r03-staging-corridor-diagnosis-20261101.md:L1-L76`、`.task/current.md:L1-L71`、`docs/forge/IMPLEMENTATION_REVIEW_V16_4_0.md:L1-L42` 保存运行诊断、当前阻塞、findings-first 复核和下一条证据驱动路线。 / Save runtime diagnosis, current blocker, findings-first review, and the next evidence-driven route. (local)
-
-### 关键代码 Diff / Key Code Diff
-```diff
-- acquire preparation uses one fixed pre-grasp XY corridor
-- every failed route is appended as a full exception string
-+ acquire preparation enumerates configured approach/backoff/tangential corridors
-+ every corridor still passes the unchanged qualify() safety path
-+ failure output aggregates code/phase/corridor/clearance/transport counts with bounded examples
-```
-
-### 验证 / Validation
-- 定向回归：`151 passed`（`test_phase_motion.py`、`test_paos_integration.py`、`test_subtask_executor.py`）。 / Focused regression: `151 passed`.
-- 完整回归：`346 passed`（全部 Isaac Adapter tests + subtask executor boundary）。 / Full regression: `346 passed`.
-- `ruff check`、`compileall`、JSON parse、`git diff --check` 全部通过。 / Ruff, compileall, JSON parsing, and diff check passed.
-
-### No-Motion 运行 / Runtime Evidence
-- Workspace `out/lab-fullchain-truth-20261101-staging-corridor-no-motion-r1/`；session `cli:lab-b11c91c66271`；task `task_b16f8e5cbeb84dda`；action `invocation://manipulation-execute_subtask/3ebe297dca4e4fbf`；scene `labutopia-tabletop-rod-rack-v1:74e728eececc4cc590e7bd8dc431f73a:0`。 / Record the no-motion workspace, session, task, action, and scene revision. (local)
-- Action 仅消费同次捕获 refs `16/23/15`；每个检查 `3 clearance x 2 transport x 4 corridor x 4 axial = 96` 条，共 288 条。 / Action consumed only same-capture refs `16/23/15`; each exercised 96 routes for 288 total. (local)
-- 全部失败：140 IK discontinuity、49 IK unavailable、21 self-collision、78 environment collision；阶段为 `staging_reorient=173`、`approach=92`、`transit_cross=23`。 / All routes failed with the recorded IK/collision and phase distribution. (local)
-- `simulated_motion_enabled=false`、`outcome_known=true`、`world_change_started=false`、`possession_state=empty`、`controller_outcomes=[]`；未启动 R04/GLASS_ROD，也未发起 `--execute`。 / The run remained known zero-motion with empty possession and no downstream execution. (local)
-- 保留静态预览 `out/lab-fullchain-truth-20261101-staging-corridor-no-motion-r1/artifacts/labutopia/no-motion-video/staging-corridor-observation.mp4`，5 秒、1600x1200、30 fps，明确标注 controller disabled，不作为动作证据。 / Preserve a labelled five-second static observation preview, not Action evidence. (local)
-
-### 实现复核 / Implementation Review
-- Major（已修复）：96 条完整异常/候选导致约 74 KB Action error 与约 174k Agent context；改为有界聚合并由单元测试验证。 / Fixed the Major unbounded-diagnostics finding with bounded aggregation and a regression test.
-- Blocker/Major：无剩余实现问题；公共 contract、AgentLoop 所有权、opaque refs 与完整运动安全门禁均未改变。 / No remaining implementation Blocker/Major; contracts, ownership, opaque refs, and safety gates remain unchanged.
-- 运行阻塞仍存在：新 corridor 未产生完整可行路线，因此本轮不允许 simulated execution。 / Runtime feasibility remains blocked, so simulated execution is not authorized.
-
-### Git 提交 / Git Commit
-- Implementation commit: `fa0800a7`.
-- Branch: `feature/planning-loop`.
-- Time: `2026-11-01 21:20:30 +0800`.
-- Log receipt commit: `9a4e8fdd`.
-- Push: succeeded to `origin/feature/planning-loop`; remote advanced from `a5615644` to `9a4e8fdd`. / 已成功推送当前分支，远端从 `a5615644` 前进到 `9a4e8fdd`。
