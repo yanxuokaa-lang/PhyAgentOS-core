@@ -64,7 +64,7 @@
 
 ## Latest result and next step
 
-### v16.6.0 active repair (2026-11-02)
+### v16.6.0 completed coverage repair (2026-11-02)
 
 - Save the selection/refactor decision in `.task/labutopia-r03-native-coverage-repair-20261102.md`.
 - Recorded r2 has 44 decoded proposals and 24 post-NMS candidates, not a saturated
@@ -80,15 +80,29 @@
 - All-unavailable returns to existing Agent recovery. No new scheduler, hashes,
   release gates, workspace changes or automatic world-changing retries.
 
+- Implementation commit `33d3bfb2`; full affected regression 410 passed.
+- Paired native replay shows geometry-qualified candidates 3 -> 10. Formal r2
+  reproduces 1058 decoded / 64 returned R03 candidates; four of ten geometrically
+  qualified candidates exceed aperture, and six yield 48 rejected approaches:
+  workspace=20, environment collision=20, self-collision=4, IK unavailable=4.
+- Formal r2 task `task_053053cf3a0b4804` (session `cli:lab-2063ffedd5eb`) is
+  cancelled at task-affordance; no downstream acquisition/pour/stir is qualified.
+- Next: no-motion overlay of checked gripper/link geometry against the specific
+  table/R01/R02/BEAKER collision pairs; then assess actual gripping-region/solid
+  clearance and bounded IK seed alternatives. Preserve same-capture references
+  and full-route qualification; do not change AgentLoop or bypass collision.
+
+### Previous v16.5.0 runtime
+
 - Fresh run `out/lab-fullchain-truth-20261102-approach-feasibility-no-motion-r2/`,
   session `cli:lab-5fe426934fb3`, task `task_51ae038c97d246fd`: process-feature
   Query/preparation available, task-affordance unavailable, task cancelled.
 - Three R03 grasps x eight approaches = 24 workspace rejections before IK.
   Full capture/variant artifacts persisted; no Action or controller start,
   `simulated_motion_enabled=false`, `controller_outcomes=[]`.
-- Next address model-native approach-direction diversity and observed cloud
-  coverage; any shorter approach configuration still needs table/gripper clearance
-  and full-route qualification. Do not lower workspace limits or inject poses.
+- This earlier direction-coverage blocker is addressed by v16.6.0 above.
+  Approach distances and safety limits remain unchanged; full-route qualification
+  remains mandatory and is not established by the coverage repair.
 
 ## Architecture review
 

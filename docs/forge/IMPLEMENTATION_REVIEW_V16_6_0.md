@@ -53,9 +53,15 @@
   original capture, fixed seed, actual profile/checkpoint metadata, native
   identity/ensemble results, versions and timing. Its 3 -> 10 task-compatible
   candidates are historical geometry evidence, not fresh motion evidence.
-- Integration tests and fresh no-motion run results are recorded in the
-  diagnosis and changelog when completed. Live motion is not part of this repair
-  verification; pouring/stirring success requires separate execution feedback.
+- Full affected regression: 410 passed; focused worker: 19 passed; Ruff,
+  compileall and diff checks passed. Fresh formal r2 reproduces 1058 decoded / 64
+  public R03 proposals. Ten pass geometric qualification; four exceed aperture,
+  and the remaining six produce 48 rejected approaches (workspace=20,
+  environment collision=20, self-collision=4, unavailable IK=4). The task is
+  cancelled; the complete manipulation workflow remains unqualified.
+- No controller motion is authorized by the repair verification. Collision
+  labels are Adapter-model findings, not measured physical impacts. Diagnosis
+  identifies the exact collision pairs for subsequent geometry/transform review.
 
 Implementation review finds no remaining identified Blocker/Major in the changed
 Provider mechanism. Runtime-route availability remains an empirical question.

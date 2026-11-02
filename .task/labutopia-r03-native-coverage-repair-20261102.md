@@ -118,7 +118,42 @@ PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/ro
   `controller_outcomes=[]`, `simulated_motion_enabled=false`. Initial binding
   failed `scene.observe is unavailable or stale` against max_age_ms=1000.
   No grasp query/preparation ran; this is not a negative grasp result.
-- An unchanged no-motion retry uses
-  `out/lab-fullchain-truth-20261102-native-coordinate-no-motion-r2/`.
-  Its outcome must be recorded separately. Improved historical model coverage
-  alone does not establish a currently executable route or pouring/stirring.
+- Unchanged r2: `out/lab-fullchain-truth-20261102-native-coordinate-no-motion-r2/`,
+  session `cli:lab-2063ffedd5eb`, task `task_053053cf3a0b4804`, revision
+  `revision_e4383c96834e44ec`. Task cancelled after R03 process-feature Query and
+  preparation passed, but grasp-task-affordance returned unavailable.
+- Fresh R03 inference reproduces decoded=1058, worker returned=512,
+  post-NMS=389, public=64. Ten pass the existing bottle-geometry check.
+  Four fail gripper aperture before approach enumeration. The remaining six
+  produce 48 approach attempts: 20 workspace, 20 environment collisions,
+  four self-collisions, four unavailable IK. Zero approach candidates pass.
+- Environment collision breakdown: finger/table=7, link6/table=4,
+  link5/table=3, hand/R01=2, link6/R02=1, link7/R02=1, link5/BEAKER=2.
+  Self-collision examples are link1/link5 and link1/link6. These are the existing
+  Adapter collision-model results; they are not physical contact measurements.
+- Capture scene: `labutopia-tabletop-rod-rack-v1:2fcce54c68e140d9ab15afe19f46e9dd:0`;
+  calibration: `artifact://labutopia/calibration/c24f19fdd67442bd92ddf18844fcbd8f.json`.
+  Ten private receipts live in the r2 `artifacts/labutopia/grasp-approach-feasibility/`
+  directory. Representative candidate 17 receipt:
+  `ce11776449c344e299f7b6af02cdfed8.json`; candidate 55:
+  `7616c6ba05e04802b10a53605684c721.json`.
+
+## Remaining blocker and next decision / 剩余阻塞及后续决策
+
+Direction coverage is repaired and demonstrably wired into the fresh workflow.
+The current selected grasps are still infeasible under the present embodiment
+and scene. This does not justify bypassing qualification, enabling the controller
+or claiming that the complete acquisition/pour/stir task is repaired.
+
+下一步应以失败回执中的 checked joints/TCP 和具体碰撞对做无动作几何复核：
+1. 将当前 Franka 手掌/夹指实体与 tabletop/邻瓶/烧杯在同一世界帧可视化，核对
+   provider-to-TCP 变换、碰撞形状与真实网格的对应关系，区分模型保守性和真实干涉。
+2. 若碰撞确实存在，针对当前已观测瓶身可夹持区域与真实夹爪实体净空联合评价；
+   不仅用 TCP 高度或模型预测 width 判断可抓。不能直接放宽瓶口/支撑端阈值放行。
+3. 对仅因某个 IK 分支碰撞的候选，在 Adapter 既有准备边界评估有界替代关节种子；
+   每个种子仍需限位、FK、连续性、碰撞及从当前状态出发的完整路线验证。
+4. 若所有合法候选仍不可达，明确返回 Agent 重新观测/重规划；若必须移动瓶子或改布局，
+   作为独立场景变更记录，并产生新的 scene revision/观测，不能沿用本次候选证据。
+
+None of these follow-ups requires moving USD paths, robot limits or joint seeds
+into AgentLoop. Current public selection/ref freshness boundaries should remain.
