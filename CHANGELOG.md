@@ -135,6 +135,12 @@
 - [data] [docs] `videos/r03-motion-through-approach.mp4` 为原帧 [0,2810) 的 46.833 秒 H.264 片段（1405 帧/30 fps）；`videos/r03-acquire-stopped-before-lift.mp4` 保留整段失败尝试（1577 帧/30 fps、52.567 秒）。两者均全帧解码成功；stage-videos.json 保存边界/测量，原视频未改动，host.log 已归档。 / H.264 review copies preserve the completed motion prefix and full failed attempt with verified decoded frame counts; stage-videos.json records boundaries/measurements, raw video stays intact and host logs are archived. (local)
 - [eval] [chore] 最终 425 项 Adapter/executor 测试通过，Ruff、git diff --check 通过。未宣称完整化学/液体或抓取倾倒搅拌成功；下一项是 Adapter 接触/夹持关系资格与重新准备，不能调大误差阈值绕过。 / Final 425 Adapter/executor tests, Ruff and whitespace checks pass. No full manipulation/liquid/chemistry success is claimed; next work is Adapter contact/grip qualification and repreparation, not relaxed error thresholds. (local)
 
+### Git 提交 / Git Receipt
+- Commit: `03cac15fd3b33c1af2eeb778a71bccb21206c588`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-11-02 14:39 Asia/Shanghai
+- [docs] [chore] 本回执与最近五版本索引同步作为后续文档提交；只提交本任务 11 个文件，保留无关工作区修改及本地运行录像。 / Synchronize this receipt and latest-five index in a follow-up documentation commit; include only the 11 task files and preserve unrelated edits and local recordings. (local)
+
 ## v16.7.0 (2026-11-02 12:59) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；完整流程尚未通过 / Local repairs complete; full workflow not accepted]
