@@ -48,6 +48,56 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.6.1 (2026-11-02 12:03) - codex
+
+### 预期修改 / Planned Changes [完成 / Completed; collision/IK workflow remains blocked]
+- [docs] [docs] 保存 v16.6.0 正式无动作回执中的碰撞/IK 阻塞诊断，逐一核对实际夹指、手掌、桌面与邻瓶几何，区分碰撞模型判断与实测接触。 / Save the formal v16.6.0 collision/IK diagnosis and compare gripper, table and neighboring-object geometry, distinguishing model findings from measured contact. (local)
+- [env] [fix] 在 Isaac Adapter 的 FK、夹爪几何及 preparation 边界定位并修复有证据支持的错误；保留 workspace、碰撞裕量、同捕获证据、qualified-only 恢复及完整路线检查，不将 USD/关节参数加入 AgentLoop。 / Identify and repair evidenced FK/gripper/preparation defects inside the Isaac Adapter, preserving workspace, collision margins, same-capture evidence, qualified-only recovery and full-route checks without leaking USD/joint details into AgentLoop. (local)
+- [eval] [chore] 补充失败复现、机制替代和零动作测试，再运行受影响回归及实际无动作几何验证；按证据决定是否需要有界 IK 替代搜索，不预先放宽任何安全阈值。 / Add regression, mechanism-substitution and no-motion tests, then run affected tests and actual no-motion geometry verification; use evidence to decide whether bounded alternative IK search is needed, without relaxing safety thresholds. (local)
+- [docs] [docs] 更新诊断、架构复核、精确行号与关键 Diff、最近五版本；仅提交本轮文件并推送当前 feature/planning-loop 分支，保留无关用户修改。 / Update diagnosis, architecture review, exact ranges/diffs and the latest five entries; commit only task-owned changes and push the current branch while preserving unrelated edits. (local)
+
+### 根因与实际修复 / Cause and Repair
+- [env] [fix] 实际 Isaac 对比证实复位先推进动力学、再恢复 qpos 导致 CPU USD 手掌变换滞后 6.561186 mm。改为显式更新 articulation kinematics 并发布 PhysX→USD，再 render；真实复核误差降为 0.000197 mm。 / Native Isaac comparison proves the step-then-reset sequence left CPU USD hand transforms 6.561186 mm behind qpos. Explicit kinematic update and PhysX-to-USD publication before rendering reduce the measured discrepancy to 0.000197 mm. (local)
+- [env] [fix] 五个历史夹指/桌面拒绝在该中间样本处仍有约 16 mm 网格净空，是加裕量的全行程盒包络判断，不能说成实测撞击。保持原碰撞模型、裕量及完整路线验证，新增精确私有诊断辅助后续决策。 / Five historical finger/table failures have about 16 mm mesh clearance at the intermediate sample; they are padded full-travel box decisions, not measured impacts. Preserve the model, margins and full-route qualification while retaining exact private geometry for follow-up decisions. (local)
+
+### 文件变更详情 / File Changes
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L2710-L2732` 修正初始/每次 reset 的 qpos→kinematics→USD 同步，异常时恢复 timeline。 / Correct initial/reset state publication and restore the caller's timeline on failure. (local)
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L27-L31,L818-L880,L1136,L1260-L1261` 保存球/夹指盒/自碰撞模型的关节、TCP、世界形状及碰撞对，并贯穿错误包装到私有回执；不扩展 AgentLoop 接口。 / Persist sphere/finger-box/self-sphere geometry, joints, TCP and pairs through error wrapping into private receipts without extending AgentLoop interfaces. (local)
+- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L1207-L1320` 补充 reset 前后顺序、零物理步、playing/paused 和同步失败测试；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L45-L89,L755-L773,L1007-L1008,L1017` 验证替代查询机制、精确裕量、错误传播和 private-only 诊断。 / Cover reset ordering, zero physics steps, timeline modes and failures; verify replacement queries, exact margins, propagation and private-only diagnostics. (local)
+- [eval] [feat] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py:L1-L150` 新增真实场景零命令几何复核入口；`examples/forge-adapters/isaacsim_lab/tests/test_collision_receipt_inspector.py:L1-L27` 覆盖结构化/旧回执及缺失关节不臆造。 / Add a native zero-command geometry inspector and cover structured/legacy receipts without inventing absent joint samples. (local)
+- [docs] [docs] `.task/labutopia-collision-geometry-repair-20261102.md:L1-L137`、`.task/current.md:L67-L98`、`docs/forge/IMPLEMENTATION_REVIEW_V16_6_1.md:L1-L67` 保存根因、PAOS 分层、验证与未完成操控边界。 / Save the cause, PAOS ownership, verification and incomplete manipulation boundary. (local)
+
+### 关键 Diff / Key Diff
+```diff
+- world.step(render=True)
+  _apply_initial_robot_state(robot, arm_positions, gripper_positions)
++ world.physics_sim_view.update_articulations_kinematic()
++ get_physx_interface().update_transformations(False, True)
+  world.render()
+
+- raise PhaseMotionError("route_collision", f"finger overlaps {found[0]}")
++ reject("route_collision", f"finger overlaps {found[0]}",
++        primitive="oriented_box", center_m=finger_center.tolist(),
++        half_extents_m=finger_half.tolist(), ...)
++ # Private diagnostics retain checked joints/TCP, frame, margin and sweep mode.
++ attempt["collision_diagnostic"] = exc.diagnostics
+```
+
+### 验证 / Validation
+- [eval] [chore] 旧初始化路径先触发 7 项失败；修复后完整受影响套件 `421 passed`，Ruff、compileall、`git diff --check` 通过；不把 mock 测试当作动作证据。 / Seven tests first failed against the old reset path; the full affected suite now has 421 passes, with Ruff, compileall and whitespace checks passing. Mock tests are not motion evidence. (local)
+- [eval] [exp] 实际场景 r1/r3：hand 误差 6.561186→0.000197 mm，修复后最大 link 误差 0.000201 mm；五个历史姿态的几何复核未改变关节/物理时间、零控制器命令。r2 启动停滞后终止，没有成功回执。 / Actual-scene r1/r3: hand error 6.561186→0.000197 mm; repaired maximum link error 0.000201 mm. Five historical samples leave joints/time unchanged with zero commands. Stalled r2 startup was terminated and has no successful receipt. (local)
+- [docs] [docs] 本轮无需重构 AgentLoop/选择公共契约；新任务必须用新捕获。仍不声称完整抓取、倒液或搅拌成功。 / No AgentLoop/public-selection refactor is needed; a new task must bind a new capture. Complete acquisition, pouring and stirring are not claimed. (local)
+
+### 正式新捕获结果 / Formal Fresh-Capture Result
+- [eval] [exp] workspace `out/lab-fullchain-truth-20261102-reset-sync-no-motion-r1/`，session `cli:lab-3019a1d6c656`，task `task_ebea061a2ed841e3`，revision `revision_a274694de4f847f9`；R03 工艺特征 Query/preparation 通过，task-affordance unavailable 后任务 cancelled，入口退出 1。 / In the recorded workspace/session/task/revision, R03 process-feature Query/preparation pass, task-affordance remains unavailable, the task is cancelled and the host exits 1. (local)
+- [eval] [exp] 4 个开口拒绝；48 次接近检查仍为 workspace 20、环境碰撞 20、自碰撞 4、IK 不可用 4。24 个碰撞拒绝均带新私有结构化几何证据，证明诊断链路接入；数量不变也证明状态同步缺陷不是这些接近拒绝的唯一/主要原因。 / Four aperture rejections and 48 approach failures remain: 20 workspace, 20 environment, four self-collision and four unavailable IK. All 24 collision failures carry structured private geometry, proving integration; unchanged counts show reset inconsistency was not the sole/main cause of approach rejection. (local)
+- [eval] [chore] acceptance 明确 `simulated_motion_enabled=false`、`controller_outcomes=[]`；三个执行记录均为 Query，无 Action/controller，未执行 R04/玻璃棒。 / Acceptance records disabled motion and empty controller outcomes; all three records are Queries with no Action/controller, R04 or stirring. (local)
+- [docs] [docs] 下一步仅在证明实际 cooked collider 和全开合扫掠覆盖后细化碰撞表示，或针对真实 IK 分支问题评估有界种子。不能以局部网格净空跳过现有碰撞检查。 / Refine collision geometry only after proving cooked-collider/full-sweep coverage, or evaluate bounded seeds for demonstrated IK branch issues. Local mesh clearance must not bypass existing checks. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`; implementation hash will be recorded by the log receipt immediately after commit. / 实现提交后立即以日志回执记录 commit hash。
+- Only task-owned files are staged; unrelated report edits and runtime outputs remain excluded. / 仅暂存本轮文件，排除无关报告修改与运行输出。
+
 ## v16.6.0 (2026-11-02 11:28) - codex
 
 ### 预期修改 / Planned Changes [完成 / Completed; manipulation remains blocked]
@@ -315,53 +365,3 @@ latest evidence is the authorized --execute attempt that failed before controlle
 - Push receipt commit: `a5615644`.
 - Branch: `feature/planning-loop`.
 - Push: runtime/log commits and the push receipt were pushed successfully. / 运行、日志及推送回执提交均已成功推送。
-
-## v16.3.8 (2026-11-01 20:00) - codex
-
-### 预期修改 / Planned Changes [完成 / Completed]
-- [env] [feat] 在 Isaac Adapter 私有 preparation 中将 acquire 路线拆分为保持当前姿态垂直抬升、安全运输姿态横移、staging 位置重新定向和最终抓取接近；不修改 AgentLoop、Task-Affordance 公共契约或 opaque 引用语义。 / Split the Adapter-private acquire preparation route into current-orientation vertical raise, safe-transport-orientation translation, staging reorientation, and final grasp approach without changing AgentLoop, Task-Affordance public contracts, or opaque-reference semantics. (local)
-- [sense] [feat] 由已验证的最终几何证据声明瓶体轴对称抓取语义，生成等价抓取方向候选；缺失轴证据时不得按标签、USD 路径或物体名称推断对称性。 / Derive axial grasp-symmetry semantics from validated final-geometry evidence and generate equivalent grasp orientations; do not infer symmetry from labels, USD paths, or object names when axis evidence is absent. (local)
-- [env] [fix] 对每个 clearance、运输姿态和轴对称角组合复用现有 workspace、完整姿态 IK、连续性、关节限位、自碰撞、环境碰撞及 payload collision qualification，并按完整安全通过、总关节行程和配置顺序选择；所有失败保持零动作并保存逐组合原因。 / Reuse the existing workspace, full-pose IK, continuity, joint-limit, self-collision, environment-collision, and payload-collision qualification for every clearance, transport orientation, and axial-angle combination, selecting by complete safety success, total joint travel, and configuration order while preserving per-combination no-motion failures. (local)
-- [test] [test] 增加安全运输 waypoint、staging 重定向、轴对称候选生成与排序、缺失轴证据、全部变体失败和安全门禁不被绕过的测试；只运行 no-motion preparation 和离线回归。 / Add tests for safe-transport waypoints, staging reorientation, axial candidate generation and ordering, missing-axis evidence, all-variant failure, and unchanged safety gates; run no-motion preparation and offline regression only. (local)
-- [docs] [docs] 保存本轮诊断、PAOS 所有权与替换边界、证据新鲜度、零动作结论及 findings-first 实现审查。 / Save the diagnosis, PAOS ownership and substitution boundaries, evidence freshness, no-motion conclusion, and findings-first implementation review. (local)
-
-### 架构与安全边界 / Architecture and Safety Boundary
-- AgentLoop 只拥有任务语义、候选 opaque 引用、生命周期、恢复与 settlement；Isaac Adapter 独占关节状态、运输姿态、IK 分支、路线和碰撞机制。 / AgentLoop owns only task semantics, opaque candidate references, lifecycle, recovery, and settlement; the Isaac Adapter exclusively owns joint state, transport orientation, IK branches, routes, and collision mechanisms.
-- 轴对称声明属于 Provider/Adapter 私有几何证据投影，不进入共享 Tool contract；替换 Provider 时调用方无需改变。 / Axial-symmetry declarations remain a Provider/Adapter-private projection of geometry evidence and do not enter the shared Tool contract, so callers remain unchanged when the Provider is replaced.
-- 本轮不启动控制器，不放宽 workspace、IK 容差、连续性、关节限位、自碰撞、环境碰撞、payload collision 或 possession 门禁。 / This iteration does not start the controller or weaken workspace, IK-tolerance, continuity, joint-limit, self-collision, environment-collision, payload-collision, or possession gates.
-
-### 实际修改 / Actual Changes
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L198-L270,L754-L855` 增加配置校验、几何轴向等价 grasp 变体、完整路线 joint-travel 排序，并将 acquire 拆成 `transit_raise -> transit_orient -> transit_cross -> staging_reorient -> approach`；每个组合继续复用完整 safety qualification。 / Add configuration validation, geometry-supported axial grasp variants, full-route joint-travel ranking, and the staged acquire route while reusing the complete safety qualification for every combination. (local)
-- [sense] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/simulator_truth_perception.py:L17-L83,L172-L187,L290-L307` 从最终组合网格的多个中间横截面验证轴对称，只有径向偏差与角覆盖满足条件时才生成 Adapter 私有 `grasp_symmetry`。 / Validate axial symmetry from multiple intermediate final-composed mesh cross-sections and publish Adapter-private `grasp_symmetry` only when radial deviation and angular coverage pass. (local)
-- [sense] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L1145-L1168` 只为 reagent bottle、合法非空 `destination://`、已选工艺候选投影私有轴对称证据；不扩展共享 manipulation schema。 / Project private axial-symmetry evidence only for reagent bottles with a valid non-empty destination binding and selected process features, without widening the shared manipulation schema. (local)
-- [env] [tune] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json:L13-L37` 配置 3 个抬升 clearance、2 个安全运输姿态和 4 个轴对称角；所有值仍由 Adapter 校验。 / Configure three raise clearances, two safe transport orientations, and four axial angles, all validated by the Adapter. (local)
-- [test] [test] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L215-L393`、`examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L37-L111` 覆盖路线阶段、运输姿态、staging 重定向、完整资格化后排序、缺失对称证据、所有路线失败、横截面覆盖、非法 quaternion 与非法 destination。 / Cover route stages, transport orientation, staging reorientation, post-qualification ranking, missing symmetry, all-route failure, mesh-slice coverage, invalid quaternions, and invalid destinations. (local)
-- [docs] [docs] `.task/labutopia-r03-staged-symmetry-diagnosis-20261101.md:L1-L85`、`.task/current.md:L1-L68`、`docs/forge/IMPLEMENTATION_REVIEW_V16_3_8.md:L1-L51` 保存诊断、当前阻塞、视频证据和 findings-first 实现复核。 / Save the diagnosis, current blocker, video evidence, and findings-first implementation review. (local)
-
-### 关键 Diff / Key Diff
-```diff
-- lateral transit uses the final grasp orientation directly
-- opening rim axis is treated as sufficient grasp-rotation evidence
-- malformed quaternion/destination values can escape or enter private resolution
-+ raise vertically with the current pose, orient for safe transport, translate, then reorient at staging
-+ prove axial equivalence from several covered final-mesh body slices before enumerating angles
-+ normalize configuration and destination failures through explicit Adapter validation
-```
-
-### 验证 / Validation
-- 定向 phase-motion + visual-perception 回归：`135 passed`。 / Focused phase-motion plus visual-perception regression: `135 passed`.
-- 完整 Isaac Adapter + subtask executor 边界回归：`329 passed`。 / Full Isaac Adapter plus subtask-executor boundary regression: `329 passed`.
-- Ruff、compileall、motion JSON validation 与 `git diff --check` 通过。 / Ruff, compileall, motion JSON validation, and `git diff --check` passed.
-- 实现复核修复两个 Major：非法字符串/布尔 quaternion 统一映射为 `invalid_motion_configuration`；空或错误前缀 destination 不再进入私有对称证据解析。修复后无剩余实现 Blocker/Major。 / The implementation review fixed two Major issues: malformed quaternion values now map to `invalid_motion_configuration`, and invalid destination bindings cannot enter private symmetry resolution. No implementation Blocker/Major remains.
-
-### 无动作运行与视频 / No-Motion Runtime and Video
-- Workspace `out/lab-fullchain-truth-20261101-staged-symmetry-no-motion-r1/`；session `cli:lab-91c7fcbbb264`；task `task_a7a9e1dc56014b26`；scene revision `labutopia-tabletop-rod-rack-v1:e3821a001bc84d8aaaa53bb89d8e7937:0`。 / Record the no-motion workspace, session, task, and scene revision. (local)
-- R03 的 `23/16/15` 每个遍历 `3 clearance x 2 transport x 4 axial angle = 24` 条完整安全路线；失败已移动到 `staging_reorient` 与 `approach` 的 IK/自碰撞/桌面或相邻 R04 碰撞。 / Each R03 qualified grasp exercised 24 complete safety routes; failures now occur at staging reorientation or final approach due to IK, self-collision, table, or adjacent-R04 collision. (local)
-- `simulated_motion_enabled=false`、`world_change_started=false`、`possession_state=empty`；无 controller command、抓取、倾倒或搅拌。 / Motion stayed disabled with no world change, possession, controller command, grasp, pour, or stir. (local)
-- 保留 5 秒、1600x1200、30 fps 的静态真实相机预览：`out/lab-fullchain-truth-20261101-staged-symmetry-no-motion-r1/artifacts/labutopia/no-motion-video/staged-symmetry-observation.mp4`；视频明确标注 controller disabled，不作为 Action 执行证据。 / Preserve a five-second static real-camera preview explicitly marked controller-disabled; it is not Action execution evidence. (local)
-
-### Git 提交 / Git Commit
-- Implementation commit: `29a7b642` (`2026-11-01 20:19:22 +0800`).
-- Log receipt commit: `fa8768db`.
-- Branch: `feature/planning-loop`.
-- Push: failed on 2026-11-01 because the GitHub TLS connection was non-properly terminated (`GnuTLS recv error (-110)`); commits remain local. / 推送失败：GitHub TLS 连接异常终止（`GnuTLS recv error (-110)`），提交保留在本地。

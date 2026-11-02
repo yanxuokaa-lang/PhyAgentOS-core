@@ -42,6 +42,51 @@ def test_physx_swallowed_callback_error_cannot_qualify_clear_route():
     assert error.value.code == "collision_query_failed"
 
 
+@pytest.mark.parametrize("kind", ["sphere", "finger", "self"])
+def test_collision_model_receipt_preserves_exact_queried_geometry(monkeypatch, kind):
+    import json
+    import sys
+    import types
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.robot = SimpleNamespace(prim_path="/robot")
+    model.hand_from_tcp = np.eye(4)
+    model.tcp = lambda _joints: pose_matrix([0., 0., 1.], [0., 0., 0., 1.])
+    model.solver = SimpleNamespace(compute_forward_kinematics=lambda _link, _q: (np.array([0., 0., 1.]), np.eye(3)))
+    model.spheres = [] if kind == "finger" else [
+        {link: [{"center": [0., 0., 0.], "radius": .02}]}
+        for link in (["panda_link1", "panda_link2", "panda_link5"] if kind == "self" else ["panda_hand"])]
+    model.finger_boxes = lambda **_kw: [(np.array([-.01, -.02, -.03]), np.array([.01, .02, .03]))] if kind == "finger" else []
+    carb = types.ModuleType("carb")
+    carb.Float3 = carb.Float4 = lambda *args: tuple(args)
+    monkeypatch.setitem(sys.modules, "carb", carb)
+    physx = types.ModuleType("omni.physx")
+
+    def overlap(*args):
+        if kind != "self":
+            args[-2](SimpleNamespace(collision="/table/mesh"))
+
+    physx.get_physx_scene_query_interface = lambda: SimpleNamespace(overlap_box=overlap, overlap_sphere=overlap)
+    monkeypatch.setitem(sys.modules, "omni.physx", physx)
+    with pytest.raises(PhaseMotionError) as caught:
+        model._collisions(np.zeros(7), "/source", False, False, np.eye(4))
+    diagnostic = caught.value.diagnostics
+    assert caught.value.code == ("self_collision" if kind == "self" else "route_collision")
+    assert diagnostic["evidence_kind"] == "collision_model_overlap"
+    assert diagnostic["checked_joints"] == [0.] * 7
+    assert diagnostic["checked_tcp"][2][3] == 1.
+    assert diagnostic["collision_margin_m"] == model.config["collision_margin_m"]
+    assert json.loads(json.dumps(diagnostic)) == diagnostic
+    if kind == "sphere":
+        assert diagnostic["radius_m"] == pytest.approx(.023)
+    elif kind == "finger":
+        assert diagnostic["half_extents_m"] == pytest.approx([.013, .023, .033])
+        assert diagnostic["finger_opening_mode"] == "full_travel_sweep"
+    else:
+        assert diagnostic["other_link"] == "panda_link5"
+
+
 def config():
     import json
     return json.loads((Path(__file__).parents[1] / "configs/labutopia-mixture-motion.json").read_text())
@@ -707,6 +752,25 @@ def test_grasp_approach_probe_fails_closed_when_all_final_approaches_are_unavail
     assert result["world_change_started"] is False
 
 
+def test_approach_collision_geometry_stays_in_private_receipt():
+    model, arguments = _grasp_approach_probe_fixture()
+    diagnostic = {"evidence_kind": "collision_model_overlap", "frame_id": "world",
+                  "checked_joints": [0.] * 7, "obstacle_path": "/World/table/mesh"}
+    saved = []
+
+    def collide(*_args, **_kwargs):
+        raise PhaseMotionError("route_collision", "model overlap", diagnostics=diagnostic)
+
+    model._collisions = collide
+    model._artifact = lambda _kind, value: saved.append(value) or "artifact://diagnostic/collision"
+    result = model.qualify_grasp_approach(arguments)
+    assert result["status"] == "unavailable"
+    assert result["world_change_started"] is False
+    assert all(item["collision_diagnostic"] == diagnostic for item in saved[0]["attempts"])
+    assert "collision_diagnostic" not in result
+    assert result["feasibility_ref"] == "artifact://diagnostic/collision"
+
+
 def test_route_qualification_can_start_from_probe_seed_without_reading_live_joints():
     model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
     model.config = config()
@@ -940,7 +1004,8 @@ def test_collision_between_endpoints_rejects_entire_route():
     def collide(joints, *_args, **_kwargs):
         samples.append(float(joints[0]))
         if .035 <= joints[0] <= .065:
-            raise PhaseMotionError("route_collision", "obstacle between endpoints")
+            raise PhaseMotionError("route_collision", "obstacle between endpoints",
+                                   diagnostics={"checked_joints": joints.tolist()})
     model._collisions = collide
     goal = pose_matrix([.1, 0., 1.], [0., 0., 0., 1.])
     with pytest.raises(PhaseMotionError, match="between endpoints") as captured:
@@ -949,6 +1014,7 @@ def test_collision_between_endpoints_rejects_entire_route():
     assert max(samples) < .1
     assert "checked TCP=" in str(captured.value)
     assert "checked joints=" in str(captured.value)
+    assert captured.value.diagnostics["checked_joints"][0] == pytest.approx(samples[-1])
 
 
 def test_discontinuous_primary_ik_is_rejected_when_nearby_recovery_fails(monkeypatch):

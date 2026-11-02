@@ -1204,11 +1204,18 @@ def test_authored_station_observation_config_uses_existing_cameras_without_layou
     assert _observation_scene_config(legacy) is legacy
 
 
-def test_initial_robot_state_is_applied_before_and_after_task_reset():
+def test_initial_robot_state_is_applied_before_and_after_task_reset(monkeypatch):
     events = []
     expected = [0., -.785, 0., -2.356, 0., 1.571, .785, .04, .04]
+    physx = types.ModuleType("omni.physx")
+    physx.get_physx_interface = lambda: SimpleNamespace(
+        update_transformations=lambda fast, usd: events.append(("publish", fast, usd)))
+    monkeypatch.setitem(sys.modules, "omni.physx", physx)
 
     class World:
+        physics_sim_view = SimpleNamespace(
+            update_articulations_kinematic=lambda: events.append("kinematic.update"))
+
         def reset(self):
             events.append("world.reset")
 
@@ -1219,8 +1226,7 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
             events.append("world.play")
 
         def step(self, *, render):
-            assert render is True
-            events.append("world.step")
+            pytest.fail("initial pose synchronization must not integrate dynamics")
 
         def render(self):
             events.append("world.render")
@@ -1259,12 +1265,57 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
     assert isinstance(task, Task)
     assert events == [
         "world.reset", "task.construct", "robot.initialize",
-        ("robot.set_joint_positions", expected), "world.play", "world.step",
-        ("robot.set_joint_positions", expected), "world.render", "world.pause",
+        ("robot.set_joint_positions", expected), "world.play",
+        ("robot.set_joint_positions", expected), "kinematic.update", ("publish", False, True),
+        "world.render", "world.pause",
         "task.reset", ("robot.set_joint_positions", expected),
-        "world.play", "world.step", ("robot.set_joint_positions", expected),
+        "world.play", ("robot.set_joint_positions", expected),
+        "kinematic.update", ("publish", False, True),
         "world.render", "world.pause",
     ]
+
+
+@pytest.mark.parametrize("playing", [False, True])
+@pytest.mark.parametrize("failure", [None, "kinematic", "publish"])
+def test_initial_sync_publishes_same_qpos_without_stepping_and_restores_timeline(monkeypatch, playing, failure):
+    events = []
+    state = {"playing": playing, "q": np.zeros(9), "links": None, "usd": None}
+
+    def kinematic():
+        events.append("kinematic")
+        if failure == "kinematic":
+            raise RuntimeError("kinematic failed")
+        state["links"] = state["q"].copy()
+
+    def publish(fast, usd):
+        assert (fast, usd) == (False, True)
+        events.append("publish")
+        if failure == "publish":
+            raise RuntimeError("publish failed")
+        state["usd"] = state["links"].copy()
+
+    physx = types.ModuleType("omni.physx")
+    physx.get_physx_interface = lambda: SimpleNamespace(update_transformations=publish)
+    monkeypatch.setitem(sys.modules, "omni.physx", physx)
+    world = SimpleNamespace(
+        is_playing=lambda: state["playing"],
+        play=lambda: state.update(playing=True), pause=lambda: state.update(playing=False),
+        physics_sim_view=SimpleNamespace(update_articulations_kinematic=kinematic),
+        step=lambda **_kwargs: pytest.fail("no physics integration"),
+        render=lambda: events.append("render"),
+    )
+    robot = SimpleNamespace(get_joint_positions=lambda: state["q"],
+                            set_joint_positions=lambda q: state.update(q=q.copy()))
+    expected = np.array([0., -.785, 0., -2.356, 0., 1.571, .785, .04, .04])
+    if failure:
+        with pytest.raises(RuntimeError, match=failure):
+            module._refresh_initial_robot_state(world, robot, expected[:7], expected[7:])
+        assert "render" not in events
+    else:
+        module._refresh_initial_robot_state(world, robot, expected[:7], expected[7:])
+        assert events == ["kinematic", "publish", "render"]
+        assert state["usd"] == pytest.approx(expected)
+    assert state["playing"] is playing
 
 
 @pytest.mark.parametrize("arm, gripper", [

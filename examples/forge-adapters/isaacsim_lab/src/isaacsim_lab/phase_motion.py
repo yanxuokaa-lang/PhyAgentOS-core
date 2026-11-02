@@ -25,9 +25,10 @@ from scipy.spatial.transform import Rotation, Slerp
 
 
 class PhaseMotionError(ValueError):
-    def __init__(self, code, detail):
+    def __init__(self, code, detail, *, diagnostics=None):
         super().__init__(detail)
         self.code = code
+        self.diagnostics = diagnostics
 
 
 class PhaseMotionPreconditionError(PhaseMotionError):
@@ -814,6 +815,13 @@ class IsaacPhaseMotion:
         groups = []
         robot_path = self.robot.prim_path + "/"
 
+        def reject(code, detail, **geometry):
+            raise PhaseMotionError(code, detail, diagnostics={
+                "evidence_kind": "collision_model_overlap", "frame_id": "world",
+                "checked_joints": np.asarray(joints).tolist(), "checked_tcp": tcp.tolist(),
+                "collision_margin_m": self.config["collision_margin_m"], **geometry,
+            })
+
         def hits(center, radius, link, ignore_source=False):
             def ignore(path):
                 if path.startswith(robot_path) or (ignore_source and (path == source_path or path.startswith(source_path + "/"))):
@@ -823,7 +831,9 @@ class IsaacPhaseMotion:
                 return False
             found = collision_hits(query.overlap_sphere, float(radius), carb.Float3(*center), ignore=ignore)
             if found:
-                raise PhaseMotionError("route_collision", f"{link} overlaps {found[0]}")
+                reject("route_collision", f"{link} overlaps {found[0]}", link=link,
+                       obstacle_path=found[0], primitive="sphere", center_m=np.asarray(center).tolist(),
+                       radius_m=float(radius))
 
         for group in self.spheres:
             for link, spheres in group.items():
@@ -847,7 +857,11 @@ class IsaacPhaseMotion:
             found = collision_hits(query.overlap_box, carb.Float3(*finger_half), carb.Float3(*finger_center),
                                    carb.Float4(*Rotation.from_matrix(hand[:3, :3]).as_quat()), ignore=ignore_finger)
             if found:
-                raise PhaseMotionError("route_collision", f"finger overlaps {found[0]}")
+                reject("route_collision", f"finger overlaps {found[0]}", link="finger",
+                       obstacle_path=found[0], primitive="oriented_box",
+                       center_m=finger_center.tolist(), half_extents_m=finger_half.tolist(),
+                       orientation_xyzw=Rotation.from_matrix(hand[:3, :3]).as_quat().tolist(),
+                       finger_opening_mode="measured" if held_fingers else "full_travel_sweep")
             for link, centers, radii in groups:
                 if link not in {"panda_hand", "panda_link7"}:
                     if any(np.linalg.norm(np.maximum(np.abs(hand[:3, :3].T @ (center - finger_center)) - finger_half, 0.)) < radius
@@ -860,7 +874,10 @@ class IsaacPhaseMotion:
                 for center, radius in zip(centers, radii, strict=True):
                     if any(np.linalg.norm(center - other) < radius + other_radius
                            for other, other_radius in zip(other_centers, other_radii, strict=True)):
-                        raise PhaseMotionError("self_collision", f"{link} overlaps {other_link}")
+                        reject("self_collision", f"{link} overlaps {other_link}", link=link,
+                               other_link=other_link, primitive="sphere_groups",
+                               centers_m=np.asarray(centers).tolist(), radii_m=list(radii),
+                               other_centers_m=np.asarray(other_centers).tolist(), other_radii_m=list(other_radii))
         if attached or released_pose is not None:
             if source_path not in self.payload_geometry:
                 raise PhaseMotionError("payload_geometry_unavailable", "payload has no bound observed point cloud")
@@ -1116,6 +1133,7 @@ class IsaacPhaseMotion:
                                 f"checked TCP={checked_tcp[:3, 3].tolist()}, "
                                 f"checked joints={value.tolist()}, "
                                 f"joint delta={joint_delta(joints, goal)}; {exc}",
+                                diagnostics=exc.diagnostics,
                             ) from exc
                 # Collision sampling is denser than the commanded path. Keep
                 # its checks without making the arm stop at every check point.
@@ -1239,6 +1257,8 @@ class IsaacPhaseMotion:
                 except PhaseMotionError as exc:
                     failures.append((symmetry_angle, distance, exc))
                     attempt.update(status="unavailable", failure_code=exc.code, error=str(exc))
+                    if exc.diagnostics is not None:
+                        attempt["collision_diagnostic"] = exc.diagnostics
                 attempts.append(attempt)
         evidence_context = {
             "captured_at": datetime.now(timezone.utc).isoformat(),

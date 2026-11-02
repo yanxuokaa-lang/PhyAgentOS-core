@@ -64,6 +64,39 @@
 
 ## Latest result and next step
 
+### v16.6.1 reset synchronization and collision diagnosis
+
+- Save plan first in `changelog/2026-11.md`; use the recorded candidate 17/55
+  failures to compare FK, composed USD geometry and queried collision envelopes.
+- Owner: Isaac Adapter only (Tier C-Safety). The generic task/Tool interfaces,
+  AgentLoop selection and Coordinator lifecycle/recovery remain unchanged.
+- Historical joint replay is diagnostic, not same-capture preparation. It must
+  issue no controller commands, preserve joints/physics time after initialization,
+  and retain both historical capture identity and current scene revision.
+- Smallest leak test: replace the geometry/IK mechanism without changing public
+  candidate references; malformed geometry or unsafe candidates must still reject
+  before motion. Do not create a second recovery path or weaken safety margins.
+- Diagnose before choosing between geometry correction and bounded IK seeds;
+  neither more sampling nor scene rearrangement is assumed to be the solution.
+- Confirmed/fixed: resetting qpos after a dynamics step left hand USD transforms
+  6.56 mm from measured-joint FK. Kinematic update plus explicit USD publication
+  now yields 0.000197 mm hand error on the actual scene, without that extra step.
+- Five historical finger/table rejections are conservative swept-box overlaps;
+  the authored mesh remains about 16 mm above the table at the first rejected
+  intermediate sample. This does not qualify the final grasp or justify reducing
+  margins. Exact queried primitives/joints now persist in private receipts.
+- Full affected regression: 421 passed. Native diagnostic r3 completes with
+  unchanged joints/time; interrupted startup r2 has no successful result.
+- Diagnosis: `.task/labutopia-collision-geometry-repair-20261102.md`;
+  review: `docs/forge/IMPLEMENTATION_REVIEW_V16_6_1.md`.
+- Fresh formal no-motion follow-up:
+  `out/lab-fullchain-truth-20261102-reset-sync-no-motion-r1/`.
+- Formal task `task_ebea061a2ed841e3` ends cancelled at R03 task-affordance:
+  aperture=4; approach failures workspace=20, environment=20, self=4, IK=4.
+  All 24 collision failures now retain structured geometry. No Action or
+  controller starts. The synchronized initial state is repaired; the unchanged
+  approach counts prove that collision/IK infeasibility remains a separate issue.
+
 ### v16.6.0 completed coverage repair (2026-11-02)
 
 - Save the selection/refactor decision in `.task/labutopia-r03-native-coverage-repair-20261102.md`.

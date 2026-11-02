@@ -2710,13 +2710,21 @@ def _apply_initial_robot_state(
 def _refresh_initial_robot_state(
     world: Any, robot: Any, arm_positions: Any, gripper_positions: Any
 ) -> None:
-    """Propagate an authored qpos into link/camera transforms without a command."""
+    """Publish reset qpos to link/camera transforms without integrating physics.
+
+    Stepping and then restoring qpos leaves USD at the stepped pose while the
+    articulation reports the reset pose. Rendering alone does not publish CPU
+    articulation transforms to USD. Synchronize kinematics and USD explicitly.
+    """
+    from omni.physx import get_physx_interface
+
     was_playing = bool(world.is_playing())
     try:
         if not was_playing:
             world.play()
-        world.step(render=True)
         _apply_initial_robot_state(robot, arm_positions, gripper_positions)
+        world.physics_sim_view.update_articulations_kinematic()
+        get_physx_interface().update_transformations(False, True)
         world.render()
     finally:
         if not was_playing:
