@@ -136,6 +136,12 @@
 - [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`；无抓取、R04 倾倒或搅拌执行证据。Kit 材质/GPU particle 错误保留，未验证液体/粒子动力学。 / Motion remains disabled with empty controller outcomes and no grasp/R04 pour/stir execution evidence; Kit material/GPU particle errors remain, and liquid/particle dynamics are unvalidated. (local)
 - [docs] [docs] 后续应在 Grasp/Task-Affordance Provider 改善真实几何下的可抓区域覆盖与工艺净空，生成新的合格 opaque 候选；不得在 Action recovery 内平移候选或恢复被排除的 raw 集合。 / Next improve geometry-grounded grasp-region coverage/process clearance in Providers and generate newly qualified opaque candidates, never shifting poses or restoring rejected raw candidates inside Action recovery. (local)
 
+### Git 提交 / Git Commit
+- Implementation commit: `5f83c2a3`.
+- Branch: `feature/planning-loop`; time: `2026-11-02 12:53:47 +0800`.
+- [docs] [docs] 月度完整记录 `changelog/2026-11.md:L780-L872`；索引对应 `CHANGELOG.md:L51-L143`，最近五版本与归档逐字一致。 / The complete archive/index entry occupies these ranges; latest five entries match their archive exactly. (local)
+- [chore] [chore] 仅暂存本任务 12 个文件，无关报告与运行输出保留未暂存；提交回执随后以文档提交保存并推送当前分支。 / Stage only twelve task-owned files, preserving unrelated report/runtime outputs; save this receipt in a following docs commit and push the current branch. (local)
+
 ## v16.6.2 (2026-11-02 12:24) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；完整抓取仍受阻 / Local repair complete; full grasp remains blocked]
