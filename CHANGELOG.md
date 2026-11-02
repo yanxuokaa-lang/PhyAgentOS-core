@@ -99,7 +99,7 @@ candidate = self.qualify(candidate_waypoints, ...)
 
 ### Git Receipt
 - Branch: `feature/planning-loop`
-- Commit: pending
+- Commit: `2763945cb42cb2d12c631deaf609b15733f6aeda` (2026-11-02 20:27:17 Asia/Shanghai)
 - [docs] [chore] 索引严格保留最新五版本；v16.6.3 完整内容留在月归档。 / Keep exactly the latest five versions in the index; retain v16.6.3 in the monthly archive.
 
 ## v16.8.0 (2026-11-02 16:05) - codex
