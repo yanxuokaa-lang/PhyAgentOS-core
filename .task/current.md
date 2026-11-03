@@ -1,5 +1,22 @@
 # Current Task: LabUtopia live acquire reconciliation
 
+## v16.9.3 / retimed 初始 lift 支撑窗口
+
+- Diagnosis: `.task/labutopia-lift-support-window-20261103.md`.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_9_3.md`.
+- Fresh reset proved R03 was back on its support and the gripper was empty.
+  Fresh task `task_448f4e2bf09042fe` then used a new revision and same-set
+  qualified opaque references.
+- R03 acquire failed on the eighteenth retimed lift sample with a fresh
+  unilateral zero-load interval. The v16.9.2 `last_stage == "close"` condition
+  only covered the first production lift point.
+- The Adapter now carries confirmed-closure state across the initial lift and
+  permits the one existing grace only while measured geometry remains inside
+  the existing support-contact departure window.
+- The failed run has `world_change_started=true`, `outcome_known=false` and
+  `possession_state=uncertain`; R04 and stirring did not start. Reset again
+  before any subsequent Action.
+
 ## v16.9.2 / acquire lift 单周期接触瞬态
 
 - Diagnosis: `.task/labutopia-lift-contact-transient-20261103.md`.

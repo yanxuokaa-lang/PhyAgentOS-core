@@ -1007,3 +1007,23 @@ bilateral unloading, pose-limit failure, or a second consecutive unloaded
 interval. AgentLoop consumes the eventual Action outcome and remains unaware of
 PhysX manifolds or control-cycle policy. Unknown possession still blocks later
 DAG nodes until reconciliation.
+
+### Initial lift is a support-bounded interval, not one route point
+
+Retimed execution commonly represents every controller period as its own route
+point. Do not define an initial-lift policy with `last_stage == "close"`: that
+condition is true only for the first retimed lift point and loses the closure
+fact on the following period.
+
+If an Adapter needs a bounded execution tolerance after confirmed closure,
+persist that confirmation as Adapter-private controller state and combine it
+with current measured geometry. For support-load redistribution, the tolerance
+must end when the measured body leaves the existing support-contact departure
+window. A historical closure fact by itself is not authority to ignore contact
+loss during free-space transport.
+
+Tests for this policy must consume the same retimed `execution_steps` shape as
+production. An unretimed smooth segment can keep `last_stage` constant for many
+control periods and falsely make a first-point-only condition appear correct.
+Keep measured contact/grasp fields truthful, consume any one-cycle grace at
+most once, and require bilateral recovery on the following sample.

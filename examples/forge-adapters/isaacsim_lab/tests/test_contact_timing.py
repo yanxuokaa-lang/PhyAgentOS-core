@@ -111,6 +111,32 @@ def test_one_unloaded_lift_interval_is_execution_tolerance_not_grasp_evidence(mo
     assert model.world.steps >= 12
 
 
+def test_later_in_support_unloaded_lift_interval_recovers(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    # Real PhysX evidence can retain bilateral load for several lift intervals
+    # before one finger unloads while the vessel is still leaving its support.
+    model._time_acquire_route(args["phase_route"])
+    timed_contact_sensors(model, lambda step: "unilateral_left" if step == 18 else "bilateral")
+    result = model.execute(args, Event())
+    samples = artifacts[-1][1]["samples"]
+    transient = next(sample for sample in samples if sample.get("contact_transient_grace_used"))
+    assert transient["stage"] == "lift"
+    assert transient["grasp_valid"] is False
+    assert transient["contact_load_valid"] is False
+    assert result["failure_code"] != "physical_grasp_lost"
+
+
+def test_later_unloaded_lift_interval_outside_support_window_stops(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    monkeypatch.setattr("isaacsim_lab.phase_motion.support_contact_allowed", lambda *_args: False)
+    model._time_acquire_route(args["phase_route"])
+    timed_contact_sensors(model, lambda step: "unilateral_left" if step == 18 else "bilateral")
+    result = model.execute(args, Event())
+    samples = artifacts[-1][1]["samples"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert not any(sample.get("contact_transient_grace_used") for sample in samples)
+
+
 @pytest.mark.parametrize("mode,expected_steps,has_grace", [
     ("unilateral_left", 2, True),
     ("bilateral_unloaded", 1, False),

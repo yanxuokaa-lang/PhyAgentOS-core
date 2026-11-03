@@ -1731,6 +1731,7 @@ class IsaacPhaseMotion:
         step_count = 0
         last_stage = None
         lift_contact_grace_used = False
+        lift_grip_confirmed = False
         self.world.play()
 
         def contacts():
@@ -1792,6 +1793,7 @@ class IsaacPhaseMotion:
                         raise PhaseMotionError("grasp_transform_mismatch", "measured grip differs from the qualified grasp")
                     supported_pose = self.observed_pose(source)
                     grasp_relation = np.linalg.inv(self.tcp()) @ supported_pose
+                    lift_grip_confirmed = last_stage == "close"
                 if stage in {"open", "release", "retreat"}:
                     finger_target = np.full(2, .04)
                 start = self.joints()
@@ -1848,9 +1850,13 @@ class IsaacPhaseMotion:
                     step_count += 1
                     record_frame(stage)
                     held, physical_body = record(stage)
+                    measured_support_contact = support_contact_allowed(
+                        stage, physical_body, supported_pose,
+                        self.config["placement_tolerance_m"])
                     transient_lift_contact_grace = False
-                    if (operation == "acquire" and last_stage == "close"
+                    if (operation == "acquire" and lift_grip_confirmed
                             and stage == "lift" and not held and not lift_contact_grace_used
+                            and measured_support_contact
                             and contact_window.one_finger_unloaded()):
                         measured_sample = samples[-1]
                         if (measured_sample["attachment_position_error_m"]
@@ -1880,10 +1886,9 @@ class IsaacPhaseMotion:
                         raise PhaseMotionError("physical_grasp_lost", "selected-body contact or measured grasp transform changed")
                     measured_relation = (np.linalg.inv(self.tcp()) @ physical_body
                                          if point["attached"] else grasp_relation)
-                    support_contact = support_contact_allowed(stage, physical_body, supported_pose,
-                                                              self.config["placement_tolerance_m"])
                     self._collisions(self.joints(), source, point["allow_contact"], point["attached"],
-                                     measured_relation, support_contact, held_fingers=point["attached"])
+                                     measured_relation, measured_support_contact,
+                                     held_fingers=point["attached"])
                     if closure is not None and contact_established and stable_frames >= max(1, hold_frames):
                         break
                 if closure is not None and stable_frames < max(1, hold_frames):
