@@ -89,6 +89,57 @@ def test_collision_model_receipt_preserves_exact_queried_geometry(monkeypatch, k
         assert diagnostic["other_link"] == "panda_link5"
 
 
+@pytest.mark.parametrize(
+    "collision_path,support_contact,raises",
+    [
+        ("/World/table/surface/mesh", True, False),
+        ("/World/table/surface/mesh", False, True),
+        ("/World/tableware/surface/mesh", True, True),
+    ],
+)
+def test_payload_support_contact_matches_only_configured_prim_subtree(
+    monkeypatch, collision_path, support_contact, raises,
+):
+    import sys
+    import types
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.robot = SimpleNamespace(prim_path="/World/Franka")
+    model.hand_from_tcp = np.eye(4)
+    model.tcp = lambda _joints: pose_matrix([0., 0., 1.], [0., 0., 0., 1.])
+    model.spheres = []
+    model.finger_boxes = lambda **_kw: []
+    model.payload_geometry = {
+        "/World/source": [(np.array([-.01, -.01, -.01]), np.array([.01, .01, .01]))],
+    }
+    carb = types.ModuleType("carb")
+    carb.Float3 = carb.Float4 = lambda *args: tuple(args)
+    monkeypatch.setitem(sys.modules, "carb", carb)
+    physx = types.ModuleType("omni.physx")
+
+    def overlap(*args):
+        args[-2](SimpleNamespace(collision=collision_path))
+
+    physx.get_physx_scene_query_interface = lambda: SimpleNamespace(
+        overlap_box=overlap,
+        overlap_sphere=overlap,
+    )
+    monkeypatch.setitem(sys.modules, "omni.physx", physx)
+
+    def check():
+        model._collisions(
+            np.zeros(7), "/World/source", True, True, np.eye(4),
+            support_contact=support_contact,
+        )
+    if raises:
+        with pytest.raises(PhaseMotionError) as caught:
+            check()
+        assert caught.value.code == "payload_collision"
+    else:
+        check()
+
+
 def config():
     import json
     return json.loads((Path(__file__).parents[1] / "configs/labutopia-mixture-motion.json").read_text())

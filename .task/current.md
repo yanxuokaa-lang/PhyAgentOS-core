@@ -1,4 +1,23 @@
-# Current Task: LabUtopia stable grasp and full-route qualification
+# Current Task: LabUtopia live acquire reconciliation
+
+## v16.9.1 / 支撑碰撞子路径修复
+
+- Diagnosis: `.task/labutopia-support-collider-path-20261103.md`.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_9_1.md`.
+- Isaac Adapter now treats a configured support prim as owning its descendant
+  colliders only inside the existing lift/lower support-contact window. Prefix
+  neighbors, other stages and all normal collision checks remain unchanged.
+- Full regression: 467 passed, 2 skipped; Ruff, compileall and diff checks pass.
+- Fresh task `task_3ab10413aab34666` passes R03 process/grasp Query,
+  task-affordance preparation and full Action readiness for candidate 57.
+- Actual acquire motion starts and writes phase video
+  `out/lab-fullchain-truth-20261103-v16_9_1-execute-r1/artifacts/labutopia/phase-video/3a7c6036760444848d476edbceacd3aa.mp4`.
+- Closure establishes bilateral contact, but lift stops with
+  `physical_grasp_lost`; world change started and possession is uncertain.
+  R04 and stirring are correctly blocked. Do not retry this scene revision.
+- Next inspect the one-interval right-finger zero-load report against persistent
+  contact manifolds and measured attachment drift. Preserve initial bilateral
+  load confirmation and all pose/collision limits.
 
 ## v16.9.0 / 稳定抓取资格化与直达路线尝试
 

@@ -48,6 +48,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.9.1 (2026-11-03 13:47) - codex
+
+### 完成范围 / Completed Scope [支撑路径修复完成；实际抓取仍阻塞 / Support-path fix complete; live acquire still blocked]
+- [env] [fix] Isaac Adapter 在既有 lift/lower 支撑窗口内将配置支撑 prim 匹配到 `/` 分隔的后代 collider；一般碰撞、IK、workspace、margin 与 AgentLoop 不变。 / Match configured support prims to slash-delimited descendant colliders only in the existing lift/lower support window; retain general collision, IK, workspace, margins and AgentLoop. (local)
+- [eval] [chore] 回归覆盖子 collider、窗口外拒绝和前缀路径隔离；467 passed、2 skipped，Ruff、compileall 和 diff 检查通过。 / Regression covers descendant colliders, out-of-window rejection and prefix isolation; 467 pass, 2 skip, with Ruff, compileall and diff checks passing. (local)
+- [eval] [exp] 新任务 `task_3ab10413aab34666` 通过 R03 完整 readiness 并进入真实 acquire；lift 以未知 possession 的 `physical_grasp_lost` 停止，R04/搅拌未开始。 / Fresh task passes full R03 readiness and enters live acquire; lift stops with `physical_grasp_lost` and uncertain possession, so R04/stir do not start. (local)
+
+### 文件变更详情 / File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L59-L62, L1021-L1029
+- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L92-L140
+- `.task/labutopia-support-collider-path-20261103.md` L1-L58
+- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_1.md` L1-L44
+- `.task/current.md` L1-L20
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L975-L992
+
+```diff
++return bool(root and (path == root or path.startswith(root + "/")))
+-path in self.config["support_collision_paths"]
++any(prim_path_is_within(path, support) for support in support_collision_paths)
+```
+
+### 验证 / Validation
+- Phase video: `out/lab-fullchain-truth-20261103-v16_9_1-execute-r1/artifacts/labutopia/phase-video/3a7c6036760444848d476edbceacd3aa.mp4` (19.93 s).
+- No pour, R04 or stir success is claimed; the task remains `awaiting_replan` after unknown acquire outcome.
+
 ## v16.9.0 (2026-11-02 19:56) - codex
 
 ### 完成范围 / Completed Scope [局部实现完成；全路线资格阻塞 / Local implementation complete; full-route qualification blocked]
@@ -384,7 +409,7 @@ The excerpt abbreviates local variable expressions/comments; exact source ranges
 - 时间 / Time: 2026-11-02 14:39 Asia/Shanghai
 - [docs] [chore] 本回执与最近五版本索引同步作为后续文档提交；只提交本任务 11 个文件，保留无关工作区修改及本地运行录像。 / Synchronize this receipt and latest-five index in a follow-up documentation commit; include only the 11 task files and preserve unrelated edits and local recordings. (local)
 
-## v16.7.0 (2026-11-02 12:59) - codex
+\n+## v16.7.0 (2026-11-02 12:59) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；完整流程尚未通过 / Local repairs complete; full workflow not accepted]
 - [docs] [docs] 保存当前受检集合四个超开口、六个终态受阻的诊断；先检查模型原始候选覆盖、截断与工艺筛选各自丢失的区域，再选择有证据的 Provider 修复。 / Save four aperture and six final-pose failures; measure losses from model coverage, truncation and process qualification before choosing an evidenced Provider repair. (local)

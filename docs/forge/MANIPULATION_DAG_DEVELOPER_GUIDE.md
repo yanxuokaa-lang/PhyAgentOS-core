@@ -971,3 +971,22 @@ For the current LabUtopia profile (`topology=single_arm`, `arm_id=franka`),
 preparation rejects non-`single_arm` coordination or any other allowed-arm set
 before creating an assignment or issuing a command. This is a provider-owned,
 zero-motion capability failure, not a grasp retry or a coordinate fallback.
+
+### Support prim paths and runtime collider paths
+
+Isaac deployment configuration may name a logical support prim such as
+`/World/table`, while PhysX overlap reports a descendant collider such as
+`/World/table/surface/mesh`. Resolve that hierarchy inside the Adapter. Generic
+planning and AgentLoop must not receive USD paths or infer support semantics.
+
+A configured support root covers only itself and `/`-delimited descendants; a
+lexical prefix such as `/World/tableware` is unrelated. Descendant matching is
+not a general collision exemption. It is active only when the existing
+stage- and displacement-bounded support-contact policy authorizes departure or
+placement. Outside that window, the same collider remains an obstacle.
+
+Live acceptance still requires execution feedback. Passing readiness after a
+support-path repair proves only that the previous false collision no longer
+blocks the route. If actual motion produces unknown possession, later DAG nodes
+must remain blocked until reconciliation; Query or preparation success cannot
+upgrade that outcome.

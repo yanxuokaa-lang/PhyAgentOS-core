@@ -56,6 +56,12 @@ def collision_hits(query, *geometry, ignore):
     return found
 
 
+def prim_path_is_within(path, root):
+    """Match one USD prim or its descendants without prefix collisions."""
+    root = str(root).rstrip("/")
+    return bool(root and (path == root or path.startswith(root + "/")))
+
+
 def preparation_result(arguments, route, evidence):
     """Project the measured route into the existing typed PAOS assignment."""
     from hashlib import sha256
@@ -1015,7 +1021,10 @@ class IsaacPhaseMotion:
             def ignore_payload(path):
                 if path.startswith(robot_path) or path == source_path or path.startswith(source_path + "/"):
                     return True
-                if (support_contact or released_pose is not None) and path in self.config["support_collision_paths"]:
+                if (support_contact or released_pose is not None) and any(
+                    prim_path_is_within(path, support)
+                    for support in self.config["support_collision_paths"]
+                ):
                     return True
                 return False
             for lower, upper in self.payload_geometry[source_path]:
