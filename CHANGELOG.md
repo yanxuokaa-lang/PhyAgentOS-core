@@ -71,7 +71,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch `feature/planning-loop`; 2026-11-03 15:04 Asia/Shanghai.
+- Implementation commit: `01f8f5a8`; branch `feature/planning-loop`; 2026-11-03 15:07 Asia/Shanghai.
 
 ## v16.9.1 (2026-11-03 13:47) - codex
 
