@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-11_part2](changelog/2026-11_part2.md)
 - [2026-11](changelog/2026-11.md)
 - [2026-10_part16](changelog/2026-10_part16.md)
 - [2026-10_part15](changelog/2026-10_part15.md)
@@ -47,6 +48,28 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.9.6 (2026-11-03 19:17) - codex
+
+### 完成范围 / Completed Scope
+- [policy] [test] 本轮目标严格固定为靠近机械臂的 R05 后 R03，不选择 R04；fresh execution 仅绑定当前 R05 直接前驱 preparation 的同集合 opaque 引用。 / Fix this run strictly to near-arm R05 followed by R03, excluding R04; fresh execution binds only the same-set opaque R05 reference from its direct predecessor preparation. (local)
+- [env] [exp] R05 Action 在首个 preparation 阶段因 Isaac worker request timeout 失败；终态 `outcome_known=true`、`world_change_started=false`、`possession_state=empty`，R03 与搅拌未开始。 / R05 Action fails in its first preparation phase because the Isaac worker request times out; the outcome is known with no world change and empty possession, so R03 and stirring never start. (local)
+- [docs] [docs] 诊断归属 Adapter worker/session 生命周期，不修改 AgentLoop、公共 Tool 合同、候选语义或安全阈值。 / Assign the diagnosis to Adapter worker/session lifetime without changing AgentLoop, public Tool contracts, candidate semantics or safety limits. (local)
+
+### 文件变更详情 / File Changes
+- `.task/labutopia-r05-r03-fresh-reset-runtime-timeout-20261103.md`
+- `.task/current.md`
+- `changelog/2026-11_part2.md`
+- `CHANGELOG.md`
+
+### 验证 / Validation
+- Fresh no-motion and execution task/revision/scene/candidate identifiers are distinct.
+- Execution lineage contains no historical task or no-motion readiness reference.
+- No phase video exists because controller motion never began.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`.
+- Commit: pending.
 
 ## v16.9.5 (2026-11-03 17:04) - codex
 
@@ -145,31 +168,3 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `01f8f5a8`; branch `feature/planning-loop`; 2026-11-03 15:07 Asia/Shanghai.
-
-## v16.9.1 (2026-11-03 13:47) - codex
-
-### 完成范围 / Completed Scope [支撑路径修复完成；实际抓取仍阻塞 / Support-path fix complete; live acquire still blocked]
-- [env] [fix] Isaac Adapter 在既有 lift/lower 支撑窗口内将配置支撑 prim 匹配到 `/` 分隔的后代 collider；一般碰撞、IK、workspace、margin 与 AgentLoop 不变。 / Match configured support prims to slash-delimited descendant colliders only in the existing lift/lower support window; retain general collision, IK, workspace, margins and AgentLoop. (local)
-- [eval] [chore] 回归覆盖子 collider、窗口外拒绝和前缀路径隔离；467 passed、2 skipped，Ruff、compileall 和 diff 检查通过。 / Regression covers descendant colliders, out-of-window rejection and prefix isolation; 467 pass, 2 skip, with Ruff, compileall and diff checks passing. (local)
-- [eval] [exp] 新任务 `task_3ab10413aab34666` 通过 R03 完整 readiness 并进入真实 acquire；lift 以未知 possession 的 `physical_grasp_lost` 停止，R04/搅拌未开始。 / Fresh task passes full R03 readiness and enters live acquire; lift stops with `physical_grasp_lost` and uncertain possession, so R04/stir do not start. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L59-L62, L1021-L1029
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L92-L140
-- `.task/labutopia-support-collider-path-20261103.md` L1-L58
-- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_1.md` L1-L44
-- `.task/current.md` L1-L20
-- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L975-L992
-
-```diff
-+return bool(root and (path == root or path.startswith(root + "/")))
--path in self.config["support_collision_paths"]
-+any(prim_path_is_within(path, support) for support in support_collision_paths)
-```
-
-### 验证 / Validation
-- Phase video: `out/lab-fullchain-truth-20261103-v16_9_1-execute-r1/artifacts/labutopia/phase-video/3a7c6036760444848d476edbceacd3aa.mp4` (19.93 s).
-- No pour, R04 or stir success is claimed; the task remains `awaiting_replan` after unknown acquire outcome.
-
-### Git 提交 / Git Commit
-- Implementation commit: `72649a4e`; branch `feature/planning-loop`; 2026-11-03 14:14 America/Los_Angeles.

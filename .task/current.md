@@ -1,4 +1,30 @@
-# Current Task: LabUtopia static-contact manifold repair
+# Current Task: LabUtopia fresh-reset full-chain validation
+
+## v16.9.6 / fresh reset completed; R05 preparation timed out safely
+
+- Tier C-Safety; this is simulator-only runtime validation after the v16.9.5
+  Adapter repair. No physical hardware is authorized.
+- Diagnosis: `.task/labutopia-r05-r03-fresh-reset-runtime-timeout-20261103.md`.
+- The reagent targets are fixed to the two near-arm small vessels, R05 first and
+  R03 second. Do not substitute R04 or another vessel during planning/recovery.
+- Independent no-motion reset/readback confirmed an open gripper, zero motion
+  commands and an available current-capture R05 candidate. Its readiness was
+  not reused by the execution workspace.
+- The execution task generated a distinct scene revision, observation,
+  candidate set and preparation, then selected only its directly qualified R05
+  opaque reference.
+- R05 failed in the first Action preparation with
+  `IsaacWorkerSessionError: Isaac worker request timed out`. The settled result
+  is known: no world change started and possession remained empty.
+- R03 and GLASS_ROD stayed dependency-blocked; no acquire, pour, return, stir or
+  phase video occurred. The later `Isaac session has no current scene revision`
+  record is a worker-session-loss symptom after the primary timeout.
+- Do not resume the terminated task. Diagnose Adapter worker request/session
+  lifetime before another fresh reset and R05 attempt.
+- `task_1826699dc9cd456b`, its scene revision, readiness, candidate refs and
+  preparation are historical evidence only and must never be resumed or reused.
+
+# Previous Task: LabUtopia static-contact manifold repair
 
 ## v16.9.5 / support-bounded static contact continuity
 
