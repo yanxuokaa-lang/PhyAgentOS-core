@@ -74,7 +74,7 @@
 - [policy] [chore] 未恢复历史 task/readiness；未执行 R05 Action，R03 与 GLASS_ROD 保持阻塞。 / Do not restore historical tasks or readiness; no R05 Action executes, and R03 plus GLASS_ROD remain blocked. (local)
 
 ### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`; implementation commit pending.
+- Branch: `feature/planning-loop`; implementation commit `de8c4a340b28a000c2d41a31ea86f9b1a0c8b426`; 2026-11-03 20:29:45 Asia/Shanghai.
 
 ## v16.9.6 (2026-11-03 19:17) - codex
 
