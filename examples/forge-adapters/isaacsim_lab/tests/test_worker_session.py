@@ -8,7 +8,7 @@ import pytest
 
 from isaacsim_lab.paos_client import LabUtopiaCycleClient
 from isaacsim_lab.worker import serve_session
-from isaacsim_lab.worker_session import IsaacWorkerSession
+from isaacsim_lab.worker_session import IsaacWorkerSession, IsaacWorkerSessionError
 
 
 class FakeProcess:
@@ -282,6 +282,32 @@ def test_worker_session_rejects_requests_after_close(tmp_path, monkeypatch):
         assert "closed" in str(exc)
     else:
         raise AssertionError("closed worker session accepted a request")
+
+
+def test_worker_timeout_invalidates_wrapper_instead_of_restarting_blank_worker(tmp_path, monkeypatch):
+    class SlowBackend(FakeBackend):
+        def prepare_manipulation_in_session(self, session, arguments):
+            time.sleep(.08)
+            return super().prepare_manipulation_in_session(session, arguments)
+
+    session, _backend, process_count, _environment = make_session(
+        tmp_path, monkeypatch, backend=SlowBackend(),
+    )
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+        revision = session.scene_revision()["scene_revision"]
+        process = session._process
+        socket_path = session._socket_path
+        process.terminate = lambda: session._send_close(socket_path)
+        session.request_timeout_s = .02
+        with pytest.raises(IsaacWorkerSessionError, match="request timed out"):
+            session.request("prepare_manipulation", {"scene_revision": revision})
+        with pytest.raises(IsaacWorkerSessionError, match="invalidated"):
+            session.scene_revision()
+    finally:
+        session.close()
+
+    assert process_count == [1]
 
 
 def test_worker_session_reports_child_exit_before_socket_startup(tmp_path, monkeypatch):

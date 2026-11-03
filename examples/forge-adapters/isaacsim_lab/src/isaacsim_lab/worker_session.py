@@ -48,6 +48,7 @@ class IsaacWorkerSession:
         self._socket_path: Path | None = None
         self._session_dir: Path | None = None
         self._closed = False
+        self._invalidated = False
 
     def request(
         self,
@@ -82,13 +83,17 @@ class IsaacWorkerSession:
                     }
                     connection.sendall(json.dumps(payload, allow_nan=False).encode("utf-8") + b"\n")
                     response = self._receive(connection, request_id, cancel, cancel_path, deadline)
-            except (OSError, json.JSONDecodeError, IsaacWorkerSessionError):
+            except (OSError, json.JSONDecodeError, IsaacWorkerSessionError) as exc:
                 self._discard_worker()
-                raise
+                if isinstance(exc, IsaacWorkerSessionError):
+                    raise
+                raise IsaacWorkerSessionError(f"Isaac worker transport failed: {exc}") from exc
             finally:
                 cancel_path.unlink(missing_ok=True)
         result = response.get("result")
         if not isinstance(result, Mapping):
+            with self._lock:
+                self._discard_worker()
             raise IsaacWorkerSessionError("Isaac worker returned an invalid result")
         return dict(result)
 
@@ -121,8 +126,13 @@ class IsaacWorkerSession:
     def _ensure_started(self) -> None:
         if self._closed:
             raise IsaacWorkerSessionError("Isaac worker session is closed")
+        if self._invalidated:
+            raise IsaacWorkerSessionError("Isaac worker session is invalidated; create a fresh session")
         if self._process is not None and self._process.poll() is None:
             return
+        if self._process is not None:
+            self._discard_worker()
+            raise IsaacWorkerSessionError("Isaac worker session is invalidated after child exit")
         self._remove_session_dir()
         session_dir = Path(tempfile.mkdtemp(prefix="paos-isaac-session-"))
         socket_path = session_dir / "worker.sock"
@@ -176,10 +186,14 @@ class IsaacWorkerSession:
     ) -> dict[str, Any]:
         chunks = bytearray()
         cancellation_sent = False
-        while time.monotonic() < deadline:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             if cancel is not None and cancel.is_set() and not cancellation_sent:
                 cancel_path.touch()
                 cancellation_sent = True
+            connection.settimeout(min(0.2, remaining))
             try:
                 chunk = connection.recv(65536)
             except socket.timeout:
@@ -213,6 +227,7 @@ class IsaacWorkerSession:
                 raise IsaacWorkerSessionError("Isaac worker did not acknowledge close")
 
     def _discard_worker(self) -> None:
+        self._invalidated = True
         process = self._process
         self._process = None
         if process is not None and process.poll() is None:

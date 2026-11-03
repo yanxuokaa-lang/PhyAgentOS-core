@@ -12,6 +12,7 @@ from isaacsim_lab.phase_motion import (
     PhaseMotionError,
     acquire_direct_route_waypoints,
     acquire_failure_summary,
+    acquire_route_search_timeout,
     acquire_route_strategies,
     acquire_route_waypoints,
     acquire_staging_corridors,
@@ -390,6 +391,79 @@ def test_acquire_route_selection_rejects_invalid_policy(value):
 
     with pytest.raises(PhaseMotionError, match="route selection"):
         acquire_route_selection({"acquire_route_selection": value})
+
+
+@pytest.mark.parametrize("value", [0., -1., float("nan"), float("inf"), True, "600"])
+def test_acquire_route_search_timeout_rejects_invalid_configuration(value):
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_route_search_timeout({"acquire_route_search_timeout_s": value})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
+def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch):
+    import isaacsim_lab.phase_motion as phase_motion_module
+
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_route_search_timeout_s": 1.,
+        "acquire_route_strategies": ["direct", "staged"],
+        "acquire_route_selection": "first_feasible",
+        "acquire_transit_clearance_candidates_m": [.04, .08],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    model.tcp = lambda: np.eye(4)
+    model.observed_pose = lambda _source: np.eye(4)
+    model.bind_observed_model = lambda *_args: (np.eye(4), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    artifacts = []
+    model._artifact = lambda kind, value: artifacts.append((kind, value)) or f"artifact://{kind}/{len(artifacts)}"
+    clock = [10.]
+    monkeypatch.setattr(phase_motion_module.time, "monotonic", lambda: clock[0])
+    attempts = []
+
+    def qualify(_waypoints, *_args, progress, **_kwargs):
+        attempts.append("started")
+        clock[0] = 11.1
+        progress("approach", "started")
+        raise AssertionError("timeout must interrupt the active route qualification")
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .2], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
+
+    assert captured.value.code == "route_search_timeout"
+    assert attempts == ["started"]
+    assert captured.value.diagnostics == {
+        "search_ref": "artifact://acquire-search/1",
+        "attempted_count": 1,
+        "variant_count": 3,
+        "last_stage": "approach",
+        "failure_counts": {},
+        "elapsed_s": pytest.approx(1.1),
+        "timeout_s": 1.,
+        "timeout_evidence_ref": "artifact://acquire-search/3",
+    }
+    timeout = artifacts[-1][1]
+    assert timeout["status"] == "unavailable"
+    assert timeout["failure_code"] == "route_search_timeout"
+    assert timeout["motion_authorized"] is False
+    assert timeout["world_change_started"] is False
 
 
 @pytest.mark.parametrize("policy", ["minimum_joint_travel", "first_feasible"])

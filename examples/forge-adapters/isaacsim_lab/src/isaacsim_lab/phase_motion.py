@@ -307,6 +307,18 @@ def acquire_route_selection(config):
     return policy
 
 
+def acquire_route_search_timeout(config):
+    """Return the Adapter-private wall-clock budget for complete acquire search."""
+    value = config.get("acquire_route_search_timeout_s", 600.)
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value <= 0):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_route_search_timeout_s must be a finite positive number",
+        )
+    return float(value)
+
+
 def acquire_route_strategies(config):
     """Return ordered Adapter-private acquire planners."""
     values = config.get("acquire_route_strategies", ["staged"])
@@ -706,6 +718,7 @@ class IsaacPhaseMotion:
         acquire_axial_symmetry_angles(self.config)
         acquire_staging_corridors(self.config)
         acquire_route_selection(self.config)
+        acquire_route_search_timeout(self.config)
         if self.config.get("acquire_timing", "waypoint") not in {"waypoint", "stage_continuous"}:
             raise PhaseMotionError("invalid_motion_configuration", "unsupported acquire timing")
         self.scene = session.resolve("lab_scene_resources")
@@ -1100,12 +1113,48 @@ class IsaacPhaseMotion:
                 else len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants)
                 for strategy in strategies
             )
+            search_started = time.monotonic()
+            search_timeout = acquire_route_search_timeout(self.config)
+            search_deadline = search_started + search_timeout
+            attempted_count = 0
+            last_stage = "search"
             search_ref = self._artifact("acquire-search", {
                 "status": "started", "scene_revision": arguments["scene_revision"],
                 "candidate_ref": target.get("candidate_ref"), "policy": policy,
                 "route_strategies": list(strategies), "variant_count": variant_count,
                 "motion_authorized": False, "world_change_started": False,
             })
+
+            def route_search_timeout(now):
+                failure_counts = dict(sorted(Counter(
+                    failure[-1].code for failure in failures
+                ).items()))
+                diagnostics = {
+                    "search_ref": search_ref,
+                    "attempted_count": attempted_count,
+                    "variant_count": variant_count,
+                    "last_stage": last_stage,
+                    "failure_counts": failure_counts,
+                    "elapsed_s": max(0., now - search_started),
+                    "timeout_s": search_timeout,
+                }
+                timeout_ref = self._artifact("acquire-search", {
+                    **diagnostics,
+                    "status": "unavailable",
+                    "failure_code": "route_search_timeout",
+                    "scene_revision": arguments["scene_revision"],
+                    "candidate_ref": target.get("candidate_ref"),
+                    "motion_authorized": False,
+                    "world_change_started": False,
+                })
+                diagnostics["timeout_evidence_ref"] = timeout_ref
+                raise PhaseMotionError(
+                    "route_search_timeout",
+                    f"acquire route search exceeded {search_timeout:.3f}s after "
+                    f"{attempted_count}/{variant_count} variants; last_stage={last_stage}",
+                    diagnostics=diagnostics,
+                )
+
             for strategy in strategies:
                 strategy_candidates = []
                 if strategy == "direct":
@@ -1126,7 +1175,11 @@ class IsaacPhaseMotion:
                 for (clearance_order, clearance, transport_order, transport_quaternion,
                      corridor_order, corridor, symmetry_order,
                      (symmetry_angle, variant_desired, variant_approach)) in combinations:
-                    started = time.monotonic()
+                    now = time.monotonic()
+                    if now >= search_deadline:
+                        route_search_timeout(now)
+                    started = now
+                    attempted_count += 1
                     attempt = {"search_ref": search_ref, "route_strategy": strategy,
                                "clearance_m": clearance, "transport_order": transport_order,
                                "corridor_order": corridor_order,
@@ -1134,8 +1187,13 @@ class IsaacPhaseMotion:
                                "motion_authorized": False, "world_change_started": False}
 
                     def progress(stage, status, **details):
+                        nonlocal last_stage
+                        last_stage = stage
+                        now = time.monotonic()
+                        if now >= search_deadline:
+                            route_search_timeout(now)
                         self._artifact("acquire-search", {**attempt, "stage": stage, "status": status,
-                                                         "elapsed_s": time.monotonic() - started, **details})
+                                                         "elapsed_s": now - started, **details})
 
                     progress("route", "started")
                     candidate_relation = np.linalg.inv(variant_desired) @ body
@@ -1177,6 +1235,8 @@ class IsaacPhaseMotion:
                         if policy == "first_feasible":
                             break
                     except PhaseMotionError as exc:
+                        if exc.code == "route_search_timeout":
+                            raise
                         failures.append((strategy, clearance, transport_order, corridor_order,
                                          symmetry_angle, exc))
                         progress("route", "unavailable", failure_code=exc.code, error=str(exc),

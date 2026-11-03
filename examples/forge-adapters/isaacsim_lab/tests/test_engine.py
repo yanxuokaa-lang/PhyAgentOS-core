@@ -274,6 +274,119 @@ def test_backend_passes_deployment_artifact_root_to_worker_session(tmp_path, mon
     assert created == [(profile_path, artifact_root.resolve())]
 
 
+def test_prepare_transport_failure_clears_session_without_restarting_on_revision_query(tmp_path, monkeypatch):
+    import isaacsim_lab.worker_session as worker_session_module
+
+    created = []
+
+    class Session:
+        def __init__(self, *_args, **_kwargs):
+            self.number = len(created) + 1
+            created.append(self)
+
+        def request(self, method, _arguments=None, **_kwargs):
+            if self.number == 1:
+                raise worker_session_module.IsaacWorkerSessionError("Isaac worker request timed out")
+            raise AssertionError(f"unexpected method {method}")
+
+        def observe(self, _request):
+            assert self.number == 2
+            return {"status": "available", "scene_revision": "fresh-scene"}
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(worker_session_module, "IsaacWorkerSession", Session)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    profile = make_profile(tmp_path)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text("{}", encoding="utf-8")
+    object.__setattr__(profile, "profile_path", profile_path)
+    backend = LabUtopiaBackend(profile)
+
+    result = backend.prepare_manipulation({"scene_revision": "old-scene"})
+
+    assert result["status"] == "unavailable"
+    assert result["outcome_known"] is True
+    assert result["world_change_started"] is False
+    assert result["possession_state"] == "empty"
+    assert backend._worker_session is None
+    assert backend.current_scene_revision() is None
+    assert len(created) == 1
+    blocked = backend.prepare_manipulation({"scene_revision": "old-scene"})
+    assert blocked["failure_code"] == "fresh_observation_required"
+    blocked_phase = backend.execute_phase("acquire", {"scene_revision": "old-scene"}, Event())
+    assert blocked_phase["failure_code"] == "fresh_observation_required"
+    assert blocked_phase["world_change_started"] is False
+    assert len(created) == 1
+    assert backend.observe({"sensor_ref": "sensor://wrist"})["scene_revision"] == "fresh-scene"
+    assert len(created) == 2
+    backend.close()
+
+
+def test_provider_unavailable_keeps_healthy_worker_scene(tmp_path, monkeypatch):
+    import isaacsim_lab.worker_session as worker_session_module
+
+    class Session:
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+
+        def request(self, method, _arguments=None, **_kwargs):
+            assert method == "prepare_manipulation"
+            return {"status": "unavailable", "failure_code": "route_search_timeout"}
+
+        def scene_revision(self):
+            return {"status": "available", "scene_revision": "same-scene"}
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(worker_session_module, "IsaacWorkerSession", Session)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    profile = make_profile(tmp_path)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text("{}", encoding="utf-8")
+    object.__setattr__(profile, "profile_path", profile_path)
+    backend = LabUtopiaBackend(profile)
+
+    result = backend.prepare_manipulation({"scene_revision": "same-scene"})
+    session = backend._worker_session
+
+    assert result == {"status": "unavailable", "failure_code": "route_search_timeout"}
+    assert backend.current_scene_revision() == "same-scene"
+    assert backend._worker_session is session
+    backend.close()
+
+
+def test_execute_transport_failure_remains_unknown_and_discards_session(tmp_path, monkeypatch):
+    import isaacsim_lab.worker_session as worker_session_module
+
+    class Session:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def request(self, *_args, **_kwargs):
+            raise worker_session_module.IsaacWorkerSessionError("connection lost")
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(worker_session_module, "IsaacWorkerSession", Session)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    profile = make_profile(tmp_path)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text("{}", encoding="utf-8")
+    object.__setattr__(profile, "profile_path", profile_path)
+    backend = LabUtopiaBackend(profile)
+
+    result = backend.execute_phase("acquire", {"scene_revision": "scene"}, Event())
+
+    assert result["status"] == "unknown"
+    assert result["outcome_known"] is False
+    assert result["world_change_started"] is True
+    assert backend._worker_session is None
+
+
 def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path, monkeypatch):
     from types import SimpleNamespace
 

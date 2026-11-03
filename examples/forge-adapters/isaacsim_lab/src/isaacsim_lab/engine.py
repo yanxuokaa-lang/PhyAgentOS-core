@@ -593,10 +593,54 @@ class LabUtopiaBackend:
         self._last_video_info: dict[str, Any] = {}
         self._worker_session = None
         self._worker_lock = RLock()
+        self._session_recovery_requires_observation = False
 
     @property
     def runnable_operations(self) -> tuple[str, ...]:
         return ("pour_cycle", "stir_cycle", "manipulation_cycle")
+
+    def _get_worker_session(self, *, create: bool, recovery_observation: bool = False):
+        with self._worker_lock:
+            if self._worker_session is None and create:
+                if self._session_recovery_requires_observation and not recovery_observation:
+                    return None
+                from .worker_session import IsaacWorkerSession
+
+                self._worker_session = IsaacWorkerSession(
+                    self.profile_path,
+                    python_executable=self.profile.worker_python_path,
+                    observation_artifact_root=self.observation_artifact_root,
+                )
+            return self._worker_session
+
+    def _invalidate_worker_session(self, session) -> None:
+        with self._worker_lock:
+            if self._worker_session is not session:
+                return
+            self._worker_session = None
+            self._session_recovery_requires_observation = True
+        session.close()
+
+    def _mark_recovery_observed(self, session) -> None:
+        with self._worker_lock:
+            if self._worker_session is session:
+                self._session_recovery_requires_observation = False
+
+    def _call_worker_session(
+        self, session, method: str, arguments: Mapping[str, Any] | None = None,
+        *, cancel: Event | None = None,
+    ) -> Mapping[str, Any]:
+        from .worker_session import IsaacWorkerSessionError
+
+        try:
+            if method == "observe":
+                return session.observe(arguments or {})
+            if method == "scene_revision":
+                return session.scene_revision()
+            return session.request(method, arguments, cancel=cancel)
+        except IsaacWorkerSessionError:
+            self._invalidate_worker_session(session)
+            raise
 
     def run_cycle(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
@@ -614,19 +658,19 @@ class LabUtopiaBackend:
             return {"status": "unavailable", "motion_authorized": False,
                     "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
         try:
-            with self._worker_lock:
-                if self._worker_session is None:
-                    from .worker_session import IsaacWorkerSession
-                    self._worker_session = IsaacWorkerSession(
-                        self.profile_path,
-                        python_executable=self.profile.worker_python_path,
-                        observation_artifact_root=self.observation_artifact_root,
-                    )
-                session = self._worker_session
-            return session.request("prepare_manipulation", arguments)
+            session = self._get_worker_session(create=True)
+            if session is None:
+                return {"status": "unavailable", "motion_authorized": False,
+                        "outcome_known": True, "world_change_started": False,
+                        "failure_code": "fresh_observation_required"}
+            return self._call_worker_session(session, "prepare_manipulation", arguments)
         except Exception as exc:
-            return {"status": "unavailable", "motion_authorized": False,
-                    "failure_code": type(exc).__name__, "error_detail": str(exc)[:512]}
+            result = {"status": "unavailable", "motion_authorized": False,
+                      "outcome_known": True, "world_change_started": False,
+                      "failure_code": type(exc).__name__, "error_detail": str(exc)[:512]}
+            if not arguments.get("held_invocation_ref"):
+                result["possession_state"] = "empty"
+            return result
 
     def qualify_grasp_approach(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         identity = {key: arguments.get(key) for key in (
@@ -641,16 +685,13 @@ class LabUtopiaBackend:
                 "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted",
             }
         try:
-            with self._worker_lock:
-                if self._worker_session is None:
-                    from .worker_session import IsaacWorkerSession
-                    self._worker_session = IsaacWorkerSession(
-                        self.profile_path,
-                        python_executable=self.profile.worker_python_path,
-                        observation_artifact_root=self.observation_artifact_root,
-                    )
-                session = self._worker_session
-            return session.request("qualify_grasp_approach", arguments)
+            session = self._get_worker_session(create=True)
+            if session is None:
+                return {
+                    "status": "unavailable", **identity, "motion_authorized": False,
+                    "world_change_started": False, "failure_code": "fresh_observation_required",
+                }
+            return self._call_worker_session(session, "qualify_grasp_approach", arguments)
         except Exception as exc:
             return {
                 "status": "unavailable",
@@ -674,16 +715,12 @@ class LabUtopiaBackend:
         request = deepcopy(dict(arguments))
         request["operation"] = phase
         try:
-            with self._worker_lock:
-                if self._worker_session is None:
-                    from .worker_session import IsaacWorkerSession
-                    self._worker_session = IsaacWorkerSession(
-                        self.profile_path,
-                        python_executable=self.profile.worker_python_path,
-                        observation_artifact_root=self.observation_artifact_root,
-                    )
-                session = self._worker_session
-            return session.request("execute_phase", request, cancel=cancel)
+            session = self._get_worker_session(create=True)
+            if session is None:
+                return {"status": "unavailable", "outcome_known": False,
+                        "world_change_started": False, "motion_authorized": False,
+                        "failure_code": "fresh_observation_required"}
+            return self._call_worker_session(session, "execute_phase", request, cancel=cancel)
         except Exception as exc:
             return {"status": "unknown", "outcome_known": False,
                     "world_change_started": True, "failure_code": type(exc).__name__,
@@ -699,7 +736,7 @@ class LabUtopiaBackend:
             session = self._worker_session
         if session is None:
             return {"status": "unavailable", "failure_code": "observation_required", "motion_authorized": False}
-        return session.request("bind_observed_entities", request)
+        return self._call_worker_session(session, "bind_observed_entities", request)
 
     def bind_observed_entities_in_session(self, session: Any, request: Mapping[str, Any]) -> Mapping[str, Any]:
         from .execution_identity import bind_observed_entities
@@ -799,17 +836,10 @@ class LabUtopiaBackend:
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
             return {"status": "unavailable", "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
         try:
-            with self._worker_lock:
-                if self._worker_session is None:
-                    from .worker_session import IsaacWorkerSession
-
-                    self._worker_session = IsaacWorkerSession(
-                        self.profile_path,
-                        python_executable=self.profile.worker_python_path,
-                        observation_artifact_root=self.observation_artifact_root,
-                    )
-                session = self._worker_session
-            return session.observe(request)
+            session = self._get_worker_session(create=True, recovery_observation=True)
+            result = self._call_worker_session(session, "observe", request)
+            self._mark_recovery_observed(session)
+            return result
         except Exception as exc:
             return {
                 "status": "unavailable",
@@ -818,12 +848,11 @@ class LabUtopiaBackend:
             }
 
     def current_scene_revision(self) -> str | None:
-        with self._worker_lock:
-            session = self._worker_session
+        session = self._get_worker_session(create=False)
         if session is None:
             return None
         try:
-            result = session.scene_revision()
+            result = self._call_worker_session(session, "scene_revision")
         except Exception:
             return None
         revision = result.get("scene_revision") if result.get("status") == "available" else None
@@ -866,17 +895,8 @@ class LabUtopiaBackend:
 
     def _run_worker(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
         try:
-            with self._worker_lock:
-                if self._worker_session is None:
-                    from .worker_session import IsaacWorkerSession
-
-                    self._worker_session = IsaacWorkerSession(
-                        self.profile_path,
-                        python_executable=self.profile.worker_python_path,
-                        observation_artifact_root=self.observation_artifact_root,
-                    )
-                session = self._worker_session
-            return session.request("execute_cycle", arguments, cancel=cancel)
+            session = self._get_worker_session(create=True)
+            return self._call_worker_session(session, "execute_cycle", arguments, cancel=cancel)
         except Exception as exc:
             return {
                 "status": "unknown",

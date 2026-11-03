@@ -49,6 +49,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.9.7 (2026-11-03 20:11) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] 为 acquire 路线搜索增加 600 秒 Adapter 私有预算，在 900 秒 worker transport deadline 前以 `route_search_timeout`、零动作和有界诊断返回；未放宽任何运动或抓取安全条件。 / Add a 600-second Adapter-private acquire-route budget that returns `route_search_timeout`, zero motion and bounded diagnostics before the 900-second worker transport deadline without relaxing motion or grasp safety criteria. (local)
+- [env] [fix] transport/child failure 后永久失效 worker wrapper；Backend 清除匹配 session，并在 fresh observe/reset 前用 `fresh_observation_required` 阻止 prepare/qualify/execute 创建空白 worker。 / Permanently invalidate a worker wrapper after transport or child failure; clear the matching Backend session and block prepare/qualify/execute from creating a blank worker with `fresh_observation_required` until a fresh observe/reset occurs. (local)
+- [env] [fix] socket 读取服从请求剩余 deadline，断连后不二次写响应；prepare transport failure 保持 known/no-world-change，execute transport loss 保持 conservative unknown。 / Make socket reads obey the remaining request deadline and avoid second writes after disconnect; keep prepare transport failure known/no-world-change and execute transport loss conservatively unknown. (local)
+
+### 文件变更详情 / File Changes
+- `phase_motion.py` L310-L320, L721, L1116-L1240; `worker_session.py` L51, L86-L98, L129-L136, L189-L204, L230
+- `engine.py` L596-L639, L661-L674, L688-L700, L718-L730, L739, L839-L859, L898-L900; `worker.py` L182-L199
+- `labutopia-mixture-motion.json` L14; `test_phase_motion.py` L15, L397-L468; `test_worker_session.py` L11, L287-L312; `test_engine.py` L277-L389
+- `.task/current.md` L1-L35; `.task/labutopia-worker-session-timeout-repair-20261103.md` L1-L97; `docs/forge/IMPLEMENTATION_REVIEW_V16_9_7.md` L1-L44
+
+```diff
++if now >= search_deadline: raise PhaseMotionError("route_search_timeout", ...)
++if recovery_requires_observation: return fresh_observation_required
++socket.settimeout(min(0.2, remaining_request_budget))
+```
+
+### 验证 / Validation
+- [eval] [test] 聚焦 222 passed；完整 Adapter/executor 488 passed、2 skipped；Ruff、compileall、JSON 和 diff 检查通过；实现复核最终无 Blocker/Major。 / Focused tests pass 222 cases; full Adapter/executor passes 488 with two skips; Ruff, compileall, JSON and diff checks pass; final implementation review has no Blocker or Major. (local)
+- [eval] [exp] fresh no-motion reset 创建新 task/revision/scene 与当前 capture 的唯一 R05 合格 opaque 候选，Action 记录为 0；独立原生 probe 记录零运动命令和约 0.04 m 的双指张开状态。 / A fresh no-motion reset creates a new task, revision and scene with the sole current-capture qualified R05 opaque candidate and zero Action records; an independent native probe records zero motion commands and both fingers open near 0.04 m. (local)
+- [policy] [chore] 未恢复历史 task/readiness；未执行 R05 Action，R03 与 GLASS_ROD 保持阻塞。 / Do not restore historical tasks or readiness; no R05 Action executes, and R03 plus GLASS_ROD remain blocked. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`; implementation commit pending.
+
 ## v16.9.6 (2026-11-03 19:17) - codex
 
 ### 完成范围 / Completed Scope
@@ -143,28 +170,3 @@
 ### Git 提交 / Git Receipt
 - Branch: `feature/planning-loop`.
 - Implementation commit: `7e880acd231da23392d90a228be18e62d9c85361`; 2026-11-03 16:13 Asia/Shanghai. Monthly entry L1415-L1462; latest-five index entry L51-L78.
-
-## v16.9.2 (2026-11-03 14:23) - codex
-
-### 完成范围 / Completed Scope [Adapter 修复完成；等待新鲜仿真执行 / Adapter repair complete; fresh simulation execution pending]
-- [env] [fix] acquire 闭合确认后的初始 lift 点最多容忍一个单指零载荷周期，仅当双侧 selected-body manifold 新鲜、另一指正载荷且夹持位姿仍在原阈值内；测量仍记录 `contact_load_valid=false`、`grasp_valid=false`。 / Tolerate at most one unilateral zero-load interval in the initial lift after confirmed closure, requiring fresh bilateral selected-body manifolds, positive load on the other finger and existing pose limits; measurements remain invalid load/grasp. (local)
-- [eval] [chore] 下一周期必须恢复双指正载荷；持续/双侧卸载、缺失/过期 manifold 与闭合期单指接触 fail-closed。Adapter/executor 473 passed、2 skipped，Ruff、compileall 与 diff 检查通过。 / Require bilateral positive load in the next interval; persistent/bilateral unloading, missing/stale manifolds and unilateral closure fail closed. Adapter/executor passes 473 with 2 skips plus Ruff, compileall and diff checks. (local)
-- [docs] [docs] 修复保持在 Isaac Adapter，AgentLoop、Coordinator、公共 Tool 合同、Provider 候选、阈值与碰撞策略不变；历史 uncertain-possession 场景未重跑。 / Keep the repair in Isaac Adapter without changing AgentLoop, Coordinator, public Tool contracts, Provider candidates, thresholds or collision policy; do not rerun the historical uncertain-possession scene. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L668-L679, L1733-L1758, L1851-L1880
-- `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L22-L49, L97-L150
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L1411-L1412
-- `.task/labutopia-lift-contact-transient-20261103.md` L1-L53; `.task/current.md` L3-L17
-- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_2.md` L1-L37; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L994-L1009
-
-```diff
-+contact_load_valid = contacts()
-+sample = {"grasp_valid": held, "contact_load_valid": contact_load_valid, ...}
-+measured_sample["contact_transient_grace_used"] = True
-+transient_lift_contact_grace = True
--measured_sample["grasp_valid"] = True
-```
-
-### Git 提交 / Git Commit
-- Implementation commit: `01f8f5a8`; branch `feature/planning-loop`; 2026-11-03 15:07 Asia/Shanghai.

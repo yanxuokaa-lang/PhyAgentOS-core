@@ -1,4 +1,38 @@
-# Current Task: LabUtopia fresh-reset full-chain validation
+# Current Task: Isaac route-budget and worker-session lifecycle repair
+
+## v16.9.7 / Adapter repair and fresh no-motion reset completed
+
+- Tier C-Safety; simulator-only Adapter/runtime change. AgentLoop, Tool schemas,
+  target semantics and physical safety thresholds remain unchanged.
+- Preserve the requested semantic order `R05 -> R03 -> GLASS_ROD`. Do not
+  substitute R04, resume `task_95c5f384b2074722`, or reuse any prior scene
+  revision, readiness, candidate reference or preparation.
+- Add an Adapter-private acquire-route search budget that expires before the
+  900-second parent transport timeout and returns `route_search_timeout` with
+  bounded attempt/variant/stage/failure evidence and zero motion.
+- Invalidate a worker wrapper after transport failure and clear the matching
+  Backend session. A later scene-revision query must not implicitly spawn an
+  empty worker; only a fresh observe/reset may create a new session and scene.
+- Preserve failure semantics: prepare transport failure is known with no world
+  change and empty possession; execute transport failure remains conservative
+  unknown with possible world change.
+- Validation passed: focused 222 tests; full Adapter/executor 488 passed and two
+  skipped; Ruff, compileall, JSON and diff checks passed. Review fixed the one
+  Major finding that motion calls could recreate a blank worker before observe.
+- Fresh no-motion workspace
+  `out/lab-fullchain-truth-20261103-v16_9_7-reset-no-motion-r1` created task
+  `task_e458a7389cbf4ea6`, revision `revision_732d21f885844630` and scene
+  `labutopia-tabletop-rod-rack-v1:b9a9599540cd434dbc142583814fe242:0`.
+- R05 process/task-affordance Query and preparation completed with the sole
+  qualified current-capture opaque grasp ending `3bf746...-178`. There are zero
+  Action records and no historical task/revision/candidate references.
+- Independent native probe
+  `out/lab-fullchain-truth-20261103-v16_9_7-reset-probe-r1` issued zero motion
+  commands and read both finger joints at approximately 0.04 m open after reset.
+- Diagnosis: `.task/labutopia-worker-session-timeout-repair-20261103.md`.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_9_7.md`.
+
+# Previous Task: LabUtopia fresh-reset full-chain validation
 
 ## v16.9.6 / fresh reset completed; R05 preparation timed out safely
 

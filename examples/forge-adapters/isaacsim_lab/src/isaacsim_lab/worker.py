@@ -179,15 +179,21 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                                 result["new_scene_revision"] = context.advance_scene_revision()
                         else:
                             raise ValueError("unsupported worker request method")
-                        _write_response(connection, request_id, dict(result))
+                        try:
+                            _write_response(connection, request_id, dict(result))
+                        except (BrokenPipeError, ConnectionResetError):
+                            continue
                     except Exception as exc:
-                        _write_response(connection, request_id, {
-                            "status": "unknown",
-                            "outcome_known": False,
-                            "failure_owner": "isaacsim_adapter",
-                            "failure_code": type(exc).__name__,
-                            "error_detail": str(exc)[:512],
-                        }, ok=False)
+                        try:
+                            _write_response(connection, request_id, {
+                                "status": "unknown",
+                                "outcome_known": False,
+                                "failure_owner": "isaacsim_adapter",
+                                "failure_code": type(exc).__name__,
+                                "error_detail": str(exc)[:512],
+                            }, ok=False)
+                        except (BrokenPipeError, ConnectionResetError):
+                            continue
     finally:
         context.close()
 
