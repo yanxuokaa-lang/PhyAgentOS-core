@@ -101,7 +101,7 @@ def test_one_unloaded_lift_interval_is_execution_tolerance_not_grasp_evidence(mo
     timed_contact_sensors(model, lambda step: "unilateral_left" if step == 11 else "bilateral")
     result = model.execute(args, Event())
     samples = artifacts[-1][1]["samples"]
-    transient = next(sample for sample in samples if sample.get("contact_transient_grace_used"))
+    transient = next(sample for sample in samples if sample.get("support_manifold_continuity_used"))
     assert transient["stage"] == "lift"
     assert transient["grasp_valid"] is False
     assert transient["contact_load_valid"] is False
@@ -119,7 +119,7 @@ def test_later_in_support_unloaded_lift_interval_recovers(monkeypatch):
     timed_contact_sensors(model, lambda step: "unilateral_left" if step == 18 else "bilateral")
     result = model.execute(args, Event())
     samples = artifacts[-1][1]["samples"]
-    transient = next(sample for sample in samples if sample.get("contact_transient_grace_used"))
+    transient = next(sample for sample in samples if sample.get("support_manifold_continuity_used"))
     assert transient["stage"] == "lift"
     assert transient["grasp_valid"] is False
     assert transient["contact_load_valid"] is False
@@ -134,36 +134,90 @@ def test_later_unloaded_lift_interval_outside_support_window_stops(monkeypatch):
     result = model.execute(args, Event())
     samples = artifacts[-1][1]["samples"]
     assert result["failure_code"] == "physical_grasp_lost"
-    assert not any(sample.get("contact_transient_grace_used") for sample in samples)
+    assert not any(sample.get("support_manifold_continuity_used") for sample in samples)
 
 
-@pytest.mark.parametrize("mode,expected_steps,has_grace", [
-    ("unilateral_left", 2, True),
-    ("bilateral_unloaded", 1, False),
-    ("missing_right", 1, False),
-    ("stale_right", 1, False),
-])
-def test_second_or_unqualified_unloaded_lift_interval_stops(monkeypatch, mode, expected_steps, has_grace):
-    model, args, commands, artifacts = execution_fixture(monkeypatch)
+def test_static_bilateral_manifold_can_bridge_support_departure(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    model._time_acquire_route(args["phase_route"])
 
     def load(step):
-        if step < 11:
-            return "bilateral"
-        if mode == "unilateral_left":
+        if step == 18:
             return "unilateral_left"
-        return mode
+        if step == 19:
+            return "bilateral_unloaded"
+        return "bilateral"
 
     timed_contact_sensors(model, load)
+    monkeypatch.setattr(
+        "isaacsim_lab.phase_motion.support_contact_allowed",
+        lambda *_args: model.world.steps <= 19,
+    )
     result = model.execute(args, Event())
     samples = artifacts[-1][1]["samples"]
-    lift_samples = [sample for sample in samples if sample["stage"] == "lift"]
+    continuity = [sample for sample in samples if sample.get("support_manifold_continuity_used")]
+    assert np.asarray(
+        [sample["selected_contact_impulse_ns"] for sample in continuity]
+    ) == pytest.approx(np.asarray([[.001, 0.], [0., 0.]]))
+    assert all(sample["contact_manifold_valid"] for sample in continuity)
+    assert all(sample["grasp_valid"] is False for sample in continuity)
+    assert all(sample["contact_load_valid"] is False for sample in continuity)
+    assert result["failure_code"] != "physical_grasp_lost"
+
+
+def test_persistent_unilateral_manifold_stops_after_support_departure(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    timed_contact_sensors(
+        model,
+        lambda step: "bilateral" if step < 11 else "unilateral_left",
+    )
+    monkeypatch.setattr(
+        "isaacsim_lab.phase_motion.support_contact_allowed",
+        lambda *_args: model.world.steps <= 11,
+    )
+    result = model.execute(args, Event())
+    lift_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "lift"]
     assert result["failure_code"] == "physical_grasp_lost"
-    assert len(lift_samples) == expected_steps
-    assert bool(lift_samples[0].get("contact_transient_grace_used")) is has_grace
+    assert lift_samples[0]["support_manifold_continuity_used"] is True
+    assert not lift_samples[1].get("support_manifold_continuity_used")
+
+
+@pytest.mark.parametrize("mode", ["bilateral_unloaded", "missing_right", "stale_right"])
+def test_unqualified_unloaded_lift_interval_stops(monkeypatch, mode):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    timed_contact_sensors(model, lambda step: "bilateral" if step < 11 else mode)
+    if mode == "bilateral_unloaded":
+        monkeypatch.setattr("isaacsim_lab.phase_motion.support_contact_allowed", lambda *_args: False)
+    result = model.execute(args, Event())
+    lift_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "lift"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert len(lift_samples) == 1
     assert lift_samples[0]["grasp_valid"] is False
-    if has_grace:
-        assert not lift_samples[1].get("contact_transient_grace_used")
+    assert not lift_samples[0].get("support_manifold_continuity_used")
     assert not result["operation_completed"]
+
+
+def test_static_manifold_with_excessive_grasp_drift_stops(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    original = model.body_pose("/World/source")
+
+    def pose(_path):
+        value = original.copy()
+        if model.world.steps >= 11:
+            value[0, 3] += model.config["grasp_position_tolerance_m"] + .001
+        return value
+
+    model.body_pose = pose
+    timed_contact_sensors(
+        model,
+        lambda step: "bilateral" if step < 11 else "bilateral_unloaded",
+    )
+    result = model.execute(args, Event())
+    lift_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "lift"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert lift_samples[0]["contact_manifold_valid"] is True
+    assert lift_samples[0]["attachment_position_error_m"] > model.config["grasp_position_tolerance_m"]
+    assert not lift_samples[0].get("support_manifold_continuity_used")
 
 
 def test_unilateral_contact_during_initial_closure_never_authorizes_lift(monkeypatch):
@@ -173,7 +227,7 @@ def test_unilateral_contact_during_initial_closure_never_authorizes_lift(monkeyp
     samples = artifacts[-1][1]["samples"]
     assert result["failure_code"] == "grasp_not_confirmed"
     assert all(sample["stage"] != "lift" for sample in samples)
-    assert not any(sample.get("contact_transient_grace_used") for sample in samples)
+    assert not any(sample.get("support_manifold_continuity_used") for sample in samples)
 
 
 def test_no_contact_closure_stops_at_bounded_budget(monkeypatch):

@@ -1466,10 +1466,13 @@ def test_contact_window_requires_current_pair_and_current_interval_load(final_ki
     elif final_kind == "stale":
         frame["time"] -= 1.
     assert window.valid() is expected
+    assert window.fresh_bilateral_manifolds() is (final_kind == "unloaded")
     assert window.evidence()["selected_contact_impulse_ns"] == pytest.approx([.02, .02])
     window.begin()
-    # The preceding interval must not carry an unloaded grasp forward.
+    # The preceding interval must not carry load forward, but a current static
+    # selected-body manifold remains a separate, truthful observation.
     assert not window.valid()
+    assert window.fresh_bilateral_manifolds() is (final_kind == "unloaded")
 
 
 def test_contact_window_deduplicates_substeps_and_rejects_sampling_errors():

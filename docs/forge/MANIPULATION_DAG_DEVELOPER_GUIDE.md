@@ -991,22 +991,29 @@ blocks the route. If actual motion produces unknown possession, later DAG nodes
 must remain blocked until reconciliation; Query or preparation success cannot
 upgrade that outcome.
 
-### Contact evidence is not an execution-tolerance decision
+### Contact impulse and contact manifold are different evidence
 
-An execution Adapter may distinguish a single control-interval load transient
-from persistent grasp loss, but it must not rewrite the measured observation.
-For an acquire lift that immediately follows a confirmed bilateral closure, one
-interval may continue only when both selected-body contact manifolds are fresh,
-exactly one finger retains positive interval load, and the existing attachment
-pose limits still pass. Record the measured sample as invalid load/grasp and add
-an Adapter-private diagnostic that explains the one-interval continuation.
+An execution Adapter must not treat a zero contact impulse as direct proof that
+two bodies separated. PhysX impulse is a control-window measurement; a settled
+body can retain a selected-body contact manifold while the interval impulse is
+zero. Keep raw impulse/load validity, current manifold presence and measured
+TCP-to-object transform error as separate observations.
 
-The following interval must restore bilateral positive load. Never apply this
-tolerance to initial closure, another operation, missing or stale contact,
-bilateral unloading, pose-limit failure, or a second consecutive unloaded
-interval. AgentLoop consumes the eventual Action outcome and remains unaware of
-PhysX manifolds or control-cycle policy. Unknown possession still blocks later
-DAG nodes until reconciliation.
+For acquire only, after a confirmed bilateral closure, the Adapter may continue
+an invalid-load lift sample while the measured body remains inside the existing
+support-contact departure band, both selected-body manifolds are fresh and the
+existing attachment pose limits still pass. Record `contact_load_valid=false`
+and `grasp_valid=false`; an Adapter-private marker may explain that support-
+bounded manifold continuity, rather than positive load, authorized the next
+controller period.
+
+This is not free-space grasp evidence. Positive bilateral load must be restored
+when the body leaves the support band. Never apply manifold continuity to
+initial closure, another operation, missing or stale contact, pose-limit
+failure or a free-space unloaded sample. Collision, tracking and final lifted/
+holding postconditions remain unchanged. AgentLoop consumes only the eventual
+Action outcome and remains unaware of PhysX manifolds or controller-cycle
+policy. Unknown possession still blocks later DAG nodes until reconciliation.
 
 ### Initial lift is a support-bounded interval, not one route point
 
@@ -1025,5 +1032,7 @@ loss during free-space transport.
 Tests for this policy must consume the same retimed `execution_steps` shape as
 production. An unretimed smooth segment can keep `last_stage` constant for many
 control periods and falsely make a first-point-only condition appear correct.
-Keep measured contact/grasp fields truthful, consume any one-cycle grace at
-most once, and require bilateral recovery on the following sample.
+Keep measured contact/grasp fields truthful. A static manifold interval may
+span more than one controller period only while every current sample remains
+inside the same measured support and attachment boundaries. Require positive
+bilateral load as soon as that support boundary ends.

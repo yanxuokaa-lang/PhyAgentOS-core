@@ -1,4 +1,21 @@
-# Current Task: LabUtopia live acquire reconciliation
+# Current Task: LabUtopia static-contact manifold repair
+
+## v16.9.5 / support-bounded static contact continuity
+
+- Diagnosis: `.task/labutopia-static-contact-manifold-20261103.md`.
+- Tier C-Safety; implementation owner is Isaac Adapter contact sensing and
+  phase execution. AgentLoop and Coordinator contracts remain unchanged.
+- Fresh v16.9.4 execution reached R03 acquire after a new revision, perception
+  and preparation. It stopped with uncertain possession after fresh bilateral
+  manifolds remained present but the selected-body impulse decayed to zero.
+- The repair separates raw impulse validity from fresh manifold continuity.
+  Static manifold continuity may only carry execution inside the existing
+  support-departure band after closure confirmation and within existing grasp
+  transform limits. It must not rewrite `grasp_valid` or `contact_load_valid`.
+- Missing/stale manifolds, excessive transform drift, contact loss outside the
+  support band and failed final lifted/holding postconditions remain failures.
+- Never resume `task_1826699dc9cd456b`. Any live validation requires another
+  fresh reset, scene revision, perception and complete preparation.
 
 ## v16.9.3 / retimed 初始 lift 支撑窗口
 
