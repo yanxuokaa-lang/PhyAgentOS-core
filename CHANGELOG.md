@@ -48,6 +48,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.9.3 (2026-11-03 15:50) - codex
+
+### 完成范围 / Completed Scope [Adapter 修复完成；等待新鲜 reset 后执行 / Adapter repair complete; fresh post-reset execution pending]
+- [eval] [exp] 新鲜 reset 确认 R03 回到支撑面且夹爪为空；授权任务 `task_448f4e2bf09042fe` 使用新 revision 与同集合 opaque 引用进入 acquire，在第 18 个 retimed lift 采样以 `physical_grasp_lost` 和 uncertain possession 停止。 / A fresh reset confirms R03 on support and an empty gripper; authorized task `task_448f4e2bf09042fe` uses a new revision and same-set opaque references, then stops on retimed lift sample 18 with `physical_grasp_lost` and uncertain possession. (local)
+- [env] [fix] 将闭合确认保存为 Isaac Adapter 私有 lift 状态，并只在当前测得物体仍处于已有支撑离台窗口时允许一次单指零载荷瞬态；样本仍记录无效，下一周期必须恢复双指载荷。 / Persist closure confirmation as Isaac Adapter-private lift state and allow one unilateral zero-load transient only while the measured object remains in the existing support-departure window; keep the sample invalid and require bilateral recovery on the next interval. (local)
+- [eval] [fix] 生产形状的 retimed 回归覆盖延迟瞬态恢复与支撑窗口外拒绝；不改变 AgentLoop、Coordinator、Provider、公共 Tool 合同或碰撞/IK/workspace/接触阈值。 / Production-shaped retimed regressions cover delayed transient recovery and out-of-support rejection without changing AgentLoop, Coordinator, Providers, public Tool contracts or collision/IK/workspace/contact thresholds. (local)
+
+### 文件变更详情 / File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1731-L1891
+- `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L114-L137
+- `.task/labutopia-lift-support-window-20261103.md` L1-L79; `.task/current.md` L1-L18
+- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_3.md` L1-L43; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L1011-L1029
+
+```diff
++lift_grip_confirmed = last_stage == "close"
++measured_support_contact = support_contact_allowed(...)
+-if operation == "acquire" and last_stage == "close" ...
++if operation == "acquire" and lift_grip_confirmed ... and measured_support_contact ...
++model._time_acquire_route(args["phase_route"])
+```
+
+### 验证 / Validation
+- [eval] [chore] 接触/时序 22 passed；显式加载已安装的 async pytest 插件后，Isaac Adapter + subtask executor 475 passed、2 skipped；Ruff、compileall 与 diff 检查通过。 / Contact/timing passes 22 tests; with the installed async pytest plugin explicitly loaded, Isaac Adapter plus subtask executor passes 475 with 2 skips; Ruff, compileall and diff checks pass. (local)
+- [eval] [exp] 当前失败场景已发生 world change 且 outcome unknown，不得继续；后续 live 验证必须重新 reset，生成新 scene revision、新感知、新 preparation 后再 Action。 / The current failed scene has world change and unknown outcome and must not continue; live validation requires another reset, new scene revision, fresh perception and fresh preparation before Action. (local)
+
+### Git 提交 / Git Receipt
+- Branch: `feature/planning-loop`.
+- Implementation commit: `7e880acd231da23392d90a228be18e62d9c85361`; 2026-11-03 16:13 Asia/Shanghai. Monthly entry L1415-L1462; latest-five index entry L51-L78.
+
 ## v16.9.2 (2026-11-03 14:23) - codex
 
 ### 完成范围 / Completed Scope [Adapter 修复完成；等待新鲜仿真执行 / Adapter repair complete; fresh simulation execution pending]
@@ -280,66 +309,3 @@ The excerpt abbreviates local variable expressions/comments; exact source ranges
 - Commit: `b05978df`
 - 时间 / Time: 2026-11-02 16:26 Asia/Shanghai
 - [docs] [chore] 18 个任务相关文件已提交；本回执同步索引后另作文档提交，两个提交共同推送当前工作分支。月日志新增范围 L1146-L1270，索引最新条目范围 L51-L175；其余四条与月归档一致。 / Commit 18 task-owned files; synchronize this receipt to the index, then push implementation and receipt commits on the current branch. Monthly entry spans L1146-L1270 and latest index entry L51-L175; other four entries match their archive. (local)
-
-## v16.7.2 (2026-11-02 14:56) - codex
-
-### 完成范围 / Completed Scope [目标纠正与重跑完成；抓取未成功 / Target correction and rerun complete; grasp unsuccessful]
-- [docs] [fix] 审核用户指定的左右区域近机械臂内侧角：历史最终组合几何显示 R03/R04 同属 A，目标应为 B/R05 与 A/R03；以新无动作观测和标注图确认，保存诊断。 / Audit the requested near-arm inner corners: composed geometry places both previous R03/R04 in A; verify B/R05 and A/R03 through a fresh no-motion observation and annotated view, then save diagnosis. (local)
-- [policy] [fix] 修正本次任务输入及复现指令，按左侧 R05、右侧 R03 运行；不硬编码 Provider 选择、不改 AgentLoop 生命周期、不改场景标签/几何、不放松动作校验。 / Correct task input and reproducible instruction to left R05 then right R03 without hardcoding Provider selection, changing AgentLoop ownership, relabeling geometry or weakening checks. (local)
-- [eval] [exp] 从新仿真会话重新发起原生 Agent，保留同次真值感知、参数化动作与阶段录像；区分位置确认、路线资格、执行与成功。 / Relaunch the native Agent from a fresh simulator session with same-capture truth, parameterized actions and videos; distinguish identity, readiness, execution and success. (local)
-- [docs] [docs] 更新 .task/current.md、选择诊断、任务指令、开发指南和最近五条索引；记录精确行号、Diff、验证与当前分支提交推送。 / Update current task, selection diagnosis, instruction, developer guide and latest-five index with ranges, diffs, validation and current-branch commit/push. (local)
-
-### 位置审核 / Position Audit
-- [eval] [exp] 新无动作观测 revision `49cc517596d64d959d7ad15742f91573:0` 的最终 Model 世界包围盒与相机标定投影证实：左区右下 R05 像素 (432.35,653.46)，右区左下 R03 (1063.63,807.74)；R04 在右区后排 (1124.47,685.95)。 / Fresh composed Model bounds and calibrated projection confirm left-inner-front R05 and right-inner-front R03; R04 is in the rear row of the right zone. (local)
-- [data] [docs] `out/lab-near-arm-selection-20261102-observe-r1/selected-bottles.png` 保留八瓶标注与两目标绿圈；selection-audit.json 保留同次几何/标定来源、各中心与距离。R05/R03 在各自区域到基座水平距离最短，约 0.40249 m；距离不作为抓取成功证据。 / Preserve annotated image and same-capture audit; selected objects are nearest within their respective zones, without treating distance as grasp proof. (local)
-- [eval] [chore] 51 项现有 host、semantic task creation、perception binding 测试通过；只修正任务输入，不增加无关运行时逻辑。 / 51 existing host/semantic-task/binding tests pass; correct task input without unrelated runtime changes. (local)
-
-### 文件变更详情 / File Changes
-
-#### [修改 / Modified] `.task/current.md` L1-L28
-- [docs] [fix] 当前目标由旧 R03/R04 改为已审核的 R05/R03，并保存新任务、检查结果、实际闭爪失败与停止边界；历史条目不改写。 / Replace the current target pair with verified R05/R03 and record the new task, checks, closure failure and stop boundary without rewriting historical entries. (local)
-```diff
--# Current Task: LabUtopia R03/R04 full-chain grasp coverage
-+# Current Task: LabUtopia near-arm inner-corner selection
-+R05 -> R03 -> GLASS_ROD; fresh observation and parameter-preserving bindings
-+R05 close: grasp_not_confirmed; task awaiting_replan; no lift/pour/R03/stir
-```
-
-#### [新增 / Added] `.task/labutopia-near-arm-instruction.txt` L1
-- [policy] [fix] 保存可复现任务输入：左侧 B/R05 后右侧 A/R03，沿用 tilt_rad=0.87、hold_s=0.6 以及原搅拌参数；禁止选择 R04，不改变场景标签/物体位置。 / Save reproducible input for B/R05 then A/R03 with unchanged pour/stir parameters; exclude R04 without relabeling or moving objects. (local)
-```diff
-+用户指定左边区域右下角、右边区域左下角；审核对应左侧 B/R05、右侧 A/R03。
-+先 R05、再 R03 倾倒至 BEAKER，然后 GLASS_ROD 搅拌；使用新捕获的合格引用。
-```
-
-#### [新增 / Added] `.task/labutopia-near-arm-selection-20261102.md` L1-L153
-- [docs] [docs] 保存最终几何/标定位置审核、模块归属、原生运行命令、51 项测试命令、持久化 Action 绑定、终态反馈、录像边界及剩余接触问题。 / Save composed-geometry/calibration audit, ownership, native/test commands, persisted Action bindings, terminal feedback, video boundaries and remaining contact issue. (local)
-```diff
-+Previous R03/R04 request selected two bottles in A; verified intended pair is B/R05 and A/R03.
-+Fresh graph and readiness bind the verified physical R05; complete route passes.
-+Closure displaces R05 393.292 mm; final finger impulses [0,0]; stop before lift.
-```
-
-#### [修改 / Modified] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L461-L470
-- [docs] [docs] 明确空间目标纠正应基于新观测的图像/标定/最终几何关联，再修改任务请求；不得把固定位置映射放入 AgentLoop/Grasp Provider 或把靠近当作可抓取。 / Document fresh observation-based spatial correction at the task boundary, without fixed scene mapping in AgentLoop/Grasp Provider or proximity-as-graspability claims. (local)
-```diff
-+For a spatial target correction, establish the requested viewpoint and resolve
-+the requested objects against a fresh composed-scene observation.
-+The corrected request then uses the existing semantic selectors and current
-+Query bindings; proximity alone is not graspability or full-route evidence.
-```
-
-### 原生验证与录像 / Native Validation and Video
-- [eval] [exp] `task_8983ebbef39b4da4` / `revision_3eb048c8f12047eb` / `cli:lab-68c0bd18324b` 的持久化图按 R05、R03、GLASS_ROD 排序，参数保持；四个 R05 Query succeeded。 / Persisted graph confirms the corrected ordered identities and parameters; four R05 Queries succeed. (local)
-- [eval] [exp] 完整 acquire 选择同次候选 69，前两路线分别 IK 连续性、payload/table 拒绝，第三条 8.731 秒通过、146 轨迹点；readiness target 是 B/R05/Model/mesh。 / Full acquire selects current candidate 69; first two variants fail IK continuity and payload/table checks, third passes in 8.731 s with 146 waypoints and correct B/R05 binding. (local)
-- [eval] [exp] 真实运输/接近/插入完成，目标位移不超过 1.006 mm；闭爪才出现快速位移，最终 393.292 mm，双指最终接触冲量 [0,0]，grasp_not_confirmed 在抬起前停止。Action unknown、possession uncertain、task awaiting_replan；未执行 R03、倾倒、归位或搅拌。 / Actual transport/approach/insertion retain <1.006 mm drift; closure causes 393.292 mm final displacement and loses finger contact, stopping before lift. Preserve unknown/uncertain states; no later operations occur. (local)
-- [eval] [docs] 前台 40 次调用上限不等于物理终态；原 host 等待既有 Runtime 对账，没有重复 Action。反馈不足以进一步断言摩擦、驱动力或接触几何中的哪一个是根因，不放宽任何检查。 / Foreground iteration exhaustion is not physical settlement; host waits for Runtime without duplicate Action. Evidence does not yet isolate friction, drive force or contact geometry; checks stay unchanged. (local)
-- [data] [docs] `out/lab-fullchain-truth-20261102-near-arm-r05-r03-r1/` 保存 acceptance.json、host.log、run-context.json、stage-videos.json。原 MP4 3191 帧/60 fps/53.183 秒/88,733,263 bytes；全部帧解码通过。 / Preserve task/log/context/stage records and fully decoded raw footage with the stated frame count, rate, duration and size. (local)
-- [data] [docs] H.264 审阅视频：`r05-motion-through-approach.mp4` 47.333 秒/1420 帧；`r05-acquire-stopped-before-lift.mp4` 53.200 秒/1596 帧；`r05-close-quarter-speed.mp4` 6.533 秒/196 帧，明确四分之一速度。三份均完整解码，原视频未改；末帧已视觉复核。 / Three fully decoded H.264 copies cover completed approach, full failed attempt and explicitly quarter-speed closure; original stays intact and final image is reviewed. (local)
-- [docs] [chore] 月日志与 CHANGELOG 最近五版本同步；本轮只提交任务输入/诊断/指南/日志，out 下录像与诊断制品保留本地，无关工作区修改不纳入提交。 / Synchronize latest-five index; commit only task input/diagnosis/guide/logs, retain local runtime artifacts and leave unrelated changes unstaged. (local)
-
-### Git 提交 / Git Receipt
-- Commit: `66f1c11a`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-11-02 15:21 Asia/Shanghai
-- [docs] [chore] 提交 6 个任务相关文件；此回执与索引另作文档提交后共同推送当前分支。 / Commit six task-owned files; record this receipt and index in a follow-up documentation commit and push the current branch. (local)
