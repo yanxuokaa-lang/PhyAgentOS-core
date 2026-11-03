@@ -73,6 +73,9 @@
 - Phase video: `out/lab-fullchain-truth-20261103-v16_9_1-execute-r1/artifacts/labutopia/phase-video/3a7c6036760444848d476edbceacd3aa.mp4` (19.93 s).
 - No pour, R04 or stir success is claimed; the task remains `awaiting_replan` after unknown acquire outcome.
 
+### Git 提交 / Git Commit
+- Implementation commit: `72649a4e`; branch `feature/planning-loop`; 2026-11-03 14:14 America/Los_Angeles.
+
 ## v16.9.0 (2026-11-02 19:56) - codex
 
 ### 完成范围 / Completed Scope [局部实现完成；全路线资格阻塞 / Local implementation complete; full-route qualification blocked]
