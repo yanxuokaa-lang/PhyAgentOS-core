@@ -69,7 +69,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`.
-- Commit: pending.
+- Implementation/diagnosis commit: `f1b33f2cd6d949407ba85608af42baab670bacee`; 2026-11-03 19:54:49 Asia/Shanghai.
 
 ## v16.9.5 (2026-11-03 17:04) - codex
 
