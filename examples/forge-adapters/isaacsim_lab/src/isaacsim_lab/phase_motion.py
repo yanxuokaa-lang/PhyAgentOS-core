@@ -665,6 +665,19 @@ class GripContactWindow:
             and sum(frames.values()) > 0
             for latest, frames in zip(self.latest, self.frames))
 
+    def one_finger_unloaded(self):
+        """Detect one fresh unloaded finger while the other still carries load."""
+        if self.error is not None:
+            raise PhaseMotionError("contact_sampling_failed", str(self.error)) from self.error
+        now = float(self.world.current_time)
+        if len(self.sensors) != 2 or not all(
+            latest is not None and latest[1] and abs(latest[0] - now) <= self.dt * 2
+            for latest in self.latest
+        ):
+            return False
+        loads = [sum(frames.values()) for frames in self.frames]
+        return (loads[0] > 0) != (loads[1] > 0)
+
     def evidence(self):
         return {"contact_window_start_s": self.start,
                 "contact_window_end_s": float(self.world.current_time),
@@ -1717,6 +1730,7 @@ class IsaacPhaseMotion:
             self.robot.get_joint_positions())[finger_indices].copy()
         step_count = 0
         last_stage = None
+        lift_contact_grace_used = False
         self.world.play()
 
         def contacts():
@@ -1727,9 +1741,13 @@ class IsaacPhaseMotion:
             tcp = self.tcp()
             relation = np.linalg.inv(tcp) @ physical_body
             relation_error, rotation_error = grasp_pose_errors(grasp_relation, relation, axial_symmetry)
-            held = contacts() and relation_error <= self.config["grasp_position_tolerance_m"] and rotation_error <= self.config["grasp_rotation_tolerance_rad"]
+            contact_load_valid = contacts()
+            held = (contact_load_valid
+                    and relation_error <= self.config["grasp_position_tolerance_m"]
+                    and rotation_error <= self.config["grasp_rotation_tolerance_rad"])
             sample = {"timestamp_s": float(self.world.current_time), "feedback_valid": True,
-                      "grasp_valid": held, "stage": stage, "joints": self.joints().tolist(),
+                      "grasp_valid": held, "contact_load_valid": contact_load_valid,
+                      "stage": stage, "joints": self.joints().tolist(),
                       "finger_positions_m": np.asarray(self.robot.get_joint_positions())[finger_indices].tolist(),
                       "finger_target_m": np.asarray(finger_target).tolist(),
                       "object_pose": physical_body.tolist(), "tcp_pose": tcp.tolist(),
@@ -1830,6 +1848,20 @@ class IsaacPhaseMotion:
                     step_count += 1
                     record_frame(stage)
                     held, physical_body = record(stage)
+                    transient_lift_contact_grace = False
+                    if (operation == "acquire" and last_stage == "close"
+                            and stage == "lift" and not held and not lift_contact_grace_used
+                            and contact_window.one_finger_unloaded()):
+                        measured_sample = samples[-1]
+                        if (measured_sample["attachment_position_error_m"]
+                                <= self.config["grasp_position_tolerance_m"]
+                                and measured_sample["attachment_rotation_error_rad"]
+                                <= self.config["grasp_rotation_tolerance_rad"]):
+                            # A single unloaded interval is tolerated only while both
+                            # fresh manifolds remain and the other finger carries load.
+                            lift_contact_grace_used = True
+                            measured_sample["contact_transient_grace_used"] = True
+                            transient_lift_contact_grace = True
                     if operation == "acquire" and stage in {"approach", "grasp", "close"}:
                         drift, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
                         if (drift > self.config["grasp_position_tolerance_m"]
@@ -1843,7 +1875,8 @@ class IsaacPhaseMotion:
                         if held:
                             contact_established = True
                             stable_frames += 1
-                    if ((operation != "acquire" and stage not in {"release", "retreat"}) or stage == "lift") and not held:
+                    if (((operation != "acquire" and stage not in {"release", "retreat"})
+                         or stage == "lift") and not held and not transient_lift_contact_grace):
                         raise PhaseMotionError("physical_grasp_lost", "selected-body contact or measured grasp transform changed")
                     measured_relation = (np.linalg.inv(self.tcp()) @ physical_body
                                          if point["attached"] else grasp_relation)

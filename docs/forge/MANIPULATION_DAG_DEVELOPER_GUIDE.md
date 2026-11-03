@@ -990,3 +990,20 @@ support-path repair proves only that the previous false collision no longer
 blocks the route. If actual motion produces unknown possession, later DAG nodes
 must remain blocked until reconciliation; Query or preparation success cannot
 upgrade that outcome.
+
+### Contact evidence is not an execution-tolerance decision
+
+An execution Adapter may distinguish a single control-interval load transient
+from persistent grasp loss, but it must not rewrite the measured observation.
+For an acquire lift that immediately follows a confirmed bilateral closure, one
+interval may continue only when both selected-body contact manifolds are fresh,
+exactly one finger retains positive interval load, and the existing attachment
+pose limits still pass. Record the measured sample as invalid load/grasp and add
+an Adapter-private diagnostic that explains the one-interval continuation.
+
+The following interval must restore bilateral positive load. Never apply this
+tolerance to initial closure, another operation, missing or stale contact,
+bilateral unloading, pose-limit failure, or a second consecutive unloaded
+interval. AgentLoop consumes the eventual Action outcome and remains unaware of
+PhysX manifolds or control-cycle policy. Unknown possession still blocks later
+DAG nodes until reconciliation.

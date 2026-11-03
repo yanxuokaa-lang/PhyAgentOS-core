@@ -19,6 +19,36 @@ def contact_sensors(model, active):
     model.sensors = [SimpleNamespace(get_current_frame=frame)] * 2
 
 
+def timed_contact_sensors(model, load_at_step):
+    """Hold one immutable sensor frame for each simulated control interval."""
+    def sensor_frame(side):
+        def frame():
+            mode = load_at_step(model.world.steps)
+            if mode == "stale_right" and side == 1:
+                timestamp = model.world.current_time - 1.
+            else:
+                timestamp = model.world.current_time
+            present = mode != "missing_right" or side == 0
+            loaded = mode == "bilateral" or (mode == "unilateral_left" and side == 0)
+            contacts = ([{"body0": "/World/source/mesh", "body1": f"/finger/{side}",
+                          "impulse": [0., .001 if loaded else 0., 0.],
+                          "position": [.1, 0., .9], "normal": [0., 1., 0.]}]
+                        if present else [])
+            return {"time": timestamp, "contacts": contacts}
+        return frame
+
+    model.sensors = [SimpleNamespace(get_current_frame=sensor_frame(side)) for side in range(2)]
+
+    def step(**_kwargs):
+        model.world.current_time += model.dt
+        model.world.steps += 1
+        model._test_positions_ref[:] = model._test_commands_ref[-1]
+        for callback in model.world.physics_callbacks.values():
+            callback(model.dt)
+
+    model.world.step = step
+
+
 def test_closure_ramps_then_holds_contact_target_through_lift(monkeypatch):
     model, args, commands, artifacts = execution_fixture(monkeypatch)
     contact_sensors(model, lambda: model.robot.get_joint_positions()[7] < .025)
@@ -62,6 +92,62 @@ def test_transient_bilateral_contact_does_not_authorize_lift(monkeypatch):
     assert model.world.steps < 10
     assert all(c[0] == 0 for c in commands)
     assert not result["operation_completed"]
+
+
+def test_one_unloaded_lift_interval_is_execution_tolerance_not_grasp_evidence(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    # Closure stabilizes for ten intervals; the first lift interval unloads one
+    # finger, then bilateral load returns on the next interval.
+    timed_contact_sensors(model, lambda step: "unilateral_left" if step == 11 else "bilateral")
+    result = model.execute(args, Event())
+    samples = artifacts[-1][1]["samples"]
+    transient = next(sample for sample in samples if sample.get("contact_transient_grace_used"))
+    assert transient["stage"] == "lift"
+    assert transient["grasp_valid"] is False
+    assert transient["contact_load_valid"] is False
+    later_lift = [sample for sample in samples if sample["stage"] == "lift" and sample is not transient]
+    assert later_lift and later_lift[0]["grasp_valid"] is True
+    assert result["failure_code"] != "physical_grasp_lost"
+    assert model.world.steps >= 12
+
+
+@pytest.mark.parametrize("mode,expected_steps,has_grace", [
+    ("unilateral_left", 2, True),
+    ("bilateral_unloaded", 1, False),
+    ("missing_right", 1, False),
+    ("stale_right", 1, False),
+])
+def test_second_or_unqualified_unloaded_lift_interval_stops(monkeypatch, mode, expected_steps, has_grace):
+    model, args, commands, artifacts = execution_fixture(monkeypatch)
+
+    def load(step):
+        if step < 11:
+            return "bilateral"
+        if mode == "unilateral_left":
+            return "unilateral_left"
+        return mode
+
+    timed_contact_sensors(model, load)
+    result = model.execute(args, Event())
+    samples = artifacts[-1][1]["samples"]
+    lift_samples = [sample for sample in samples if sample["stage"] == "lift"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert len(lift_samples) == expected_steps
+    assert bool(lift_samples[0].get("contact_transient_grace_used")) is has_grace
+    assert lift_samples[0]["grasp_valid"] is False
+    if has_grace:
+        assert not lift_samples[1].get("contact_transient_grace_used")
+    assert not result["operation_completed"]
+
+
+def test_unilateral_contact_during_initial_closure_never_authorizes_lift(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    timed_contact_sensors(model, lambda _step: "unilateral_left")
+    result = model.execute(args, Event())
+    samples = artifacts[-1][1]["samples"]
+    assert result["failure_code"] == "grasp_not_confirmed"
+    assert all(sample["stage"] != "lift" for sample in samples)
+    assert not any(sample.get("contact_transient_grace_used") for sample in samples)
 
 
 def test_no_contact_closure_stops_at_bounded_budget(monkeypatch):

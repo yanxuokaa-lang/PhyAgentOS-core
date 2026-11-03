@@ -1,5 +1,21 @@
 # Current Task: LabUtopia live acquire reconciliation
 
+## v16.9.2 / acquire lift 单周期接触瞬态
+
+- Diagnosis: `.task/labutopia-lift-contact-transient-20261103.md`.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_9_2.md`.
+- Isaac Adapter may continue exactly one acquire-lift control interval when a
+  previously confirmed bilateral grip has fresh selected-body manifolds on both
+  fingers, positive load on one finger and unchanged attachment tolerances.
+- The feedback is not upgraded: the transient sample remains
+  `contact_load_valid=false`, `grasp_valid=false`, with an explicit
+  `contact_transient_grace_used=true` execution-decision field.
+- The next interval must restore bilateral positive load. Persistent unilateral
+  unloading, bilateral unloading, stale/missing contact or initial closure
+  contact remains fail-closed.
+- No live rerun is authorized in the previous uncertain-possession scene. Reset
+  and reconcile simulator state before requesting fresh execution evidence.
+
 ## v16.9.1 / 支撑碰撞子路径修复
 
 - Diagnosis: `.task/labutopia-support-collider-path-20261103.md`.

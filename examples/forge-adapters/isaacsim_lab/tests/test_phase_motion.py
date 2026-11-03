@@ -1409,6 +1409,8 @@ def execution_fixture(monkeypatch):
         world.steps += 1
     world.step = step
     model.world, model.robot = world, robot
+    model._test_commands_ref = commands
+    model._test_positions_ref = positions
     model.session = SimpleNamespace(current_scene_revision=lambda: "scene-1", resolve=lambda _key: None,
                                     app=SimpleNamespace(is_running=lambda: True))
     body = pose_matrix([.1, 0., .9], [0., 0., 0., 1.])
