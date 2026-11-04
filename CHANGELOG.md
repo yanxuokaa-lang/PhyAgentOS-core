@@ -79,7 +79,7 @@
 - [eval] [exp] fresh reset/no-motion 确认空夹爪、零命令及新 scene/capture；fresh execution task `task_9fa51be5ed0d4e3f` 仅使用本次直接前驱证据，并在 600 秒、65/104 时以 `route_search_timeout` 停止。65 个失败前缀均唯一，故 `pruned_count=0`；无控制器 motion、feedback、video 或 world change，R03 与搅拌保持阻塞。 / Fresh reset/no-motion confirms an empty gripper, zero commands and a new scene/capture; fresh execution task `task_9fa51be5ed0d4e3f` uses only this run's direct-predecessor evidence and stops at 65/104 after 600 seconds with `route_search_timeout`. All 65 failed prefixes are unique, so `pruned_count=0`; no controller motion, feedback, video or world change occurs, and R03 plus stirring remain blocked. (local)
 
 ### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`; implementation commit pending.
+- Branch: `feature/planning-loop`; implementation commit `b0f5061af9ea4b70dbfd17f36a4d8fd516b8ea69`; 2026-11-04 09:32:15 Asia/Shanghai.
 
 ## v16.9.7 (2026-11-03 20:11) - codex
 
