@@ -452,7 +452,9 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
     assert captured.value.diagnostics == {
         "search_ref": "artifact://acquire-search/1",
         "attempted_count": 1,
+        "pruned_count": 0,
         "variant_count": 3,
+        "failed_prefix_count": 0,
         "last_stage": "approach",
         "failure_counts": {},
         "elapsed_s": pytest.approx(1.1),
@@ -461,6 +463,216 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
     }
     timeout = artifacts[-1][1]
     assert timeout["status"] == "unavailable"
+    assert timeout["failure_code"] == "route_search_timeout"
+    assert timeout["motion_authorized"] is False
+    assert timeout["world_change_started"] is False
+
+
+def acquire_prefix_pruning_fixture(**config_overrides):
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_route_search_timeout_s": 30.,
+        "acquire_route_strategies": ["staged"],
+        "acquire_route_selection": "first_feasible",
+        "acquire_staging_corridor_candidates": [
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+            {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": .06},
+        ],
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+        **config_overrides,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    artifacts = []
+    model._artifact = lambda kind, value: artifacts.append((kind, value)) or f"artifact://{kind}/{len(artifacts)}"
+    target = {
+        "candidate_ref": "candidate://capture/r05-178",
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+    arguments = {
+        "manipulation_target": target,
+        "observation_model": {},
+        "scene_revision": "scene-prefix-pruning",
+    }
+    return model, arguments, artifacts
+
+
+def test_acquire_preparation_prunes_identical_failed_prefix_without_motion():
+    model, arguments, artifacts = acquire_prefix_pruning_fixture()
+    qualified = []
+
+    def reject(_waypoints, *_args, progress, **_kwargs):
+        qualified.append("transit_orient")
+        progress("transit_orient", "started")
+        raise PhaseMotionError("self_collision", "transit_orient: repeated collision")
+
+    model.qualify = reject
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare(arguments)
+
+    assert captured.value.code == "self_collision"
+    assert qualified == ["transit_orient"]
+    assert captured.value.diagnostics["attempted_count"] == 1
+    assert captured.value.diagnostics["pruned_count"] == 1
+    pruned = [value for kind, value in artifacts if kind == "acquire-search" and value.get("status") == "pruned"]
+    assert len(pruned) == 1
+    assert pruned[0]["stage"] == "transit_orient"
+    assert pruned[0]["source_failure_code"] == "self_collision"
+    assert pruned[0]["source_attempt_ordinal"] == 1
+    assert pruned[0]["motion_authorized"] is False
+    assert pruned[0]["world_change_started"] is False
+
+
+def test_acquire_preparation_does_not_prune_route_diverging_before_failed_stage():
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_staging_corridor_candidates=[
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+        ],
+        acquire_transit_clearance_candidates_m=[.04, .08],
+    )
+    raised_heights = []
+
+    def reject(waypoints, *_args, progress, **_kwargs):
+        raised_heights.append(float(waypoints[1][0][2, 3]))
+        progress("transit_orient", "started")
+        raise PhaseMotionError("self_collision", "transit_orient: clearance-specific collision")
+
+    model.qualify = reject
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare(arguments)
+
+    assert len(raised_heights) == 2
+    assert raised_heights[0] != pytest.approx(raised_heights[1])
+    assert captured.value.diagnostics["attempted_count"] == 2
+    assert captured.value.diagnostics["pruned_count"] == 0
+
+
+def test_acquire_prefix_pruning_cache_is_scoped_to_one_prepare_call():
+    model, arguments, _artifacts = acquire_prefix_pruning_fixture()
+    qualified = []
+
+    def reject(_waypoints, *_args, progress, **_kwargs):
+        qualified.append("attempt")
+        progress("transit_orient", "started")
+        raise PhaseMotionError("self_collision", "transit_orient: repeated collision")
+
+    model.qualify = reject
+    for _ in range(2):
+        with pytest.raises(PhaseMotionError) as captured:
+            model.prepare(arguments)
+        assert captured.value.diagnostics["attempted_count"] == 1
+        assert captured.value.diagnostics["pruned_count"] == 1
+    assert qualified == ["attempt", "attempt"]
+
+
+def test_acquire_prefix_pruning_reaches_later_feasible_orientation():
+    preferred = [1., 0., 0., 0.]
+    fallback = [0., 0., 0., 1.]
+    model, arguments, _artifacts = acquire_prefix_pruning_fixture(
+        acquire_transport_orientation_candidates_xyzw=[preferred, fallback],
+    )
+    qualified_orientations = []
+
+    def qualify(waypoints, *_args, progress, **_kwargs):
+        orientation = Rotation.from_matrix(waypoints[2][0][:3, :3]).as_quat()
+        qualified_orientations.append(orientation)
+        if np.allclose(orientation, preferred) or np.allclose(orientation, -np.asarray(preferred)):
+            progress("transit_orient", "started")
+            raise PhaseMotionError("self_collision", "transit_orient: preferred orientation blocked")
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.2] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    route, _evidence = model.prepare(arguments)
+
+    assert len(qualified_orientations) == 2
+    assert route["acquire_transport_orientation_xyzw"] == fallback
+    assert route["acquire_route_attempted_count"] == 2
+    assert route["acquire_route_pruned_count"] == 1
+
+
+def test_acquire_staged_enumeration_honors_transport_priority_before_clearance():
+    orientations = [[1., 0., 0., 0.], [0., 0., 0., 1.]]
+    model, arguments, _artifacts = acquire_prefix_pruning_fixture(
+        acquire_staging_corridor_candidates=[
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+        ],
+        acquire_transit_clearance_candidates_m=[.04, .08],
+        acquire_transport_orientation_candidates_xyzw=orientations,
+    )
+    observed = []
+
+    def reject(waypoints, *_args, progress, **_kwargs):
+        quaternion = Rotation.from_matrix(waypoints[2][0][:3, :3]).as_quat()
+        orientation_order = 0 if np.allclose(quaternion, orientations[0]) else 1
+        clearance_height = float(waypoints[1][0][2, 3])
+        observed.append((orientation_order, clearance_height))
+        progress("lift", "started")
+        raise PhaseMotionError("route_collision", "lift: unique full prefix")
+
+    model.qualify = reject
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare(arguments)
+
+    assert [item[0] for item in observed] == [0, 0, 1, 1]
+    assert observed[0][1] < observed[1][1]
+    assert observed[2][1] < observed[3][1]
+    assert captured.value.diagnostics["attempted_count"] == 4
+    assert captured.value.diagnostics["pruned_count"] == 0
+
+
+def test_acquire_route_timeout_remains_fail_closed_for_unique_prefixes(monkeypatch):
+    import isaacsim_lab.phase_motion as phase_motion_module
+
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_route_search_timeout_s=1.,
+        acquire_staging_corridor_candidates=[
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+        ],
+        acquire_transit_clearance_candidates_m=[.04, .08],
+    )
+    clock = [10.]
+    monkeypatch.setattr(phase_motion_module.time, "monotonic", lambda: clock[0])
+    qualified = []
+
+    def reject(_waypoints, *_args, progress, **_kwargs):
+        qualified.append("attempt")
+        if len(qualified) == 1:
+            progress("transit_orient", "started")
+            clock[0] = 10.6
+            raise PhaseMotionError("self_collision", "transit_orient: first unique prefix")
+        clock[0] = 11.1
+        progress("transit_orient", "started")
+        raise AssertionError("deadline must stop the second unique prefix")
+
+    model.qualify = reject
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare(arguments)
+
+    assert captured.value.code == "route_search_timeout"
+    assert qualified == ["attempt", "attempt"]
+    assert captured.value.diagnostics["attempted_count"] == 2
+    assert captured.value.diagnostics["pruned_count"] == 0
+    assert captured.value.diagnostics["failed_prefix_count"] == 1
+    assert captured.value.diagnostics["last_stage"] == "transit_orient"
+    timeout = artifacts[-1][1]
     assert timeout["failure_code"] == "route_search_timeout"
     assert timeout["motion_authorized"] is False
     assert timeout["world_change_started"] is False

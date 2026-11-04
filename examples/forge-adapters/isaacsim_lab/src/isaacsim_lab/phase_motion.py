@@ -406,6 +406,15 @@ def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quatern
     ]
 
 
+def _acquire_waypoint_prefixes(waypoints):
+    """Yield exact generated waypoint-prefix identities for one route."""
+    prefix = []
+    for pose, _hold_s, stage in waypoints:
+        matrix = np.asarray(pose, dtype=float)
+        prefix.append((stage, tuple(float(value) for value in matrix.reshape(-1))))
+        yield stage, tuple(prefix)
+
+
 def acquire_failure_summary(failures):
     """Bound route diagnostics while retaining failure ownership and coverage."""
     stage_names = {
@@ -1117,6 +1126,8 @@ class IsaacPhaseMotion:
             search_timeout = acquire_route_search_timeout(self.config)
             search_deadline = search_started + search_timeout
             attempted_count = 0
+            pruned_count = 0
+            failed_prefixes = {}
             last_stage = "search"
             search_ref = self._artifact("acquire-search", {
                 "status": "started", "scene_revision": arguments["scene_revision"],
@@ -1132,7 +1143,9 @@ class IsaacPhaseMotion:
                 diagnostics = {
                     "search_ref": search_ref,
                     "attempted_count": attempted_count,
+                    "pruned_count": pruned_count,
                     "variant_count": variant_count,
+                    "failed_prefix_count": len(failed_prefixes),
                     "last_stage": last_stage,
                     "failure_counts": failure_counts,
                     "elapsed_s": max(0., now - search_started),
@@ -1167,9 +1180,9 @@ class IsaacPhaseMotion:
                     combinations = (
                         (clearance_order, clearance, transport_order, transport_quaternion,
                          corridor_order, corridor, symmetry_order, variant)
-                        for (clearance_order, clearance), (transport_order, transport_quaternion),
+                        for (transport_order, transport_quaternion), (clearance_order, clearance),
                         (corridor_order, corridor), (symmetry_order, variant)
-                        in product(enumerate(clearances), enumerate(transport_orientations),
+                        in product(enumerate(transport_orientations), enumerate(clearances),
                                    enumerate(staging_corridors), enumerate(variants))
                     )
                 for (clearance_order, clearance, transport_order, transport_quaternion,
@@ -1179,24 +1192,15 @@ class IsaacPhaseMotion:
                     if now >= search_deadline:
                         route_search_timeout(now)
                     started = now
-                    attempted_count += 1
                     attempt = {"search_ref": search_ref, "route_strategy": strategy,
                                "clearance_m": clearance, "transport_order": transport_order,
                                "corridor_order": corridor_order,
                                "axial_symmetry_angle_rad": symmetry_angle,
                                "motion_authorized": False, "world_change_started": False}
-
-                    def progress(stage, status, **details):
-                        nonlocal last_stage
-                        last_stage = stage
-                        now = time.monotonic()
-                        if now >= search_deadline:
-                            route_search_timeout(now)
-                        self._artifact("acquire-search", {**attempt, "stage": stage, "status": status,
-                                                         "elapsed_s": now - started, **details})
-
-                    progress("route", "started")
                     candidate_relation = np.linalg.inv(variant_desired) @ body
+                    prefix_by_stage = {}
+                    attempt_stage = "route"
+                    progress = None
                     try:
                         if strategy == "direct":
                             candidate_waypoints = acquire_direct_route_waypoints(
@@ -1207,6 +1211,47 @@ class IsaacPhaseMotion:
                                 tcp, variant_desired, variant_approach, clearance,
                                 transport_quaternion, corridor, self.config,
                             )
+                        waypoint_prefixes = tuple(_acquire_waypoint_prefixes(candidate_waypoints))
+                        prefix_by_stage = dict(waypoint_prefixes)
+                        matched_prefix = next((
+                            (stage, failed_prefixes[prefix])
+                            for stage, prefix in waypoint_prefixes
+                            if prefix in failed_prefixes
+                        ), None)
+                        if matched_prefix is not None:
+                            pruned_stage, source_failure = matched_prefix
+                            pruned_count += 1
+                            last_stage = pruned_stage
+                            self._artifact("acquire-search", {
+                                **attempt,
+                                "stage": pruned_stage,
+                                "status": "pruned",
+                                "pruned_count": pruned_count,
+                                "source_failure_code": source_failure["failure_code"],
+                                "source_attempt_ordinal": source_failure["attempt_ordinal"],
+                                "elapsed_s": time.monotonic() - started,
+                            })
+                            continue
+                        attempted_count += 1
+                        attempt["attempt_ordinal"] = attempted_count
+                        attempt_stage = "route"
+
+                        def progress(stage, status, **details):
+                            nonlocal attempt_stage, last_stage
+                            attempt_stage = stage
+                            last_stage = stage
+                            now = time.monotonic()
+                            if now >= search_deadline:
+                                route_search_timeout(now)
+                            self._artifact("acquire-search", {
+                                **attempt,
+                                "stage": stage,
+                                "status": status,
+                                "elapsed_s": now - started,
+                                **details,
+                            })
+
+                        progress("route", "started")
                         candidate = self.qualify(
                             candidate_waypoints, source, candidate_relation, operation,
                             np.asarray(original_return), progress=progress,
@@ -1237,10 +1282,19 @@ class IsaacPhaseMotion:
                     except PhaseMotionError as exc:
                         if exc.code == "route_search_timeout":
                             raise
+                        failed_stage = attempt_stage
+                        failed_prefix = prefix_by_stage.get(failed_stage)
+                        if failed_prefix is not None:
+                            failed_prefixes.setdefault(failed_prefix, {
+                                "failure_code": exc.code,
+                                "attempt_ordinal": attempt.get("attempt_ordinal"),
+                                "stage": failed_stage,
+                            })
                         failures.append((strategy, clearance, transport_order, corridor_order,
                                          symmetry_angle, exc))
-                        progress("route", "unavailable", failure_code=exc.code, error=str(exc),
-                                 collision_diagnostic=exc.diagnostics)
+                        if progress is not None:
+                            progress("route", "unavailable", failure_code=exc.code, error=str(exc),
+                                     collision_diagnostic=exc.diagnostics)
                 if strategy_candidates:
                     candidates = strategy_candidates
                     break
@@ -1251,10 +1305,25 @@ class IsaacPhaseMotion:
                 representative = failures[0][-1]
                 failure_code = representative.code if len(codes) == 1 else "route_unavailable"
                 details = acquire_failure_summary(failures)
-                raise PhaseMotionError(failure_code, details) from representative
+                if pruned_count:
+                    details += f"; pruned_routes={pruned_count}"
+                raise PhaseMotionError(failure_code, details, diagnostics={
+                    "search_ref": search_ref,
+                    "attempted_count": attempted_count,
+                    "pruned_count": pruned_count,
+                    "variant_count": variant_count,
+                    "failed_prefix_count": len(failed_prefixes),
+                    "motion_authorized": False,
+                    "world_change_started": False,
+                }) from representative
             selected = min(candidates, key=lambda item: item[:5])
             route, target, tcp_from_object = selected[5:]
-            route.update(acquire_route_selection=policy, acquire_search_ref=search_ref)
+            route.update(
+                acquire_route_selection=policy,
+                acquire_search_ref=search_ref,
+                acquire_route_attempted_count=attempted_count,
+                acquire_route_pruned_count=pruned_count,
+            )
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})

@@ -49,6 +49,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.9.8 (2026-11-04 08:37) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] Isaac Adapter 在单次 acquire preparation 内保存已失败的精确 waypoint 前缀，只剪枝具有相同有序阶段和 4×4 pose 数值前缀的后续路线；缓存不跨候选、reset、scene revision 或 preparation。 / The Isaac Adapter retains failed exact waypoint prefixes inside one acquire preparation and prunes only later routes with the same ordered stages and 4×4 pose values; the cache does not cross candidates, resets, scene revisions or preparations. (local)
+- [env] [refactor] staged 搜索按 transport orientation、clearance、corridor、symmetry 的配置优先级枚举，并分别记录 attempted/pruned/failed-prefix 诊断及剪枝来源。 / Enumerate staged search by configured transport orientation, clearance, corridor and symmetry priority, with separate attempted/pruned/failed-prefix diagnostics and pruning lineage. (local)
+- [policy] [chore] 改动仅位于 Adapter 路线搜索；AgentLoop 保持 R05→R03→GLASS_ROD 顺序、同集合 opaque 引用、依赖阻塞和 settlement，公共合同与安全阈值不变。 / Keep the change inside Adapter route search while AgentLoop retains R05→R03→GLASS_ROD ordering, same-set opaque references, dependency blocking and settlement; public contracts and safety limits remain unchanged. (local)
+
+### 文件变更详情 / File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L409-L416, L1128-L1325
+- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L452-L678
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L495-L514
+- `.task/labutopia-r05-route-prefix-pruning-20261104.md` L1-L141; `.task/current.md` L1-L41; `docs/forge/IMPLEMENTATION_REVIEW_V16_9_8.md` L1-L90
+
+```diff
++failed_prefixes = {}
++if matched_prefix is not None:
++    pruned_count += 1
++    continue
+-product(clearances, transport_orientations, corridors, symmetries)
++product(transport_orientations, clearances, corridors, symmetries)
++diagnostics = {"attempted_count": attempted_count,
++               "pruned_count": pruned_count,
++               "failed_prefix_count": len(failed_prefixes)}
+```
+
+### 验证 / Validation
+- [eval] [test] 聚焦 11 passed；完整 phase-motion 143 passed；Adapter/executor 494 passed、2 skipped；Ruff、compileall、JSON 和 diff 检查通过。 / Focused tests pass 11; full phase-motion passes 143; Adapter/executor passes 494 with two skips; Ruff, compileall, JSON and diff checks pass. (local)
+- [eval] [exp] fresh reset/no-motion 确认空夹爪、零命令及新 scene/capture；fresh execution task `task_9fa51be5ed0d4e3f` 仅使用本次直接前驱证据，并在 600 秒、65/104 时以 `route_search_timeout` 停止。65 个失败前缀均唯一，故 `pruned_count=0`；无控制器 motion、feedback、video 或 world change，R03 与搅拌保持阻塞。 / Fresh reset/no-motion confirms an empty gripper, zero commands and a new scene/capture; fresh execution task `task_9fa51be5ed0d4e3f` uses only this run's direct-predecessor evidence and stops at 65/104 after 600 seconds with `route_search_timeout`. All 65 failed prefixes are unique, so `pruned_count=0`; no controller motion, feedback, video or world change occurs, and R03 plus stirring remain blocked. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`; implementation commit pending.
+
 ## v16.9.7 (2026-11-03 20:11) - codex
 
 ### 完成范围 / Completed Scope
@@ -141,32 +173,3 @@
 - Video: `artifacts/labutopia/phase-video/6f7d3b9a95414b009368baec07f75de3.mp4` (19.95 s, 3840x960, 60 fps, 1197 frames).
 - Feedback: `artifacts/labutopia/phase-feedback/6584c65280ef4d0cbb67e06c15ecdc7b.json`.
 - [policy] [exp] 该任务和 readiness 不可恢复；后续必须重新 reset、感知和 preparation。 / The task and readiness are not reusable; any later Action requires another reset, perception and preparation. (local)
-
-## v16.9.3 (2026-11-03 15:50) - codex
-
-### 完成范围 / Completed Scope [Adapter 修复完成；等待新鲜 reset 后执行 / Adapter repair complete; fresh post-reset execution pending]
-- [eval] [exp] 新鲜 reset 确认 R03 回到支撑面且夹爪为空；授权任务 `task_448f4e2bf09042fe` 使用新 revision 与同集合 opaque 引用进入 acquire，在第 18 个 retimed lift 采样以 `physical_grasp_lost` 和 uncertain possession 停止。 / A fresh reset confirms R03 on support and an empty gripper; authorized task `task_448f4e2bf09042fe` uses a new revision and same-set opaque references, then stops on retimed lift sample 18 with `physical_grasp_lost` and uncertain possession. (local)
-- [env] [fix] 将闭合确认保存为 Isaac Adapter 私有 lift 状态，并只在当前测得物体仍处于已有支撑离台窗口时允许一次单指零载荷瞬态；样本仍记录无效，下一周期必须恢复双指载荷。 / Persist closure confirmation as Isaac Adapter-private lift state and allow one unilateral zero-load transient only while the measured object remains in the existing support-departure window; keep the sample invalid and require bilateral recovery on the next interval. (local)
-- [eval] [fix] 生产形状的 retimed 回归覆盖延迟瞬态恢复与支撑窗口外拒绝；不改变 AgentLoop、Coordinator、Provider、公共 Tool 合同或碰撞/IK/workspace/接触阈值。 / Production-shaped retimed regressions cover delayed transient recovery and out-of-support rejection without changing AgentLoop, Coordinator, Providers, public Tool contracts or collision/IK/workspace/contact thresholds. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1731-L1891
-- `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L114-L137
-- `.task/labutopia-lift-support-window-20261103.md` L1-L79; `.task/current.md` L1-L18
-- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_3.md` L1-L43; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L1011-L1029
-
-```diff
-+lift_grip_confirmed = last_stage == "close"
-+measured_support_contact = support_contact_allowed(...)
--if operation == "acquire" and last_stage == "close" ...
-+if operation == "acquire" and lift_grip_confirmed ... and measured_support_contact ...
-+model._time_acquire_route(args["phase_route"])
-```
-
-### 验证 / Validation
-- [eval] [chore] 接触/时序 22 passed；显式加载已安装的 async pytest 插件后，Isaac Adapter + subtask executor 475 passed、2 skipped；Ruff、compileall 与 diff 检查通过。 / Contact/timing passes 22 tests; with the installed async pytest plugin explicitly loaded, Isaac Adapter plus subtask executor passes 475 with 2 skips; Ruff, compileall and diff checks pass. (local)
-- [eval] [exp] 当前失败场景已发生 world change 且 outcome unknown，不得继续；后续 live 验证必须重新 reset，生成新 scene revision、新感知、新 preparation 后再 Action。 / The current failed scene has world change and unknown outcome and must not continue; live validation requires another reset, new scene revision, fresh perception and fresh preparation before Action. (local)
-
-### Git 提交 / Git Receipt
-- Branch: `feature/planning-loop`.
-- Implementation commit: `7e880acd231da23392d90a228be18e62d9c85361`; 2026-11-03 16:13 Asia/Shanghai. Monthly entry L1415-L1462; latest-five index entry L51-L78.

@@ -1,4 +1,45 @@
-# Current Task: Isaac route-budget and worker-session lifecycle repair
+# Current Task: Isaac acquire-route exact-prefix pruning
+
+## v16.9.8 / Adapter implementation and fresh reset validation complete
+
+- Tier C-Safety; simulator-only Isaac Adapter search change. AgentLoop,
+  Coordinator, Tool schemas, candidate Provider contracts, safety thresholds
+  and settlement ownership remain unchanged.
+- Preserve the requested order `R05 -> R03 -> GLASS_ROD`. Do not substitute
+  R04, skip R05, resume a historical task or reuse an earlier scene revision,
+  readiness, candidate reference or preparation.
+- Fresh v16.9.7 execution reached the R05 Action preparation boundary with the
+  current-capture candidate ending `57c6b3...-178`, then stopped safely with
+  `route_search_timeout`: 64 of 104 variants started, zero controller motion,
+  no world change and empty possession.
+- Root cause: full qualification recomputed identical staged
+  `transit_raise`/`transit_orient` prefixes for corridor and symmetry suffixes.
+  The second transport orientation repeatedly produced the same self-collision
+  family while the configured 600-second search budget expired.
+- The Adapter now records exact generated waypoint prefixes only inside one
+  `prepare()` invocation. A later route with the same failed prefix is pruned;
+  a route diverging before the failed stage still runs full qualification.
+- Staged enumeration now follows configured transport orientation, clearance,
+  corridor and symmetry priority. Diagnostics separately record actual
+  qualification attempts and pruned variants with source failure lineage.
+- Validation passes: 11 focused prefix/timeout tests, all 143 phase-motion
+  tests, and 494 Adapter/executor tests with two native-USD skips; Ruff,
+  compileall, motion-profile JSON parsing and diff checks pass.
+- Fresh reset/no-motion evidence used independent workspaces and confirmed an
+  open empty gripper, zero commands and new scene/capture/preparation lineage.
+  Fresh execution task `task_9fa51be5ed0d4e3f` used only its current-capture
+  R05 evidence and direct-predecessor opaque references.
+- Live Action preparation stopped safely with `route_search_timeout` after
+  65/104 attempts. All 65 failures had distinct exact prefixes, so
+  `pruned_count=0`; no controller motion, feedback or video occurred, possession
+  remained empty, and R03/GLASS_ROD stayed dependency-blocked.
+- The exact-prefix repair is accepted, but it does not solve the remaining
+  unique full-route IK/collision feasibility cost. Do not widen equality or
+  relax safety checks; a later task must profile the concrete full-route
+  witnesses before proposing another repair.
+- Diagnosis: `.task/labutopia-r05-route-prefix-pruning-20261104.md`.
+
+# Previous Task: Isaac route-budget and worker-session lifecycle repair
 
 ## v16.9.7 / Adapter repair and fresh no-motion reset completed
 

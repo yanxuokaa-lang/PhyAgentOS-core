@@ -492,6 +492,27 @@ Private `acquire-search/` artifacts record route and stage boundaries, elapsed
 time and rejection details before a possible worker timeout. These are
 preparation diagnostics with motion_authorized=false, not execution feedback.
 
+The staged search honors configuration priority in this order: transport
+orientation, transit clearance, staging corridor and axial symmetry. Within
+one `prepare()` call, the Adapter may remember an exact failed waypoint prefix
+(ordered stage names plus generated world-pose matrices) and prune later
+variants containing that same prefix. This is reuse of a completed failure
+check, not a success shortcut: a route that diverges before the failed stage
+must still run full qualification. The cache is invocation-local and cannot be
+reused across candidates, scene revisions, reset or later preparation. Search
+evidence reports routes that entered qualification as `attempted_count` and
+exact-prefix eliminations as `pruned_count`, including the failed stage, source
+failure code and source attempt ordinal. Unique prefixes remain subject to the
+same wall-clock deadline and fail closed with `route_search_timeout`.
+
+Do not treat `pruned_count=0` as proof that the mechanism failed. If rejection
+occurs only after corridor, symmetry or another suffix has already changed the
+generated route, every failed prefix can be unique and full qualification is
+still required. In that case the next diagnosis belongs to the concrete
+full-route IK/collision stages and their measured witnesses. Do not broaden
+prefix equality, reuse a failure across scene revisions or move search mechanics
+into AgentLoop to manufacture a speedup.
+
 `acquire_route_strategies` is also Adapter-private. A `direct` strategy may
 attempt current TCP -> candidate-orientation pregrasp -> grasp -> close -> lift;
 `staged` remains available as a fallback. These are route candidates, not
