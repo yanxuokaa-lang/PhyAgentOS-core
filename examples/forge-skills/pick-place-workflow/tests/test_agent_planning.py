@@ -19,6 +19,7 @@ from pick_place_workflow.agent_planning import (
     bind_subtask_from_semantics,
     compose_agent_plan,
     compose_executable_pick_place_plan,
+    compose_relation_goal_plan,
     compose_subtask_plan,
     select_planning_mode,
 )
@@ -155,6 +156,13 @@ def test_agent_plan_rejects_duplicate_unknown_and_invalid_bindings():
         )
     with pytest.raises(ValidationError):
         AgentSubtaskSpec(subtask_id="red", entity_ref="not-an-entity")
+    with pytest.raises(ValidationError, match="relation.establish"):
+        AgentSubtaskSpec(
+            subtask_id="stack-top",
+            entity_ref="entity://stack-top",
+            goal_relation="on",
+            relation_target_ref="entity://stack-middle",
+        )
     with pytest.raises(AgentPlanningError, match="cycle"):
         compose_agent_plan(
             "task-1", "revision-1",
@@ -229,6 +237,159 @@ def test_executable_pick_place_projection_preserves_skill_order_and_bindings():
     assert nodes["red.acquire"].input_bindings["entity_ref"] == "entity://block-red-1"
     assert set(nodes["verify"].dependencies) == {"green.place", "red.place"}
     assert dict(plan.entity_bindings)["red.place"] == "entity://block-red-1"
+
+
+def _stack_goal_facts():
+    return {
+        "schema_version": "paos-task-goals/v1",
+        "task_name": "stack_blocks_three",
+        "motion_authorized": False,
+        "goals": [
+            {
+                "subtask_id": "place_base",
+                "execution_entity_ref": "entity://stack-block-1",
+                "goal_relation": "on",
+                "relation_target_ref": "surface://table",
+                "depends_on": [],
+                "required_evidence": [],
+                "produced_evidence": [
+                    "support-relation:entity://stack-block-1:surface://table",
+                    "stable-placement:entity://stack-block-1",
+                ],
+            },
+            {
+                "subtask_id": "place_middle",
+                "execution_entity_ref": "entity://stack-block-2",
+                "goal_relation": "on",
+                "relation_target_ref": "entity://stack-block-1",
+                "depends_on": ["place_base"],
+                "required_evidence": [
+                    "support-relation:entity://stack-block-1:surface://table",
+                ],
+                "produced_evidence": [
+                    "support-relation:entity://stack-block-2:entity://stack-block-1",
+                    "stable-placement:entity://stack-block-2",
+                ],
+            },
+            {
+                "subtask_id": "place_top",
+                "execution_entity_ref": "entity://stack-block-3",
+                "goal_relation": "on",
+                "relation_target_ref": "entity://stack-block-2",
+                "depends_on": ["place_middle"],
+                "required_evidence": [
+                    "support-relation:entity://stack-block-2:entity://stack-block-1",
+                ],
+                "produced_evidence": [
+                    "support-relation:entity://stack-block-3:entity://stack-block-2",
+                    "stable-placement:entity://stack-block-3",
+                ],
+            },
+        ],
+    }
+
+
+def _relation_segment(goal_id, revision, available_evidence):
+    observation_ref = f"observation://{revision}/head_camera"
+    return compose_relation_goal_plan(
+        "stack-task",
+        f"revision-{revision}",
+        _stack_goal_facts(),
+        subtask_id=goal_id,
+        scene_revision=revision,
+        observation_ref=observation_ref,
+        observation_frame_id="head_camera",
+        available_evidence=tuple((*available_evidence, observation_ref)),
+        planner_decision_digest="1" * 64,
+        policy_snapshot_digest="2" * 64,
+    )
+
+
+def test_relation_planner_compiles_one_fresh_scene_segment_at_a_time():
+    base = _relation_segment("place_base", "scene-0", ())
+    assert [node.node_id for node in base.graph.nodes] == ["place_base"]
+    assert base.graph.nodes[0].capability == "relation.establish"
+    assert base.graph.nodes[0].input_bindings["relation_target_ref"] == "surface://table"
+    assert base.graph.nodes[0].input_bindings["scene_revision"] == "scene-0"
+    assert base.graph.nodes[0].produced_evidence == (
+        "support-relation:entity://stack-block-1:surface://table",
+        "stable-placement:entity://stack-block-1",
+    )
+    with pytest.raises(ToolSelectionError, match="no Tool candidate"):
+        DynamicToolPlanner(base, ()).candidate_tools("place_base")
+
+    middle = _relation_segment(
+        "place_middle",
+        "scene-1",
+        base.graph.nodes[0].produced_evidence,
+    )
+    assert [node.node_id for node in middle.graph.nodes] == ["place_middle"]
+    assert middle.graph.nodes[0].input_bindings["observation_ref"] == "observation://scene-1/head_camera"
+    assert middle.graph.nodes[0].input_bindings["relation_target_ref"] == "entity://stack-block-1"
+    assert set(middle.graph.nodes[0].required_evidence) >= set(
+        base.graph.nodes[0].produced_evidence
+    )
+
+
+def test_relation_planner_requires_fresh_scene_and_settled_support_evidence():
+    kwargs = {
+        "task_id": "stack-task",
+        "revision_id": "revision-1",
+        "task_goal_facts": _stack_goal_facts(),
+        "subtask_id": "place_middle",
+        "scene_revision": "scene-1",
+        "observation_ref": "observation://scene-1/head_camera",
+        "observation_frame_id": "head_camera",
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+    }
+    with pytest.raises(AgentPlanningError, match="predecessor evidence"):
+        compose_relation_goal_plan(**kwargs, available_evidence=("observation://scene-1/head_camera",))
+    with pytest.raises(AgentPlanningError, match="current scene"):
+        compose_relation_goal_plan(
+            **{**kwargs, "observation_ref": "observation://scene-0/head_camera"},
+            available_evidence=("support-relation:entity://stack-block-1:surface://table",),
+        )
+    with pytest.raises(AgentPlanningError, match="identities must be non-empty"):
+        compose_relation_goal_plan(
+            **{**kwargs, "scene_revision": "", "observation_ref": "observation:///head_camera"},
+            available_evidence=("support-relation:entity://stack-block-1:surface://table",),
+        )
+
+
+def test_relation_planner_rejects_predecessors_without_settlement_evidence():
+    facts = _stack_goal_facts()
+    facts["goals"][0]["produced_evidence"] = []
+    with pytest.raises(AgentPlanningError, match="must declare settlement evidence"):
+        compose_relation_goal_plan(
+            "stack-task", "revision-1", facts,
+            subtask_id="place_middle",
+            scene_revision="scene-1",
+            observation_ref="observation://scene-1/head_camera",
+            observation_frame_id="head_camera",
+            available_evidence=(
+                "observation://scene-1/head_camera",
+                "support-relation:entity://stack-block-1:surface://table",
+            ),
+            planner_decision_digest="1" * 64,
+            policy_snapshot_digest="2" * 64,
+        )
+
+
+def test_relation_goal_cannot_be_compiled_as_static_pick_place():
+    relation = AgentSubtaskSpec(
+        subtask_id="stack-top",
+        entity_ref="entity://stack-block-3",
+        goal_relation="on",
+        relation_target_ref="entity://stack-block-2",
+        capability="relation.establish",
+    )
+    with pytest.raises(AgentPlanningError, match="fresh provider-resolved target"):
+        compose_executable_pick_place_plan(
+            "stack-task", "revision-1", (relation,),
+            planner_decision_digest="1" * 64,
+            policy_snapshot_digest="2" * 64,
+        )
 
 
 def test_executable_projection_admits_declared_tool_without_motion_authority():

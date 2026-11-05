@@ -20,18 +20,13 @@ from robotwin_backend import (
     RoboTwinSensorBackend,
     load_runtime_profile,
 )
-from robotwin_blocks_ranking_adapter import BlocksRankingRgbTaskAdapter, task_adapter
+from robotwin_blocks_ranking_adapter import task_adapter
 
 from robotwin20_adapter.persistent_action_approval import (
     DEFERRED_EXECUTION_CHECKS,
     RUNTIME_MONITORED_ACTION_MODE,
     validate_persistent_action_approval,
 )
-
-_RESERVED_EXECUTION_ACTORS = {
-    entity_ref: actor_name
-    for entity_ref, actor_name, _target_token in BlocksRankingRgbTaskAdapter.entities
-}
 
 
 class BindingPoseUnavailableError(ValueError):
@@ -234,6 +229,10 @@ class RoboTwinPersistentEngine:
         runtime = load_runtime_profile(Path(profile["runtime_profile"]).resolve())
         self.runtime_profile = runtime
         self.task_adapter = task_adapter(runtime["task_name"])
+        self._reserved_execution_actors = {
+            entity_ref: actor_name
+            for entity_ref, actor_name, _target_token in self.task_adapter.entities
+        }
         self._goal_facts_ref: str | None = None
         self.backend = RoboTwinSensorBackend(RoboTwinRuntimeProfile(
             runtime_root=Path(profile["runtime_root"]), artifact_root=self.root,
@@ -286,6 +285,8 @@ class RoboTwinPersistentEngine:
 
     def _query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         if operation == "oracle_grasp_candidates":
+            if not self.task_adapter.motion_execution_supported:
+                raise ValueError("task adapter does not support motion route preparation")
             if set(arguments) != {
                 "request", "provider_T_contact_center", "binding_ref"
             }:
@@ -369,7 +370,7 @@ class RoboTwinPersistentEngine:
             observed_bindings = {}
             captured_objects = binding_record.get("scene_facts", {}).get("objects", [])
             for binding in bindings:
-                expected_actor_name = _RESERVED_EXECUTION_ACTORS.get(binding["entity_ref"])
+                expected_actor_name = self._reserved_execution_actors.get(binding["entity_ref"])
                 if expected_actor_name is not None and (
                     binding["execution_entity_ref"] != binding["entity_ref"]
                     or binding["actor_name"] != expected_actor_name
@@ -427,6 +428,8 @@ class RoboTwinPersistentEngine:
             primary["views"] = views
             return primary
         if operation in {"route_readiness", "contact_qualification"}:
+            if not self.task_adapter.motion_execution_supported:
+                raise ValueError("task adapter does not support motion route preparation")
             from robotwin_route_planner import RoboTwinRouteEvaluator
             from robotwin_route_readiness_worker import _handle_factory
 
@@ -465,6 +468,8 @@ class RoboTwinPersistentEngine:
         raise ValueError(f"unsupported persistent query: {operation}")
 
     def _prepare(self, arguments: Mapping[str, Any]) -> None:
+        if not self.task_adapter.motion_execution_supported:
+            raise ValueError("task adapter does not support motion execution")
         request = arguments["route_request"]
         probe.validate_route_request(request)
         if request["scene_revision"] != self.backend.snapshot()["scene_revision"]:

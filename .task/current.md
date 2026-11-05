@@ -1,4 +1,16 @@
-# Current Task: full-chain over-defense cleanup (v17.1.0)
+
+# Current Task: RoboTwin relation-task planning expansion (v17.2.0)
+
+## Implemented: read-only `stack_blocks_three` semantics and fresh-scene Agent planning segments
+
+- Planner: `AgentSubtaskSpec` accepts relation goals with opaque target references; `compose_relation_goal_plan` binds one obligation to the current `scene_revision` and `observation_ref`, and requires settlement evidence for predecessor segments.
+- RoboTwin: `stack_blocks_three` exposes three support relations and observed actor geometry without static destination poses. Its Adapter declares `motion_execution_supported=False`; the persistent engine rejects static route and motion preparation. Existing `blocks_ranking_rgb` stays motion-capable.
+- Validation: 31 focused Agent-planning, action-approval and Adapter tests pass; Ruff and `git diff --check` pass. No simulation, camera, Action or motion was started.
+- Architecture boundary: Coordinator/AgentLoop does not yet expose parent-task continuation after segment settlement. This change is planning/Adapter groundwork, not end-to-end stack execution.
+- Next: define and implement same-parent continuation/revision append from a settled segment, require a fresh observation and its settlement evidence, then add a replaceable relation geometry/execution Provider. Keep `stack_blocks_three` non-executable until that path exists.
+- Implementation commit: pending.
+
+# Previous Task: full-chain over-defense cleanup (v17.1.0)
 
 ## v17.1.0 / review adjudicated, cleanup complete and validated
 
@@ -705,3 +717,15 @@ PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/ro
   examples/forge-adapters/isaacsim_lab/tests \
   examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py
 ```
+# Current Task: RoboTwin relation-task planning expansion (v17.2.0)
+
+## Implemented: read-only `stack_blocks_three` semantics and fresh-scene Agent planning segments
+
+- Planner: `AgentSubtaskSpec` accepts relation goals with opaque target references; `compose_relation_goal_plan` binds one obligation to the current `scene_revision` and `observation_ref`, and requires settlement evidence for predecessor segments.
+- RoboTwin: `stack_blocks_three` exposes three support relations and observed actor geometry without static destination poses. Its Adapter declares `motion_execution_supported=False`; the persistent engine rejects static route and motion preparation. Existing `blocks_ranking_rgb` stays motion-capable.
+- Validation: 31 focused Agent-planning, action-approval and Adapter tests pass; Ruff and `git diff --check` pass. No simulation, camera, Action or motion was started.
+- Architecture boundary: Coordinator/AgentLoop does not yet expose parent-task continuation after segment settlement. This change is planning/Adapter groundwork, not end-to-end stack execution.
+- Next: define and implement same-parent continuation/revision append from a settled segment, require a fresh observation and its settlement evidence, then add a replaceable relation geometry/ execution Provider. Keep `stack_blocks_three` non-executable until that path exists.
+- Implementation commit: pending.
+
+# Previous Task: full-chain over-defense cleanup (v17.1.0)

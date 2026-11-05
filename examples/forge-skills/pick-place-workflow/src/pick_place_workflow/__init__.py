@@ -12,6 +12,7 @@ from .agent_planning import (
     bind_subtask_from_semantics_async,
     compose_agent_plan,
     compose_executable_pick_place_plan,
+    compose_relation_goal_plan,
     compose_subtask_plan,
     select_planning_mode,
 )
@@ -189,6 +190,7 @@ __all__ = [
     "ToolSelectionError",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
+    "compose_relation_goal_plan",
     "compose_subtask_plan",
     "PerceptionBinding",
     "SubtaskExecutionError",

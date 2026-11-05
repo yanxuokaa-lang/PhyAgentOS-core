@@ -15,6 +15,7 @@ class BlocksRankingRgbTaskAdapter:
     """Expose task facts without taking over Agent planning or Action admission."""
 
     task_name = "blocks_ranking_rgb"
+    motion_execution_supported = True
     entities = (
         ("entity://block-red-1", "block1", "red-slot"),
         ("entity://block-green-1", "block2", "green-slot"),
@@ -93,29 +94,7 @@ class BlocksRankingRgbTaskAdapter:
         }
 
     def benchmark_result(self, task: Any, *, seed: int, scene_revision: str) -> dict[str, Any]:
-        check_success = getattr(task, "check_success", None)
-        if not callable(check_success):
-            raise BlocksRankingRgbTaskAdapterError(
-                "blocks_ranking_rgb benchmark evaluator is unavailable"
-            )
-        success = check_success()
-        if not isinstance(success, bool):
-            try:
-                success = bool(success)
-            except Exception as exc:
-                raise BlocksRankingRgbTaskAdapterError(
-                    "blocks_ranking_rgb benchmark result is invalid"
-                ) from exc
-        return {
-            "schema_version": "paos-robotwin20-benchmark-result/v1",
-            "task_name": self.task_name,
-            "seed": seed,
-            "scene_revision": scene_revision,
-            "success": success,
-            "score": 1.0 if success else 0.0,
-            "evaluated_at": datetime.now(timezone.utc).isoformat(),
-            "motion_authorized": False,
-        }
+        return _benchmark_result(task, self.task_name, seed=seed, scene_revision=scene_revision)
 
     def oracle_grasp_candidates(
         self,
@@ -241,10 +220,123 @@ class BlocksRankingRgbTaskAdapter:
         }
 
 
-def task_adapter(task_name: str) -> BlocksRankingRgbTaskAdapter:
-    adapter = BlocksRankingRgbTaskAdapter()
+class StackBlocksThreeTaskAdapter:
+    """Expose stack relations without claiming current target geometry or motion."""
+
+    task_name = "stack_blocks_three"
+    motion_execution_supported = False
+    entities = (
+        ("entity://stack-block-1", "block1", None),
+        ("entity://stack-block-2", "block2", None),
+        ("entity://stack-block-3", "block3", None),
+    )
+
+    def validate_task_name(self, task_name: str) -> None:
+        if task_name != self.task_name:
+            raise BlocksRankingRgbTaskAdapterError(
+                f"task adapter {self.task_name} does not support {task_name}"
+            )
+
+    def capture_objects(self, task: Any, *, include_targets: bool) -> list[dict[str, Any]]:
+        if include_targets:
+            raise BlocksRankingRgbTaskAdapterError(
+                "stack relation targets require fresh support geometry; static route targets are unavailable"
+            )
+        objects: list[dict[str, Any]] = []
+        for entity_ref, actor_attribute, _ in self.entities:
+            actor = getattr(task, actor_attribute, None)
+            if actor is None or not callable(getattr(actor, "get_functional_point", None)):
+                raise BlocksRankingRgbTaskAdapterError(
+                    "stack_blocks_three actor binding is unavailable"
+                )
+            world_object = _matrix(actor.get_pose())
+            world_functional = _matrix(actor.get_functional_point(0, "pose"))
+            objects.append({
+                "entity_ref": entity_ref,
+                "actor_name": actor_attribute,
+                "object_frame_id": entity_ref.removeprefix("entity://"),
+                "world_T_object": _flatten(world_object),
+                "world_T_functional_point": _flatten(world_functional),
+                "half_extents_m": _half_extents(actor),
+                "functional_point_id": 0,
+            })
+        return objects
+
+    def goal_facts(self, task: Any, *, seed: int) -> dict[str, Any]:
+        del task
+        relations = (
+            ("place_base", "entity://stack-block-1", "surface://table", ()),
+            ("place_middle", "entity://stack-block-2", "entity://stack-block-1", ("place_base",)),
+            ("place_top", "entity://stack-block-3", "entity://stack-block-2", ("place_middle",)),
+        )
+        goals = [
+            {
+                "subtask_id": subtask_id,
+                "execution_entity_ref": entity_ref,
+                "goal_relation": "on",
+                "relation_target_ref": target_ref,
+                "depends_on": list(dependencies),
+                "required_evidence": (
+                    [] if not dependencies else [
+                        f"support-relation:{relations[index - 1][1]}:{relations[index - 1][2]}"
+                    ]
+                ),
+                "produced_evidence": [
+                    f"support-relation:{entity_ref}:{target_ref}",
+                    f"stable-placement:{entity_ref}",
+                ],
+            }
+            for index, (subtask_id, entity_ref, target_ref, dependencies) in enumerate(relations)
+        ]
+        return {
+            "schema_version": "paos-task-goals/v1",
+            "task_name": self.task_name,
+            "seed": seed,
+            "geometry_source": "benchmark_task_definition",
+            "goals": goals,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "motion_authorized": False,
+        }
+
+    def benchmark_result(self, task: Any, *, seed: int, scene_revision: str) -> dict[str, Any]:
+        return _benchmark_result(task, self.task_name, seed=seed, scene_revision=scene_revision)
+
+
+def task_adapter(task_name: str) -> BlocksRankingRgbTaskAdapter | StackBlocksThreeTaskAdapter:
+    adapters = {
+        "blocks_ranking_rgb": BlocksRankingRgbTaskAdapter,
+        "stack_blocks_three": StackBlocksThreeTaskAdapter,
+    }
+    adapter_type = adapters.get(task_name)
+    if adapter_type is None:
+        raise BlocksRankingRgbTaskAdapterError(f"task adapter does not support {task_name}")
+    adapter = adapter_type()
     adapter.validate_task_name(task_name)
     return adapter
+
+
+def _benchmark_result(task: Any, task_name: str, *, seed: int, scene_revision: str) -> dict[str, Any]:
+    check_success = getattr(task, "check_success", None)
+    if not callable(check_success):
+        raise BlocksRankingRgbTaskAdapterError(
+            f"{task_name} benchmark evaluator is unavailable"
+        )
+    try:
+        success = bool(check_success())
+    except Exception as exc:
+        raise BlocksRankingRgbTaskAdapterError(
+            f"{task_name} benchmark result is invalid"
+        ) from exc
+    return {
+        "schema_version": "paos-robotwin20-benchmark-result/v1",
+        "task_name": task_name,
+        "seed": seed,
+        "scene_revision": scene_revision,
+        "success": success,
+        "score": 1.0 if success else 0.0,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "motion_authorized": False,
+    }
 
 
 def _matrix(pose: Any) -> list[list[float]]:

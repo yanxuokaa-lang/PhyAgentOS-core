@@ -127,6 +127,8 @@ class AgentSubtaskSpec(BaseModel):
     subtask_id: str
     entity_ref: str
     destination_ref: str | None = Field(default=None, min_length=1)
+    goal_relation: str | None = None
+    relation_target_ref: str | None = None
     capability: str = "object.relocate"
     depends_on: tuple[str, ...] = ()
     required_evidence: tuple[str, ...] = ()
@@ -148,9 +150,25 @@ class AgentSubtaskSpec(BaseModel):
             raise ValueError("entity_ref must be an entity:// reference")
         return value
 
+    @field_validator("goal_relation")
+    @classmethod
+    def relation_identity(cls, value: str | None) -> str | None:
+        if value is not None and _SAFE_ID.fullmatch(value) is None:
+            raise ValueError("goal_relation must be a path-safe identifier")
+        return value
+
+    @field_validator("relation_target_ref")
+    @classmethod
+    def relation_target_identity(cls, value: str | None) -> str | None:
+        if value is not None and ("://" not in value or value.startswith("://")):
+            raise ValueError("relation_target_ref must be an opaque URI reference")
+        return value
+
     @field_validator("depends_on", "required_evidence", "produced_evidence")
     @classmethod
     def unique_values(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not item.strip() for item in value):
+            raise ValueError("subtask values must be non-empty")
         if len(value) != len(set(value)):
             raise ValueError("subtask values must be unique")
         return value
@@ -164,6 +182,19 @@ class AgentSubtaskSpec(BaseModel):
         if any(not key or not val for key, val in value):
             raise ValueError("context bindings must contain non-empty strings")
         return value
+
+    @model_validator(mode="after")
+    def validate_goal_binding(self) -> "AgentSubtaskSpec":
+        if (self.goal_relation is None) != (self.relation_target_ref is None):
+            raise ValueError("goal_relation and relation_target_ref must be supplied together")
+        if self.goal_relation is not None and self.destination_ref is not None:
+            raise ValueError("relation goals cannot also bind a static destination")
+        if self.goal_relation is not None and self.capability != "relation.establish":
+            raise ValueError("relation goals require relation.establish capability")
+        reserved = {"entity_ref", "destination_ref", "goal_relation", "relation_target_ref"}
+        if reserved.intersection(key for key, _ in self.context_bindings):
+            raise ValueError("context bindings cannot override semantic goal fields")
+        return self
 
 
 class AgentComposedPlan(BaseModel):
@@ -233,6 +264,10 @@ def compose_agent_plan(
             input_bindings={
                 "entity_ref": item.entity_ref,
                 **({"destination_ref": item.destination_ref} if item.destination_ref is not None else {}),
+                **({
+                    "goal_relation": item.goal_relation,
+                    "relation_target_ref": item.relation_target_ref,
+                } if item.goal_relation is not None else {}),
                 **dict(item.context_bindings),
             },
         )
@@ -261,6 +296,126 @@ def compose_agent_plan(
     return AgentComposedPlan(
         graph=graph,
         entity_bindings=tuple((item.subtask_id, item.entity_ref) for item in subtasks),
+    )
+
+
+def compose_relation_goal_plan(
+    task_id: str,
+    revision_id: str,
+    task_goal_facts: dict[str, Any],
+    *,
+    subtask_id: str,
+    scene_revision: str,
+    observation_ref: str,
+    observation_frame_id: str,
+    available_evidence: tuple[str, ...],
+    planner_decision_digest: str,
+    policy_snapshot_digest: str,
+) -> AgentComposedPlan:
+    """Compile one relation obligation for the current observed scene revision.
+
+    Relation nodes are intentionally not mapped to ``object.place``. A
+    provider must resolve their geometry from a fresh scene before an
+    executable pick-place plan can be compiled. Completing this segment does
+    not settle the parent task or authorize motion.
+    """
+    if (
+        not isinstance(task_goal_facts, dict)
+        or task_goal_facts.get("schema_version") != "paos-task-goals/v1"
+        or task_goal_facts.get("motion_authorized") is not False
+        or not isinstance(task_goal_facts.get("goals"), list)
+    ):
+        raise AgentPlanningError("task goal facts are invalid or motion-authorized")
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in (
+            task_id, revision_id, subtask_id, scene_revision, observation_ref,
+            observation_frame_id,
+        )
+    ):
+        raise AgentPlanningError("relation plan identities must be non-empty")
+    if observation_ref != f"observation://{scene_revision}/{observation_frame_id}":
+        raise AgentPlanningError("relation plan requires an observation bound to the current scene")
+    goals_by_id: dict[str, dict[str, Any]] = {}
+    for goal in task_goal_facts["goals"]:
+        if not isinstance(goal, dict):
+            raise AgentPlanningError("relation goal entry must be an object")
+        goal_id = goal.get("subtask_id")
+        if not isinstance(goal_id, str) or goal_id in goals_by_id:
+            raise AgentPlanningError("relation goal identities must be unique")
+        goals_by_id[goal_id] = goal
+    try:
+        catalog = tuple(AgentSubtaskSpec(
+            subtask_id=goal["subtask_id"],
+            entity_ref=goal["execution_entity_ref"],
+            goal_relation=goal["goal_relation"],
+            relation_target_ref=goal["relation_target_ref"],
+            capability="relation.establish",
+            depends_on=tuple(goal.get("depends_on", ())),
+            required_evidence=tuple(goal.get("required_evidence", ())),
+            produced_evidence=tuple(goal.get("produced_evidence", ())),
+        ) for goal in goals_by_id.values())
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AgentPlanningError(f"relation goal entry is invalid: {exc}") from exc
+    compose_agent_plan(
+        task_id,
+        revision_id,
+        catalog,
+        planner_decision_digest=planner_decision_digest,
+        policy_snapshot_digest=policy_snapshot_digest,
+    )
+    specs_by_id = {item.subtask_id: item for item in catalog}
+    predecessor_ids = {parent for item in catalog for parent in item.depends_on}
+    if any(not specs_by_id[parent].produced_evidence for parent in predecessor_ids):
+        raise AgentPlanningError("relation predecessors must declare settlement evidence")
+    goal = goals_by_id.get(subtask_id)
+    if goal is None:
+        raise AgentPlanningError(f"unknown relation subtask: {subtask_id}")
+    spec = next(item for item in catalog if item.subtask_id == subtask_id)
+    required = set(spec.required_evidence) | {observation_ref}
+    if not required <= set(available_evidence):
+        raise AgentPlanningError("relation segment lacks fresh scene or predecessor evidence")
+    if any(parent not in goals_by_id for parent in spec.depends_on):
+        raise AgentPlanningError("relation goal dependency references an unknown subtask")
+    for parent in spec.depends_on:
+        parent_evidence = set(specs_by_id[parent].produced_evidence)
+        if not parent_evidence <= set(available_evidence):
+            raise AgentPlanningError("relation goal predecessors are not settled")
+        required.update(parent_evidence)
+    node = PlanNode(
+        node_id=spec.subtask_id,
+        obligation_id=spec.subtask_id,
+        capability="relation.establish",
+        required_evidence=tuple(sorted(required)),
+        produced_evidence=spec.produced_evidence,
+        dependencies=(),
+        input_bindings={
+            "entity_ref": spec.entity_ref,
+            "goal_relation": spec.goal_relation,
+            "relation_target_ref": spec.relation_target_ref,
+            "scene_revision": scene_revision,
+            "observation_ref": observation_ref,
+            "observation_frame_id": observation_frame_id,
+        },
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": planner_decision_digest,
+        "policy_snapshot_digest": policy_snapshot_digest,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    try:
+        validate_graph(graph)
+    except ValueError as exc:
+        raise AgentPlanningError(str(exc)) from exc
+    return AgentComposedPlan(
+        graph=graph,
+        entity_bindings=((spec.subtask_id, spec.entity_ref),),
     )
 
 
@@ -298,6 +453,10 @@ def compose_executable_pick_place_plan(
     known = set(ids)
     if any(set(item.depends_on) - known for item in subtasks):
         raise AgentPlanningError("subtask dependency references an unknown subtask")
+    if any(item.goal_relation is not None for item in subtasks):
+        raise AgentPlanningError(
+            "relation goals require a fresh provider-resolved target before executable pick-place compilation"
+        )
 
     nodes: list[PlanNode] = []
     bindings: list[tuple[str, str]] = []
@@ -556,6 +715,7 @@ __all__ = [
     "bind_subtask_from_semantics_async",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
+    "compose_relation_goal_plan",
     "compose_subtask_plan",
     "select_planning_mode",
 ]

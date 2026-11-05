@@ -49,6 +49,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.2.0 (2026-11-05 22:19) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [feat] 新增关系目标 Agent 规划入口，按当前 observation/scene revision 编译单条义务，并要求前序结算证据；关系目标不投影为静态 `object.place`。 / Add relation-goal Agent planning that compiles one obligation per current observation/scene revision and requires predecessor settlement evidence; relation goals are not projected to static `object.place`. (local)
+- [env] [feat] RoboTwin `stack_blocks_three` Adapter 只暴露关系目标和观测 actor 几何，不生成静态目标位姿；该任务被明确阻止进入 route/motion preparation。 / The RoboTwin `stack_blocks_three` Adapter exposes relation goals and observed actor geometry without static target poses; route/motion preparation is explicitly blocked for this task. (local)
+- [eval] [test] 31 项 Agent planning、RoboTwin approval/Adapter 定向测试通过；Ruff 与 diff whitespace 检查通过。 / 31 focused Agent-planning and RoboTwin approval/Adapter tests pass; Ruff and diff whitespace checks pass. (local)
+
+### 文件变更详情 / File Changes
+- `agent_planning.py` L122-L197, L237-L299, L302-L410：关系目标模型及 fresh-scene 单段编译。 / Relation-goal model and fresh-scene segment compilation.
+- `robotwin_blocks_ranking_adapter.py` L223-L339、`robotwin_persistent_engine.py` L226-L237, L285-L288, L370-L377, L428-L433, L468-L472：stack task facts、Adapter-derived actor identity 与拒绝运动路径。 / Stack task facts, Adapter-derived actor identity and motion-path refusal.
+- `test_agent_planning.py` L308-L394、`test_robotwin_task_adapters.py` L1-L88、`test_persistent_action_approval.py` L267-L276, L327-L337, L418-L430：段规划、fake task 与 capability fixtures 回归。 / Segment-planning, fake-task and capability-fixture regressions.
+- `.task/current.md` L1-L13、`changelog/2026-11_part2.md` L346-L404：状态、边界、验证和后续续段工作。 / Status, boundary, validation and continuation follow-up.
+
+### 关键 Diff / Key Diff
+```diff
++def compose_relation_goal_plan(..., scene_revision, observation_ref, available_evidence, ...):
++    # Compile one current-revision relation segment; require settled predecessors.
++    # Do not lower relation.establish to static object.place.
++motion_execution_supported = False  # stack_blocks_three
++if not self.task_adapter.motion_execution_supported:
++    raise ValueError("task adapter does not support motion route preparation")
+```
+
+### 架构与验证 / Architecture and Validation
+- Coordinator/AgentLoop 尚无父任务续段生命周期入口；本次不宣称支持完整堆叠执行。下一步先实现结算后同父任务追加 revision、新 observation/evidence 接续，再接 relation Provider；期间 stack task 保持不可执行。 / Coordinator/AgentLoop lacks parent-task continuation lifecycle support; this change does not claim end-to-end stacking execution. Next, implement same-parent revision append after settlement with fresh observation/evidence, then connect a relation Provider; keep the stack task non-executable meanwhile.
+- 未启动仿真、相机、Action 或运动。 / No simulator, camera, Action or motion was started.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`。Implementation commit: pending. / Implementation commit: pending.
+
 ## v17.1.0 (2026-11-05 23:55) - codex
 
 ### 变更摘要 / Change Summary
@@ -168,7 +198,6 @@
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`.
 - 尚未提交,等待用户审核。 / Not committed, pending user review. (local)
-
 ### v16.10.1 预测验证 / Prediction validated (2026-11-05 23:05)
 
 - [eval] [exp] fresh 无运动跑 `out/lab-fullchain-truth-20261105-v16_10_1-no-motion-r1/`(task_7706c39bbe6a47eb)证实预测:漏斗 505→5→**0**,候选 56/60/178 的终态采样均为 solution_count=8、collision_free_count=0,以 `grasp_terminal_arm_infeasible` 秒级拒绝;100 死于终态夹爪碰撞,233 死于物理孔径极限。零路线搜索、零 600 秒燃烧,agent 回复列出全部门因。56/60 的历史单种子否决获正向证据确认。结论:当前夹具不存在任务合格抓取;孔径物理排除、几何门有谱系保留;剩余杠杆为夹具几何(垫高/外移试剂瓶,precedent:rod-storage patch),待用户批准。 / A fresh no-motion run confirms the prediction: funnel 505→5→0 with candidates 56/60/178 each sampled at 8 solutions and 0 collision-free branches, rejected `grasp_terminal_arm_infeasible` in seconds; 100 dies at final-gripper collision and 233 at the physical aperture limit. Zero route search, zero 600-second burn, and the agent response lists every gate reason. The historical single-seed rejections of 56/60 are confirmed with positive evidence. Consequence: no task-qualified grasp exists on this fixture; aperture widening is physically excluded, the gate set stands on lineage, and the remaining lever is fixture geometry (raise or relocate the reagent bottles), pending user approval. (local)
@@ -207,37 +236,3 @@
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`.
 - 尚未提交,等待用户审核。 / Not committed, pending user review. (local)
-
-## v16.9.9 (2026-11-05 20:05) - claude
-
-### 变更摘要 / Change Summary
-- [sense] [feat] `LabGraspTaskAffordanceProvider.propose` 增加漏斗统计:几何门首败计数、探测前几何幸存数、探测拒绝计数、评估数与最终合格数,经既有 store 写入私有 `grasp-affordance-funnel` 工件,候选集记录 `funnel_ref` 并在 `perception.diagnostics` 存在时镜像;公共响应 schema 不变。 / Add funnel statistics to `LabGraspTaskAffordanceProvider.propose`: first-failure gate-reject counts, pre-probe geometry-survivor count, probe-reject counts, evaluated and final-qualified counts, persisted as a private `grasp-affordance-funnel` artifact through the existing store, with `funnel_ref` on the candidate set and a diagnostics mirror when available; the public response schema is unchanged. (local)
-- [sense] [tool] 新增离线回放器 `replay_task_affordance_funnel.py`:从既有 run 的 calibration、observed-geometry rim、object point cloud 与 grasp predictions 复放几何门漏斗,回执仅写入 scratch store,零 motion、零任务。 / Add offline replay `replay_task_affordance_funnel.py` that replays the geometric gate funnel from a persisted run's calibration, observed-geometry rim, object point cloud and grasp predictions; receipts go to a scratch store only, with zero motion and no task. (local)
-- [docs] [diag] 保存 v16.9.8 全路线 witness 画像(死因矩阵、失败点几何、505→5→1 漏斗链)、AgentLoop 审核与开放决策;不放宽任何阈值。 / Save the v16.9.8 full-route witness profile (failure matrix, failure-point geometry, 505→5→1 funnel chain), the AgentLoop review and open decisions; no threshold is relaxed. (local)
-
-### 预期修改 / Planned Files
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py`
-- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py`
-- `examples/forge-adapters/isaacsim_lab/scripts/replay_task_affordance_funnel.py`
-- `.task/labutopia-r05-fullroute-witness-profile-20261105.md`
-- `.task/current.md`
-
-### 关键 Diff / Key Diff
-```diff
-+ gate_rejects: Counter[str] = Counter()
-+ probe_rejects: Counter[str] = Counter()
-+ funnel = {"operation": ..., "evaluated": len(grasp_candidates),
-+           "geometry_qualified": geometry_qualified,
-+           "gate_rejects": dict(sorted(gate_rejects.items())),
-+           "probe_rejects": dict(sorted(probe_rejects.items())),
-+           "qualified": len(candidates)}
-+ funnel_ref = self.perception.store.write("grasp-affordance-funnel", funnel)
-```
-
-### 验证 / Validation
-- [eval] [test] Isaac Adapter + subtask executor 全量 495 passed、2 skipped(既有 native-USD skips);`test_visual_perception.py` 75 passed(含新漏斗回归);Ruff、compileall 通过。 / Full Isaac Adapter plus subtask executor suite passes 495 with two pre-existing native-USD skips; `test_visual_perception.py` passes 75 including the new funnel regression; Ruff and compileall pass. (local)
-- [eval] [exp] 回放器在 v16.9.8 R05 证据上精确复现线上行为:evaluated=505、geometry_qualified=5、幸存者 60/56/100/178/233 与五份探测回执一致;门直方图 support-end 178 / opening 146 / closing-axis 74 / occlusion 35 / asymmetric 34 / bilateral 31 / finger-span 2。 / The replay reproduces online behaviour exactly on v16.9.8 R05 evidence: evaluated=505, geometry_qualified=5, survivors 60/56/100/178/233 matching the five persisted probe receipts; gate histogram support-end 178, opening 146, closing-axis 74, occlusion 35, asymmetric 34, bilateral 31, finger-span 2. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`.
-- 尚未提交,等待用户审核(本轮另含 3 个可证明死亡的 robotwin20 脚本删除:evaluate_open_world_scene_understanding.py、qwen3_vl_worker.py、run_approved_simulation_probe.py,全语料零引用)。 / Not committed, pending user review (this round also removes three provably dead robotwin20 scripts with zero corpus references: evaluate_open_world_scene_understanding.py, qwen3_vl_worker.py, run_approved_simulation_probe.py). (local)

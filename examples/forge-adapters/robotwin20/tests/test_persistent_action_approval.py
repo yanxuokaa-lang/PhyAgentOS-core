@@ -267,7 +267,9 @@ def test_engine_rejects_changed_approval_before_action_setup(tmp_path):
     engine = object.__new__(RoboTwinPersistentEngine)
     engine.root = tmp_path
     engine.profile = {"simulation_action_mode": "runtime_monitored"}
-    engine.task_adapter = SimpleNamespace(task_name="blocks_ranking_rgb")
+    engine.task_adapter = SimpleNamespace(
+        task_name="blocks_ranking_rgb", motion_execution_supported=True
+    )
     engine.backend = SimpleNamespace(
         snapshot=lambda: snapshots.append(True)
         or {"scene_revision": route["scene_revision"]}
@@ -325,7 +327,9 @@ def test_engine_uses_validated_runtime_identity_not_host_profile(tmp_path, monke
     engine.profile = {"simulation_action_mode": "runtime_monitored"}
     engine.runtime_profile = {"robot_identity": "franka-panda"}
     engine.duration = 30.0
-    engine.task_adapter = SimpleNamespace(task_name="blocks_ranking_rgb")
+    engine.task_adapter = SimpleNamespace(
+        task_name="blocks_ranking_rgb", motion_execution_supported=True
+    )
     engine.backend = SimpleNamespace(
         snapshot=lambda: {"scene_revision": route["scene_revision"]}
     )
@@ -414,7 +418,9 @@ def _engine_prepare_fixture(tmp_path, monkeypatch, *, drift=False):
     engine.runtime_profile = {"robot_identity": "fixture-robot"}
     engine.duration = 10.0
     engine.stop = SimpleNamespace(exists=lambda: False)
-    engine.task_adapter = SimpleNamespace(task_name="fixture-task")
+    engine.task_adapter = SimpleNamespace(
+        task_name="fixture-task", motion_execution_supported=True
+    )
     engine.backend = SimpleNamespace(
         _task=task,
         snapshot=lambda: {"scene_revision": route["scene_revision"]},
