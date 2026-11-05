@@ -256,6 +256,8 @@ class _ProjectedDriver:
             "retryable_in_revision": raw.get("retryable_in_revision", False),
             "requires_replan": raw.get("requires_replan", False),
             "recommended_action": raw.get("recommended_action", "continue" if success else "stop"),
+            "returned_to_safe_pose": raw.get("returned_to_safe_pose", False),
+            "observation_ready": raw.get("observation_ready", False),
             "phase": raw.get("phase", self.phase),
             "selected_arm": raw.get("selected_arm"),
             "failed_phase": raw.get("failed_phase"),

@@ -97,7 +97,7 @@ output_schema:
         capability_outcome_summary:
           type: object
           additionalProperties: false
-          required: [arm_attempts, artifact_refs, bounded_metric_names, capability_phase, evidence_availability, evidence_refs, failed_phase, failure_code, failure_owner, outcome_known, phase, recommended_action, requires_replan, retryable_in_revision, selected_arm, status, version, world_change_started]
+          required: [arm_attempts, artifact_refs, bounded_metric_names, capability_phase, evidence_availability, evidence_refs, failed_phase, failure_code, failure_owner, observation_ready, outcome_known, phase, recommended_action, requires_replan, retryable_in_revision, returned_to_safe_pose, selected_arm, status, version, world_change_started]
           properties:
             version: {const: capability_outcome_summary_v1}
             capability_phase: {enum: [approach, contact, close, lift, hold, none]}
@@ -116,6 +116,8 @@ output_schema:
             retryable_in_revision: {type: boolean}
             requires_replan: {type: boolean}
             recommended_action: {type: string, minLength: 1}
+            returned_to_safe_pose: {type: boolean}
+            observation_ready: {type: boolean}
             phase: {type: string, minLength: 1}
             selected_arm: {type: [string, 'null']}
             failed_phase: {type: [string, 'null']}

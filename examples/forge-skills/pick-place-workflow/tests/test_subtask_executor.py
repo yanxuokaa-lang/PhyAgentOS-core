@@ -156,10 +156,11 @@ class SubtaskPreparationEndpoint:
 
 
 def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False,
-                                  validate_production_schemas=False, assignment_store=None):
+                                  validate_production_schemas=False, assignment_store=None,
+                                  acquire_result=None):
     runtime = CapabilityRuntime()
     for tool_id, result in {
-        "object.acquire": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
+        "object.acquire": acquire_result or {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
         "object.pour": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-3", "evidence_refs": ["artifact://feedback/pour-1"]},
         "object.place": {"status": "succeeded", "outcome_known": True, "possession_state": "empty", "world_change_started": True, "new_scene_revision": "scene-4", "evidence_refs": ["artifact://feedback/place-1"]},
     }.items():
@@ -681,6 +682,97 @@ def test_prepare_failure_replan_hint_requires_known_zero_motion_route_rejection(
         )
     )
     assert result.requires_replan is False
+
+
+def recovered_acquire_failure(**changes):
+    value = {
+        "status": "failed",
+        "outcome_known": True,
+        "world_change_started": True,
+        "scene_revision": "scene-1",
+        "new_scene_revision": "scene-2",
+        "possession_state": "empty",
+        "object_support_state": "on_support",
+        "failure_owner": "execution",
+        "failure_code": "physical_grasp_lost",
+        "retryable_in_revision": False,
+        "requires_replan": True,
+        "recommended_action": "refresh_perception_before_motion",
+        "returned_to_safe_pose": True,
+        "observation_ready": True,
+    }
+    value.update(changes)
+    return value
+
+
+def test_known_recovered_acquire_failure_requires_fresh_perception_replan():
+    values = responses()
+    values["object.acquire"] = recovered_acquire_failure()
+    invoker = Invoker(values)
+
+    result = SubtaskExecutor(invoker).execute(
+        SubtaskSpec(
+            subtask_id="pour-a", operation="pour", binding=binding(),
+            parameters=pour_parameters(),
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.outcome_known is True
+    assert result.possession_state == "empty"
+    assert result.scene_revision == "scene-2"
+    assert result.requires_replan is True
+    assert result.recommended_action == "refresh_perception_before_motion"
+    assert [tool_id for tool_id, _ in invoker.calls] == [
+        "manipulation.prepare", "object.acquire",
+    ]
+
+
+@pytest.mark.parametrize("changes", [
+    {"returned_to_safe_pose": False},
+    {"observation_ready": False},
+    {"possession_state": "holding"},
+    {"object_support_state": "unknown"},
+    {"retryable_in_revision": True},
+    {"new_scene_revision": "scene-1"},
+])
+def test_action_failure_replan_hint_requires_complete_safe_recovery(changes):
+    values = responses()
+    values["object.acquire"] = recovered_acquire_failure(**changes)
+
+    result = SubtaskExecutor(Invoker(values)).execute(
+        SubtaskSpec(
+            subtask_id="pour-a", operation="pour", binding=binding(),
+            parameters=pour_parameters(),
+        )
+    )
+
+    assert result.requires_replan is False
+
+
+def test_runtime_summary_preserves_safe_recovery_facts_for_agentloop():
+    acquire = recovered_acquire_failure()
+    acquire["capability_outcome_summary"] = dict(acquire)
+    runtime = runtime_with_subtask_endpoint(acquire_result=acquire)
+    spec = SubtaskSpec(
+        subtask_id="pour-a", operation="pour", binding=binding(),
+        parameters=pour_parameters(),
+    )
+    outer = runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(spec),
+        caller_id="paos:task-1:revision-1:record-1",
+    )["invocation_id"]
+    for _ in range(10):
+        result = runtime.invocation_result(outer)
+        if result["status"] != "pending":
+            break
+
+    assert result["status"] == "failed"
+    summary = result["result"]["capability_outcome_summary"]
+    assert summary["requires_replan"] is True
+    assert summary["recommended_action"] == "refresh_perception_before_motion"
+    assert summary["returned_to_safe_pose"] is True
+    assert summary["observation_ready"] is True
 
 
 def test_executor_unknown_and_cancel_are_not_success():

@@ -208,6 +208,8 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
             "retryable_in_revision": False,
             "requires_replan": False,
             "recommended_action": "continue",
+            "returned_to_safe_pose": False,
+            "observation_ready": False,
             "phase": "acquire",
             "selected_arm": None,
             "failed_phase": None,
@@ -388,6 +390,61 @@ def test_known_acquisition_postcondition_facts_are_projected_with_complete_measu
     assert summary["object_support_state"] == "on_support"
     assert summary["acquisition_measurement"]["support_clearance_m"] == 0.001
     jsonschema.validate(result, ACQUIRE_TOOL_SPEC["output_schema"]["properties"]["result"])
+
+
+def test_known_safe_acquire_failure_projects_fresh_observation_recovery_facts():
+    snapshot = successful_snapshot(
+        capability_phase="lift",
+        status="failed",
+        failure_owner="execution",
+        failure_code="physical_grasp_lost",
+        outcome_known=True,
+        possession_state="empty",
+        object_support_state="on_support",
+        requires_replan=True,
+        recommended_action="refresh_perception_before_motion",
+        retryable_in_revision=False,
+        returned_to_safe_pose=True,
+        observation_ready=True,
+    )
+
+    admitted = ObjectAcquireEndpoint(Provider(snapshot)).admit(request_payload())
+
+    summary = admitted.terminal_result["capability_outcome_summary"]
+    assert summary["returned_to_safe_pose"] is True
+    assert summary["observation_ready"] is True
+    assert summary["recommended_action"] == "refresh_perception_before_motion"
+
+
+@pytest.mark.parametrize("changes", [
+    {"returned_to_safe_pose": False},
+    {"observation_ready": False},
+    {"possession_state": "holding"},
+    {"object_support_state": "unknown"},
+    {"retryable_in_revision": True},
+    {"world_change_started": False},
+])
+def test_fresh_observation_recovery_requires_complete_safe_terminal_facts(changes):
+    overrides = dict(
+        capability_phase="lift",
+        status="failed",
+        failure_owner="execution",
+        failure_code="physical_grasp_lost",
+        outcome_known=True,
+        possession_state="empty",
+        object_support_state="on_support",
+        requires_replan=True,
+        recommended_action="refresh_perception_before_motion",
+        retryable_in_revision=False,
+        returned_to_safe_pose=True,
+        observation_ready=True,
+    )
+    overrides.update(changes)
+    snapshot = successful_snapshot(**overrides)
+
+    rejected = ObjectAcquireEndpoint(Provider(snapshot)).admit(request_payload())
+
+    assert rejected.code == "invalid_recovery_facts"
 
 
 @pytest.mark.parametrize(

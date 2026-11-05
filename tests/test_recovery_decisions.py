@@ -347,3 +347,162 @@ def test_recovery_prompt_receives_only_same_capture_opaque_candidate_projection(
     assert "candidate://r01/alternative" in prompt
     assert "grasp-affordance://alternative" in prompt
     assert "position_m" not in prompt
+
+
+def _safe_recovered_action_record(**changes):
+    action_facts = {
+        "status": "failed",
+        "outcome_known": True,
+        "world_change_started": True,
+        "possession_state": "empty",
+        "object_support_state": "on_support",
+        "failure_owner": "execution",
+        "failure_code": "physical_grasp_lost",
+        "retryable_in_revision": False,
+        "requires_replan": True,
+        "recommended_action": "refresh_perception_before_motion",
+        "returned_to_safe_pose": True,
+        "observation_ready": True,
+    }
+    action_facts.update(changes)
+    return SimpleNamespace(
+        revision_id="revision-1",
+        node_id="pour-r03",
+        semantics="action",
+        status="failed",
+        record_id="action-record-r03",
+        tool_id="manipulation.execute_subtask",
+        error=None,
+        evidence_refs=("artifact://phase/r03",),
+        arguments={
+            "operation": "pour",
+            "binding": {"scene_revision": "scene-1", "entity_ref": "entity://r03"},
+        },
+        response={"data": {"result": {
+            **action_facts,
+            "new_scene_revision": changes.get("new_scene_revision", "scene-2"),
+            "capability_outcome_summary": dict(action_facts),
+            "subtask_result": {"receipts": [
+                {
+                    "sequence_index": 0,
+                    "tool_id": "manipulation.prepare",
+                    "phase": "prepare",
+                    "outcome_known": True,
+                    "response": {"status": "available", "world_change_started": False},
+                },
+                {
+                    "sequence_index": 1,
+                    "tool_id": "object.acquire",
+                    "phase": "acquire",
+                    "outcome_known": True,
+                    "response": {
+                        **action_facts,
+                        "scene_revision": "scene-1",
+                        "new_scene_revision": changes.get("new_scene_revision", "scene-2"),
+                        "capability_outcome_summary": dict(action_facts),
+                    },
+                },
+            ]},
+        }}},
+    )
+
+
+def test_known_safe_action_recovery_offers_only_fresh_observation_replan():
+    record = _safe_recovered_action_record()
+    task = _task(
+        tools=(SimpleNamespace(
+            semantics="query",
+            planning_policy=_policy(capabilities=(
+                "scene.observe", "manipulation.grasp_task_affordances",
+            )),
+        ),),
+        records=(record,),
+    )
+    graph = SimpleNamespace(
+        revision_id="revision-1",
+        nodes=(SimpleNamespace(node_id="pour-r03", obligation_id="pour-r03"),),
+    )
+    settlement = SimpleNamespace(
+        node_id="pour-r03",
+        status="failed",
+        outcome_known=True,
+        world_change_started=True,
+        requires_replan=True,
+        evidence_refs=(),
+    )
+
+    options = recovery_method_options(
+        task, graph, settlement,
+        SimpleNamespace(fresh_evidence_requirements=()), {},
+    )
+
+    assert _same_capture_alternative_candidates(task, graph, settlement) is None
+    assert [item.option_id for item in options] == ["stop", "replan"]
+    assert options[-1].addresses == ("fresh_observation_after_known_action_failure",)
+    assert options[-1].investigation_capabilities == (
+        "manipulation.grasp_task_affordances", "scene.observe",
+    )
+
+
+@pytest.mark.parametrize("changes", [
+    {"returned_to_safe_pose": False},
+    {"observation_ready": False},
+    {"possession_state": "holding"},
+    {"object_support_state": "unknown"},
+    {"retryable_in_revision": True},
+    {"new_scene_revision": "scene-1"},
+])
+def test_world_changing_failure_without_complete_safe_recovery_only_stops(changes):
+    record = _safe_recovered_action_record(**changes)
+    task = _task(
+        tools=(SimpleNamespace(
+            semantics="query",
+            planning_policy=_policy(capabilities=("scene.observe",)),
+        ),),
+        records=(record,),
+    )
+    graph = SimpleNamespace(revision_id="revision-1", nodes=())
+    settlement = SimpleNamespace(
+        node_id="pour-r03",
+        status="failed",
+        outcome_known=True,
+        world_change_started=True,
+        requires_replan=True,
+        evidence_refs=(),
+    )
+
+    options = recovery_method_options(
+        task, graph, settlement,
+        SimpleNamespace(fresh_evidence_requirements=()), {},
+    )
+
+    assert [item.option_id for item in options] == ["stop"]
+
+
+def test_fresh_replan_never_uses_an_older_safe_receipt_over_latest_failure():
+    safe = _safe_recovered_action_record()
+    unsafe = _safe_recovered_action_record(returned_to_safe_pose=False)
+    unsafe.record_id = "action-record-r03-latest"
+    task = _task(
+        tools=(SimpleNamespace(
+            semantics="query",
+            planning_policy=_policy(capabilities=("scene.observe",)),
+        ),),
+        records=(safe, unsafe),
+    )
+    graph = SimpleNamespace(revision_id="revision-1", nodes=())
+    settlement = SimpleNamespace(
+        node_id="pour-r03",
+        status="failed",
+        outcome_known=True,
+        world_change_started=True,
+        requires_replan=True,
+        evidence_refs=(),
+    )
+
+    options = recovery_method_options(
+        task, graph, settlement,
+        SimpleNamespace(fresh_evidence_requirements=()), {},
+    )
+
+    assert [item.option_id for item in options] == ["stop"]

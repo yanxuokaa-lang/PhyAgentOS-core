@@ -256,6 +256,21 @@ def acquire_axial_symmetry_angles(config):
     return tuple(dict.fromkeys(float(value) for value in values))
 
 
+def acquire_failure_recovery_codes(config):
+    """Return configured acquire failures eligible for measured safe retreat."""
+    values = config.get("acquire_failure_recovery_codes", [])
+    if (
+        not isinstance(values, list)
+        or any(not isinstance(value, str) or not value.strip() for value in values)
+        or len(set(values)) != len(values)
+    ):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_failure_recovery_codes must contain distinct non-empty strings",
+        )
+    return tuple(values)
+
+
 def acquire_staging_corridors(config):
     """Return bounded Adapter-private pregrasp and staging geometry candidates."""
     values = config.get("acquire_staging_corridor_candidates")
@@ -725,6 +740,7 @@ class IsaacPhaseMotion:
         acquire_transit_clearances(self.config)
         acquire_transport_orientations(self.config)
         acquire_axial_symmetry_angles(self.config)
+        acquire_failure_recovery_codes(self.config)
         acquire_staging_corridors(self.config)
         acquire_route_selection(self.config)
         acquire_route_search_timeout(self.config)
@@ -1811,6 +1827,162 @@ class IsaacPhaseMotion:
         finally:
             self.world.remove_physics_callback(callback_name)
 
+    def _recover_failed_acquire(
+        self,
+        *,
+        failure,
+        source,
+        original,
+        axial_symmetry,
+        finger_indices,
+        executed_path,
+        step_count,
+        cancel,
+        record_frame,
+        record,
+        contact_window,
+        articulation_action,
+    ):
+        """Open an empty gripper and reverse the measured qualified path."""
+        if failure not in acquire_failure_recovery_codes(self.config):
+            raise PhaseMotionError("acquire_recovery_not_allowed", failure)
+        initial_arm = np.asarray(self.scene.get("initial_joint_positions"), dtype=float)
+        initial_gripper = np.asarray(self.scene.get("initial_gripper_positions"), dtype=float)
+        if (
+            initial_arm.shape != (len(self.joint_indices),)
+            or initial_gripper.shape != (2,)
+            or not np.isfinite(initial_arm).all()
+            or not np.isfinite(initial_gripper).all()
+            or np.any(initial_arm < self.limits[:, 0])
+            or np.any(initial_arm > self.limits[:, 1])
+            or np.min(initial_gripper) < .035
+        ):
+            raise PhaseMotionError(
+                "acquire_recovery_state_unavailable",
+                "configured observation posture and open gripper state are required",
+            )
+        route_start = np.asarray(executed_path[0].get("joints"), dtype=float)
+        if (
+            route_start.shape != initial_arm.shape
+            or np.max(np.abs(route_start - initial_arm))
+            > self.config["joint_tracking_tolerance_rad"]
+        ):
+            raise PhaseMotionError(
+                "acquire_recovery_start_not_safe_pose",
+                "automatic recovery requires the qualified route to start at observation home",
+            )
+
+        held, physical_body = record("recovery_check")
+        return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
+        return_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
+        velocity = float(np.linalg.norm(self.body(source).get_linear_velocity()))
+        supported = (
+            return_error <= self.config["placement_tolerance_m"]
+            and return_rotation_error <= self.config["grasp_rotation_tolerance_rad"]
+            and velocity <= .03
+        )
+        contact_load_valid = contact_window.valid()
+        contact_manifold_valid = contact_window.fresh_bilateral_manifolds()
+        if held or contact_load_valid or contact_manifold_valid or not supported:
+            raise PhaseMotionError(
+                "acquire_recovery_possession_uncertain",
+                "safe retreat requires a stable supported object with no measured grasp contact",
+            )
+
+        controller = self.robot.get_articulation_controller()
+
+        def command(arm, fingers, stage, allow_contact):
+            nonlocal step_count
+            if cancel.is_set():
+                raise PhaseMotionError("cancelled", "recovery was cancelled")
+            if not self.session.app.is_running() or step_count >= self.config["max_execution_steps"]:
+                raise PhaseMotionError(
+                    "execution_bound_reached",
+                    "safe acquire recovery exceeded the execution step budget",
+                )
+            arm = np.asarray(arm, dtype=float)
+            if (
+                arm.shape != initial_arm.shape
+                or not np.isfinite(arm).all()
+                or np.any(arm < self.limits[:, 0])
+                or np.any(arm > self.limits[:, 1])
+            ):
+                raise PhaseMotionError("joint_limit_violation", "safe acquire recovery joint target is invalid")
+            measured_relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
+            self._collisions(
+                arm,
+                source,
+                allow_contact,
+                False,
+                measured_relation,
+                False,
+                held_fingers=False,
+            )
+            value = np.asarray(self.robot.get_joint_positions()).copy()
+            value[self.joint_indices] = arm
+            value[finger_indices] = fingers
+            controller.apply_action(articulation_action(joint_positions=value))
+            contact_window.begin()
+            self.world.step(render=True)
+            step_count += 1
+            record_frame(stage)
+            record(stage)
+            if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
+                raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
+
+        current_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
+        for fingers in smooth_joint_segment(
+            current_fingers,
+            initial_gripper,
+            self.dt,
+            self.config.get("finger_velocity_m_s", .015),
+            self.config.get("finger_acceleration_m_s2", .15),
+        ):
+            command(self.joints(), fingers, "recovery_open", True)
+
+        current = self.joints()
+        for point in reversed(executed_path):
+            goal = np.asarray(point["joints"], dtype=float)
+            if np.max(np.abs(current - goal)) <= 1e-9:
+                continue
+            command(goal, initial_gripper, "recovery_retreat", bool(point["allow_contact"]))
+            current = goal
+
+        held, physical_body = record("recovery_complete")
+        contact_load_valid = contact_window.valid()
+        contact_manifold_valid = contact_window.fresh_bilateral_manifolds()
+        final_return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
+        final_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
+        open_gripper = bool(
+            np.min(np.asarray(self.robot.get_joint_positions())[finger_indices]) >= .035
+        )
+        supported = (
+            final_return_error <= self.config["placement_tolerance_m"]
+            and final_rotation_error <= self.config["grasp_rotation_tolerance_rad"]
+            and float(np.linalg.norm(self.body(source).get_linear_velocity())) <= .03
+        )
+        home_error = float(np.max(np.abs(self.joints() - initial_arm)))
+        if (
+            held
+            or contact_load_valid
+            or contact_manifold_valid
+            or not supported
+            or not open_gripper
+            or home_error > self.config["joint_tracking_tolerance_rad"]
+        ):
+            raise PhaseMotionError(
+                "acquire_recovery_postcondition_failed",
+                "safe acquire recovery did not establish empty observation readiness",
+            )
+        return {
+            "step_count": step_count,
+            "initial_arm": initial_arm,
+            "initial_gripper": initial_gripper,
+            "return_error_m": final_return_error,
+            "return_rotation_error_rad": final_rotation_error,
+            "home_joint_error_rad": home_error,
+        }
+
     def _execute_motion(self, arguments, cancel, record_frame, contact_window):
         from isaacsim.core.utils.types import ArticulationAction
         from pick_place_workflow.cycle_protocol import evaluate_process_feedback
@@ -1842,6 +2014,11 @@ class IsaacPhaseMotion:
         tracking_refs = []
         last_goal = np.asarray(route["steps"][-1]["joints"])
         samples = []
+        executed_path = [{
+            "joints": np.asarray(route["start_joints"], dtype=float).tolist(),
+            "stage": "start",
+            "allow_contact": False,
+        }]
         changed = False
         failure = None
         failure_detail = None
@@ -1853,6 +2030,7 @@ class IsaacPhaseMotion:
         step_count = 0
         last_stage = None
         lift_grip_confirmed = False
+        recovery = None
         self.world.play()
 
         def contacts():
@@ -1968,6 +2146,18 @@ class IsaacPhaseMotion:
                                      point["attached"], measured_relation, support_contact, held_fingers=point["attached"])
                     changed = True
                     self.robot.get_articulation_controller().apply_action(ArticulationAction(joint_positions=command))
+                    path_point = {
+                        "joints": commanded_joints.tolist(),
+                        "stage": stage,
+                        "allow_contact": bool(point["allow_contact"]),
+                    }
+                    previous_path = executed_path[-1]
+                    if (
+                        np.max(np.abs(np.asarray(previous_path["joints"]) - commanded_joints)) > 1e-9
+                        or previous_path["stage"] != stage
+                        or previous_path["allow_contact"] != path_point["allow_contact"]
+                    ):
+                        executed_path.append(path_point)
                     contact_window.begin()
                     self.world.step(render=True)
                     step_count += 1
@@ -2025,7 +2215,8 @@ class IsaacPhaseMotion:
             failure = exc.code
             failure_detail = str(exc)
             status = "cancelled" if status == "cancelled" else "failed"
-            # Hold the measured configuration; never open or replay after failure.
+            # Stop first. A configured, measured empty-gripper failure may then
+            # reverse only the commands already executed from the qualified route.
             try:
                 if changed:
                     self.robot.get_articulation_controller().apply_action(
@@ -2039,6 +2230,56 @@ class IsaacPhaseMotion:
                         "possession_state": "uncertain", "operation_completed": False,
                         "failure_owner": "isaacsim_adapter", "failure_code": failure,
                         "artifact_refs": [reference, *tracking_refs], "measurements": {}}
+            if (
+                changed
+                and operation == "acquire"
+                and status == "failed"
+                and failure in acquire_failure_recovery_codes(self.config)
+            ):
+                try:
+                    finger_target = np.asarray(self.scene.get("initial_gripper_positions"), dtype=float)
+                    recovery = self._recover_failed_acquire(
+                        failure=failure,
+                        source=source,
+                        original=original,
+                        axial_symmetry=axial_symmetry,
+                        finger_indices=finger_indices,
+                        executed_path=executed_path,
+                        step_count=step_count,
+                        cancel=cancel,
+                        record_frame=record_frame,
+                        record=record,
+                        contact_window=contact_window,
+                        articulation_action=ArticulationAction,
+                    )
+                    step_count = recovery["step_count"]
+                    last_goal = recovery["initial_arm"]
+                    last_stage = "recovery_complete"
+                except Exception as recovery_exc:
+                    reference = self._artifact("phase-feedback", {
+                        "operation": operation,
+                        "entity_ref": arguments["entity_ref"],
+                        "scene_revision": arguments["scene_revision"],
+                        "samples": samples,
+                        "status": "unknown",
+                        "failure_code": failure,
+                        "failure_detail": failure_detail,
+                        "recovery_failure_code": getattr(
+                            recovery_exc, "code", type(recovery_exc).__name__
+                        ),
+                        "recovery_failure_detail": str(recovery_exc),
+                    })
+                    return {
+                        "status": "unknown",
+                        "outcome_known": False,
+                        "world_change_started": changed,
+                        "possession_state": "uncertain",
+                        "operation_completed": False,
+                        "failure_owner": "isaacsim_adapter",
+                        "failure_code": failure,
+                        "artifact_refs": [reference, *tracking_refs],
+                        "measurements": {},
+                    }
         except Exception as exc:
             # Preserve partial feedback and the original failure if the plant
             # can no longer provide a trustworthy terminal measurement.
@@ -2062,8 +2303,13 @@ class IsaacPhaseMotion:
             lifted = physical_body[2, 3] - original[2, 3] >= self.profile.object_lift_threshold_m
             return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
             return_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
-            finish = self.tcp(last_goal if (track_stir or operation == "pour") and status == "succeeded"
-                              else np.asarray(route["steps"][-1]["joints"]))
+            finish = self.tcp(
+                recovery["initial_arm"]
+                if recovery is not None
+                else last_goal
+                if (track_stir or operation == "pour") and status == "succeeded"
+                else np.asarray(route["steps"][-1]["joints"])
+            )
             actual_tcp = self.tcp()
             final_position_error = float(np.linalg.norm(actual_tcp[:3, 3] - finish[:3, 3]))
             final_rotation_error = float(Rotation.from_matrix(finish[:3, :3].T @ actual_tcp[:3, :3]).magnitude())
@@ -2076,6 +2322,12 @@ class IsaacPhaseMotion:
             measurements = {"return_error_m": return_error, "return_rotation_error_rad": return_rotation_error,
                             "full_return_rotation_error_rad": float(Rotation.from_matrix(original[:3, :3].T @ physical_body[:3, :3]).magnitude()),
                             "final_tcp_position_error_m": final_position_error, "final_tcp_rotation_error_rad": final_rotation_error}
+            if recovery is not None:
+                measurements.update(
+                    recovery_home_joint_error_rad=recovery["home_joint_error_rad"],
+                    recovery_return_error_m=recovery["return_error_m"],
+                    recovery_return_rotation_error_rad=recovery["return_rotation_error_rad"],
+                )
             completed = status == "succeeded" and final_pose_reached
             if track_stir or operation == "pour":
                 tool = route["target"]["tool_frame"]
@@ -2099,21 +2351,32 @@ class IsaacPhaseMotion:
                 completed = completed and supported and open_gripper and last_stage == "retreat"
             if status == "succeeded" and not completed:
                 status, failure = "failed", "measured_postcondition_failed"
+            safely_recovered = recovery is not None and status == "failed" and possession == "empty"
             reference = self._artifact("phase-feedback", {"operation": operation, "entity_ref": arguments["entity_ref"],
                                       "scene_revision": arguments["scene_revision"], "samples": samples,
                                       "measurements": measurements, "status": status, "failure_code": failure,
-                                      "failure_detail": failure_detail})
+                                      "failure_detail": failure_detail,
+                                      "returned_to_safe_pose": safely_recovered,
+                                      "observation_ready": safely_recovered})
             return {"status": status if known else "unknown", "outcome_known": known,
                     "entity_ref": arguments["entity_ref"], "destination_ref": arguments.get("destination_ref"),
                     "world_change_started": changed, "operation_completed": completed and known,
                     "possession_state": possession, "artifact_refs": [reference, *tracking_refs], "measurements": measurements,
-                    "failure_code": failure, "failure_owner": "isaacsim_adapter" if failure else None,
+                    "failure_code": failure,
+                    "failure_owner": (
+                        "execution" if safely_recovered
+                        else "isaacsim_adapter" if failure else None
+                    ),
                     "object_support_state": "on_support" if supported else "lifted" if lifted else "unknown",
-                    "returned_to_safe_pose": completed and operation in {"pour", "stir"},
+                    "returned_to_safe_pose": safely_recovered or completed and operation in {"pour", "stir"},
                     "release_confirmed": completed and operation == "place",
                     "retreat_completed": completed and operation == "place",
                     "clear_of_target": completed and operation == "place",
-                    "observation_ready": completed and operation == "place"}
+                    "observation_ready": safely_recovered or completed and operation == "place",
+                    "requires_replan": safely_recovered,
+                    "recommended_action": (
+                        "refresh_perception_before_motion" if safely_recovered else "continue"
+                    )}
         except Exception as exc:
             reference = self._artifact("phase-feedback", {"operation": operation,
                 "entity_ref": arguments["entity_ref"], "scene_revision": arguments["scene_revision"],

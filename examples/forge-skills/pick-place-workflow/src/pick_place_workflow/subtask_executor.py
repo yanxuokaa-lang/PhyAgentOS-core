@@ -542,6 +542,49 @@ def _known_no_motion_prepare_replan_action(
     }.get(response.get("recommended_action"))
 
 
+def _known_recovered_action_replan_action(
+    *,
+    receipts: list[ToolReceipt] | tuple[ToolReceipt, ...],
+    status: SubtaskStatus,
+    possession_state: str,
+) -> str | None:
+    """Project only an explicit known Action recovery into fresh re-observation."""
+    if status != "failed" or possession_state != "empty" or not receipts:
+        return None
+    receipt = receipts[-1]
+    if (
+        receipt.phase != "acquire"
+        or receipt.tool_id != "object.acquire"
+        or receipt.outcome_known is not True
+        or receipt.status != "failed"
+    ):
+        return None
+    response = receipt.response
+    summary = response.get("capability_outcome_summary")
+    facts = {**response, **summary} if isinstance(summary, Mapping) else response
+    old_revision = response.get("scene_revision")
+    new_revision = response.get("new_scene_revision")
+    if not (
+        facts.get("status") == "failed"
+        and facts.get("outcome_known") is True
+        and facts.get("world_change_started") is True
+        and facts.get("possession_state") == "empty"
+        and facts.get("object_support_state") == "on_support"
+        and facts.get("returned_to_safe_pose") is True
+        and facts.get("observation_ready") is True
+        and facts.get("requires_replan") is True
+        and facts.get("retryable_in_revision") is False
+        and facts.get("recommended_action") == "refresh_perception_before_motion"
+        and isinstance(facts.get("failure_owner"), str)
+        and facts.get("failure_owner") not in {"", "none"}
+        and isinstance(old_revision, str)
+        and isinstance(new_revision, str)
+        and new_revision != old_revision
+    ):
+        return None
+    return "refresh_perception_before_motion"
+
+
 class SubtaskExecutor:
     """Execute one finite subtask without opening another Agent model turn."""
 
@@ -819,6 +862,11 @@ class SubtaskExecutor:
         replan_action = _known_no_motion_prepare_replan_action(
             receipts=receipts,
             completed=completed,
+            status=status,
+            possession_state=context.possession_state,
+        )
+        replan_action = replan_action or _known_recovered_action_replan_action(
+            receipts=receipts,
             status=status,
             possession_state=context.possession_state,
         )
@@ -1121,6 +1169,22 @@ class RuntimeSubtaskDriver:
             "recommended_action": result.get("recommended_action") or action,
             "phase": failed_phase or "none",
         }
+        if self.receipts:
+            response = self.receipts[-1].response
+            action_summary = response.get("capability_outcome_summary")
+            action_facts = (
+                {**response, **action_summary}
+                if isinstance(action_summary, Mapping)
+                else response
+            )
+            for key in (
+                "possession_state",
+                "object_support_state",
+                "returned_to_safe_pose",
+                "observation_ready",
+            ):
+                if key in action_facts:
+                    summary[key] = action_facts[key]
         self.terminal = {
             "status": runtime_status,
             "outcome_known": known,

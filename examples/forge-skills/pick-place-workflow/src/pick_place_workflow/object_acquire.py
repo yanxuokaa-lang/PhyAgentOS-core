@@ -56,6 +56,8 @@ _SUMMARY_KEYS = {
     "retryable_in_revision",
     "requires_replan",
     "recommended_action",
+    "returned_to_safe_pose",
+    "observation_ready",
     "phase",
     "selected_arm",
     "failed_phase",
@@ -93,6 +95,8 @@ class AcquireSnapshot:
     retryable_in_revision: bool = False
     requires_replan: bool = False
     recommended_action: str = "continue"
+    returned_to_safe_pose: bool = False
+    observation_ready: bool = False
     phase: str = "acquire"
     selected_arm: str | None = None
     failed_phase: str | None = None
@@ -163,6 +167,8 @@ def _summary_schema() -> dict[str, Any]:
             "retryable_in_revision": {"type": "boolean"},
             "requires_replan": {"type": "boolean"},
             "recommended_action": {"type": "string", "minLength": 1},
+            "returned_to_safe_pose": {"type": "boolean"},
+            "observation_ready": {"type": "boolean"},
             "phase": {"type": "string", "minLength": 1},
             "selected_arm": {"type": ["string", "null"]},
             "failed_phase": {"type": ["string", "null"]},
@@ -559,6 +565,20 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
         return "invalid_recovery_facts"
     if not isinstance(snapshot.recommended_action, str) or not snapshot.recommended_action.strip():
         return "invalid_recovery_facts"
+    if not isinstance(snapshot.returned_to_safe_pose, bool) or not isinstance(snapshot.observation_ready, bool):
+        return "invalid_recovery_facts"
+    if snapshot.recommended_action == "refresh_perception_before_motion" and not (
+        snapshot.status == "failed"
+        and snapshot.outcome_known is True
+        and snapshot.world_change_started is True
+        and snapshot.possession_state == "empty"
+        and snapshot.object_support_state == "on_support"
+        and snapshot.requires_replan is True
+        and snapshot.retryable_in_revision is False
+        and snapshot.returned_to_safe_pose is True
+        and snapshot.observation_ready is True
+    ):
+        return "invalid_recovery_facts"
     if not isinstance(snapshot.phase, str) or not snapshot.phase.strip():
         return "invalid_recovery_facts"
     if snapshot.selected_arm is not None and (not isinstance(snapshot.selected_arm, str) or not snapshot.selected_arm.strip()):
@@ -638,6 +658,8 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "retryable_in_revision": snapshot.retryable_in_revision,
         "requires_replan": snapshot.requires_replan,
         "recommended_action": snapshot.recommended_action,
+        "returned_to_safe_pose": snapshot.returned_to_safe_pose,
+        "observation_ready": snapshot.observation_ready,
         "phase": snapshot.phase,
         "selected_arm": snapshot.selected_arm,
         "failed_phase": snapshot.failed_phase,

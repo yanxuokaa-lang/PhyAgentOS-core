@@ -1042,10 +1042,16 @@ class LabUtopiaBackend:
                 add_reference_to_stage=add_reference_to_stage,
                 object_utils=ObjectUtils,
             )
+        initial_arm = getattr(cfg.robot, "initial_joint_positions", None)
+        initial_gripper = getattr(cfg.robot, "initial_gripper_positions", None)
+        scene["initial_joint_positions"] = (
+            list(initial_arm) if initial_arm is not None else None
+        )
+        scene["initial_gripper_positions"] = (
+            list(initial_gripper) if initial_gripper is not None else None
+        )
         if not scene["robot_initialized"]:
             scene["robot"].initialize()
-            initial_arm = getattr(cfg.robot, "initial_joint_positions", None)
-            initial_gripper = getattr(cfg.robot, "initial_gripper_positions", None)
             if initial_arm is not None or initial_gripper is not None:
                 _apply_initial_robot_state(scene["robot"], initial_arm, initial_gripper)
                 _refresh_initial_robot_state(

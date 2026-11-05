@@ -11,6 +11,7 @@ from isaacsim_lab.phase_motion import (
     IsaacPhaseMotion,
     PhaseMotionError,
     acquire_direct_route_waypoints,
+    acquire_failure_recovery_codes,
     acquire_failure_summary,
     acquire_route_search_timeout,
     acquire_route_strategies,
@@ -1670,6 +1671,10 @@ def execution_fixture(monkeypatch):
         ArticulationAction=lambda **value: SimpleNamespace(**value)))
     model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
     model.config = config()
+    model.scene = {
+        "initial_joint_positions": np.zeros(7).tolist(),
+        "initial_gripper_positions": [.04, .04],
+    }
     model.body_from_observed = {"/World/source": np.eye(4)}
     model.dt = .01
     model.profile = SimpleNamespace(object_lift_threshold_m=.04)
@@ -1731,6 +1736,175 @@ def test_wrong_entity_contact_never_starts_lift(monkeypatch):
     assert all(command[0] == 0. for command in commands)
     assert artifacts[-1][1]["failure_code"] == "grasp_not_confirmed"
     assert not model.world.physics_callbacks
+
+
+def test_known_lost_grasp_opens_and_reverses_to_observation_home(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if arm_at_grasp and fingers_closed else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+
+    result = model.execute(arguments, Event())
+
+    assert result["status"] == "failed"
+    assert result["outcome_known"] is True
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert result["possession_state"] == "empty"
+    assert result["object_support_state"] == "on_support"
+    assert result["returned_to_safe_pose"] is True
+    assert result["observation_ready"] is True
+    assert result["requires_replan"] is True
+    assert result["recommended_action"] == "refresh_perception_before_motion"
+    assert model._test_positions_ref[:7] == pytest.approx(np.zeros(7))
+    assert model._test_positions_ref[7:] == pytest.approx([.04, .04])
+    assert any(sample["stage"] == "recovery_retreat" for sample in artifacts[-1][1]["samples"])
+    assert commands
+
+
+def test_recovery_collision_keeps_failed_acquire_outcome_unknown(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    original_collisions = model._collisions
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if arm_at_grasp and fingers_closed else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+
+    def collisions(joints, *args, **kwargs):
+        first_closed = next(
+            (index for index, command in enumerate(commands) if np.min(command[7:]) < .035),
+            None,
+        )
+        opened_after_failure = first_closed is not None and any(
+            np.min(command[7:]) >= .035 for command in commands[first_closed + 1:]
+        )
+        if opened_after_failure and np.asarray(joints)[0] < model._test_positions_ref[0] - 1e-9:
+            raise PhaseMotionError("route_collision", "recovery route became blocked")
+        return original_collisions(joints, *args, **kwargs)
+
+    model._collisions = collisions
+    result = model.execute(arguments, Event())
+
+    assert result["status"] == "unknown"
+    assert result["outcome_known"] is False
+    assert result["possession_state"] == "uncertain"
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert artifacts[-1][1]["recovery_failure_code"] == "route_collision"
+
+
+def test_recovery_residual_bilateral_manifold_keeps_outcome_unknown(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        opened_after_close = any(np.min(command[7:]) < .035 for command in commands) and (
+            np.min(model._test_positions_ref[7:]) >= .035
+        )
+        contacts = []
+        if arm_at_grasp and fingers_closed:
+            contacts = [{
+                "body0": "/World/source/mesh",
+                "body1": "/World/Franka/finger",
+                "impulse": [1., 0., 0.],
+            }]
+        elif arm_at_grasp and opened_after_close:
+            contacts = [{
+                "body0": "/World/source/mesh",
+                "body1": "/World/Franka/finger",
+                "impulse": [0., 0., 0.],
+            }]
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+    result = model.execute(arguments, Event())
+
+    assert result["status"] == "unknown"
+    assert result["outcome_known"] is False
+    assert result["possession_state"] == "uncertain"
+    assert artifacts[-1][1]["recovery_failure_code"] == (
+        "acquire_recovery_postcondition_failed"
+    )
+
+
+def test_recovery_never_invents_unqualified_path_from_route_start_to_home(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    model.scene["initial_joint_positions"] = [.5, 0., 0., 0., 0., 0., 0.]
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if arm_at_grasp and fingers_closed else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+    result = model.execute(arguments, Event())
+
+    assert result["status"] == "unknown"
+    assert result["possession_state"] == "uncertain"
+    assert artifacts[-1][1]["recovery_failure_code"] == "acquire_recovery_start_not_safe_pose"
+    assert not any(command[0] == pytest.approx(.5) for command in commands)
+
+
+def test_measured_holding_failure_never_opens_or_retreats(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    model.config["acquire_failure_recovery_codes"].append("route_collision")
+
+    def contact_frame():
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if np.min(model._test_positions_ref[7:]) < .035 else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+
+    def collisions(*_args, **_kwargs):
+        if model.world.steps and np.min(model._test_positions_ref[7:]) < .035:
+            raise PhaseMotionError("route_collision", "obstacle entered after contact")
+
+    model._collisions = collisions
+    result = model.execute(arguments, Event())
+
+    assert result["status"] == "unknown"
+    assert result["possession_state"] == "uncertain"
+    assert result["failure_code"] == "route_collision"
+    assert np.min(model._test_positions_ref[7:]) < .035
+    first_closed = next(
+        index for index, command in enumerate(commands) if np.min(command[7:]) < .035
+    )
+    assert not any(np.min(command[7:]) >= .035 for command in commands[first_closed + 1:])
+    assert artifacts[-1][1]["recovery_failure_code"] == "acquire_recovery_possession_uncertain"
+
+
+@pytest.mark.parametrize("value", ["physical_grasp_lost", [""], ["x", "x"]])
+def test_acquire_failure_recovery_codes_reject_invalid_configuration(value):
+    cfg = config()
+    cfg["acquire_failure_recovery_codes"] = value
+    with pytest.raises(PhaseMotionError) as error:
+        acquire_failure_recovery_codes(cfg)
+    assert error.value.code == "invalid_motion_configuration"
 
 
 @pytest.mark.parametrize("final_kind,expected", [("unloaded", True), ("missing", False), ("other", False), ("stale", False)])
