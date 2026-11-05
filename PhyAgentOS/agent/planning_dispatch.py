@@ -39,6 +39,24 @@ from PhyAgentOS.planning import (
 )
 
 
+def stale_scene_ready_nodes(graph, policies, settlements):
+    """Ready-set override while the scene is stale: refresh-capable nodes only.
+
+    Single owner of the scene_current-is-False semantics; every caller must
+    use this helper instead of re-implementing the predicate (principle 7).
+    """
+    return tuple(
+        node.node_id
+        for node in graph.nodes
+        if node.node_id not in settlements
+        and all(settlements.get(dep) == "completed" for dep in node.dependencies)
+        and any(
+            node.capability in policy.capabilities and policy.refreshes_scene
+            for policy in policies
+        )
+    )
+
+
 class PlanningDispatchError(ValueError):
     """A Forge Tool call cannot be admitted by the active semantic graph."""
 
@@ -172,16 +190,7 @@ class AgentComposedDispatch:
         )
         nodes = {node.node_id: node for node in self.graph.nodes}
         if conditions.get("scene_current") is False:
-            ready = tuple(
-                node.node_id
-                for node in self.graph.nodes
-                if node.node_id not in settlements
-                and all(settlements.get(dep) == "completed" for dep in node.dependencies)
-                and any(
-                    node.capability in policy.capabilities and policy.refreshes_scene
-                    for policy in self.policies
-                )
-            )
+            ready = stale_scene_ready_nodes(self.graph, self.policies, settlements)
         diagnostics = []
         for node in self.graph.nodes:
             if node.node_id in settlements:
@@ -780,17 +789,7 @@ class AgentComposedDispatch:
             conditions,
         )
         if conditions.get("scene_current") is False:
-            settlements = dict(context.settlements)
-            ready = tuple(
-                item.node_id
-                for item in self.graph.nodes
-                if item.node_id not in settlements
-                and all(settlements.get(dep) == "completed" for dep in item.dependencies)
-                and any(
-                    item.capability in candidate.capabilities and candidate.refreshes_scene
-                    for candidate in self.policies
-                )
-            )
+            ready = stale_scene_ready_nodes(self.graph, self.policies, dict(context.settlements))
         if node_id not in ready:
             raise PlanningDispatchError(
                 "selected planning node is not dependency-ready",

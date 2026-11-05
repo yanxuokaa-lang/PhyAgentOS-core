@@ -436,7 +436,7 @@ class HeldPreparationEndpoint:
             raise ValueError("held preparation changed request identity or parameters")
         _check_holding(self.possession, prepared)
         return {"status": "available", "motion_authorized": False,
-                "entity_ref": arguments["entity_ref"], "arguments": deepcopy(prepared)}
+                "entity_ref": arguments["entity_ref"], "arguments": prepared}
 
 
 class CyclePreparationEndpoint:
@@ -462,10 +462,8 @@ class CyclePreparationEndpoint:
         validate_cycle(prepared, action=True)
         if any(prepared.get(key) != value for key, value in arguments.items()):
             raise ValueError("cycle preparation changed request identity or parameters")
-        if self.possession.state != "empty":
-            raise ValueError("possession changed during cycle preparation")
         return {"status": "available", "motion_authorized": False,
-                "entity_ref": arguments["entity_ref"], "arguments": deepcopy(prepared)}
+                "entity_ref": arguments["entity_ref"], "arguments": prepared}
 
 
 def validate_cycle(arguments: Mapping[str, Any], *, action: bool, operation: str | None = None) -> None:
@@ -654,7 +652,7 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         "recommended_action": "continue" if status == "succeeded" else "stop",
     }
     return {
-        **{key: value for key, value in deepcopy(arguments).items() if key != "_task_id"},
+        **{key: value for key, value in arguments.items() if key != "_task_id"},
         "status": status, "new_scene_revision": raw.get("new_scene_revision"),
         "operation_completed": status == "succeeded" and expected_success,
         "process_completed": process_completed,
@@ -662,7 +660,7 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         "phase_facts": phase_result["phase_facts"],
         "completed_phases": phase_result["completed_phases"],
         "failed_phase": failed_phase, "possession_state": possession.state,
-        "measurements": deepcopy(dict(metrics)),
+        "measurements": metrics,
         "evidence_refs": list(refs), "capability_outcome_summary": summary,
     }
 
@@ -755,7 +753,10 @@ class CycleActionEndpoint:
         admitted = resolve_current()
 
         def start(invocation_id, attempt_id):
-            resolved = deepcopy(admitted) if single_call else resolve_current()
+            # Admit and start run synchronously in one admission flow; the
+            # possession owner is this endpoint, so the admitted resolution
+            # is authoritative and one deepcopy isolates the start payload.
+            resolved = deepcopy(admitted)
             self.possession.begin(self.operation, owner=owner, entity_ref=public["entity_ref"])
             resolved["cycle_invocation_id"] = invocation_id
             try:
@@ -839,9 +840,9 @@ def project_result(raw, arguments, possession, invocation_id):
         "recommended_action": "continue" if status == "succeeded" else "stop",
     }
     return {
-        **deepcopy(arguments), "status": status, "held_invocation_ref": invocation_id,
+        **dict(arguments), "status": status, "held_invocation_ref": invocation_id,
         "new_scene_revision": raw.get("new_scene_revision"), "operation_completed": completed,
-        "measurements": deepcopy(dict(measurements)), "evidence_refs": list(refs),
+        "measurements": measurements, "evidence_refs": list(refs),
         "capability_outcome_summary": summary,
     }
 
@@ -921,10 +922,13 @@ class HeldActionEndpoint:
                 resolved["cycle_invocation_id"] = self.possession.cycle_invocation_ref
             return resolved
 
-        resolve_current()
+        admitted = resolve_current()
 
         def start(invocation_id, attempt_id):
-            resolved = resolve_current()
+            # Admit and start run synchronously in one admission flow; the
+            # admitted resolution is authoritative and one copy isolates the
+            # start payload.
+            resolved = deepcopy(admitted)
             self.possession.begin(self.operation, owner=owner, entity_ref=public["entity_ref"],
                                   acquire_ref=self.possession.acquire_invocation_ref,
                                   cycle_ref=self.possession.cycle_invocation_ref)

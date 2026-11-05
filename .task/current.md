@@ -1,4 +1,199 @@
-# Current Task: Isaac acquire-route exact-prefix pruning
+# Current Task: full-chain over-defense cleanup (v17.1.0)
+
+## v17.1.0 / review adjudicated, cleanup complete and validated
+
+- Review: `docs/reviews/overdefense-review-fullchain-20261105.md` — 40
+  findings (37 CONFIRMED + 3 PLAUSIBLE) across planning / simulation
+  integration / execution, each with file:line and call-chain evidence;
+  two highest-impact findings independently spot-checked. Physical
+  fail-closed safety, evidence-freshness discipline and trust-boundary
+  validation are explicitly preserved.
+- Cleanup tiers (user approved cleaning all findings):
+  Tier 1 mechanical removals (dead branches, fabricated fallbacks, duplicate
+  deepcopies, dead sync executor, schema hoisting);
+  Tier 2 performance (identical if/else collapse, single task-load per
+  resume, admission-predicate memoization, sensor capture-once-per-frame,
+  admit/start single resolution);
+  Tier 3 design decisions (shadow preparation store deletion, ready-set
+  centralization to close the drifted copy, normalization single point,
+  EULA/importability check dedup, broad-except narrowing with cause
+  retention, non-retryable rejection propagation).
+- Safety net: full Isaac Adapter + subtask executor suite (506+) and
+  planning tests must stay green per layer; Ruff and compileall per file.
+- One partial application is anticipated: full removal of the parent-side
+  Isaac importability gate (PLAUSIBLE finding, medium risk) may be reduced
+  to check-deduplication only if deployment behavior depends on it.
+- Completed outcome: approximately 20 low-risk redundancies were removed or
+  centralized; five proposed removals were reverted when existing tests proved
+  the allegedly redundant behavior was load-bearing. Physical fail-closed
+  checks, evidence freshness and trust-boundary validation remain unchanged.
+- Validation: focused affected-module suite 410 passed with six HEAD-identical
+  failures; full Core + Isaac Adapter + pick-place suite 2226 passed, 2 skipped
+  and 16 failed, with every failing node reproduced unchanged in an isolated
+  HEAD worktree. Ruff, compileall and targeted diff checks pass.
+
+# Previous Task: terminal-pose arm sampling in the grasp-approach probe
+
+## v16.10.1 / probe scope repair implemented, regression green (no motion yet)
+
+- Diagnosis: `.task/labutopia-r05-fullroute-witness-profile-20261105.md`
+  (selection-chain audit) plus the v16.10.0 execute witnesses.
+- Tier C-Safety; Adapter-private probe change only. No safety threshold,
+  equality check, Tool schema, AgentLoop or Gateway change.
+- Scope gap fixed: `check_final_gripper_pose` validates palm/finger geometry
+  only, while the route qualifier kills candidates on whole-arm link5
+  collisions — the funnel's last gate verified a strictly weaker property
+  than the route search requires. The probe now also samples the final grasp
+  pose with bounded deterministic IK seeds (`acquire_probe_terminal_seed_count`,
+  default 8, validated 1–32; current joints, joint midpoint, deterministic
+  offset patterns) and runs the unchanged whole-arm collision check per
+  sampled branch.
+- Fail-fast semantics (positive evidence only): a variant is rejected with
+  `grasp_terminal_arm_infeasible` when sampled IK solutions exist AND every
+  branch collides — corridor enumeration cannot change a fixed fatal
+  endpoint. Zero solutions never prunes. The last collision detail and its
+  diagnostics ride on the error so receipts keep collision geometry.
+- Branch-preferred seeding: surviving collision-free terminal branches seed
+  the pre-grasp IK, connecting the validated chain to a feasible terminal
+  branch instead of the previous single current-joints warm start.
+- Ordering preserved: terminal sampling runs lazily, only after a distance's
+  workspace bound passes, so `workspace_violation` still precedes any IK and
+  the receipt ordering guarantees are unchanged.
+- Validation: phase-motion 154 passed (146 + 4 new: all-branches-collide
+  rejection with skipped short-route work, zero-solution no-prune,
+  branch-seeded pre-IK, validator rejection); full Isaac Adapter + subtask
+  executor suite 506 passed, 2 native-USD skips; Ruff and compileall pass.
+- Motion config: `labutopia-mixture-motion.json` sets
+  `acquire_probe_terminal_seed_count: 8`.
+- v16.10.1 prediction CONFIRMED by fresh no-motion run (2026-11-05
+  23:0x): `out/lab-fullchain-truth-20261105-v16_10_1-no-motion-r1/`, task
+  `task_7706c39bbe6a47eb`. Funnel: evaluated=505, geometry_qualified=5,
+  **qualified=0** — the honest zero. Terminal sampling receipts: candidates
+  56/60/178 each show solution_count=8, collision_free_count=0 on every
+  symmetry variant and are rejected `grasp_terminal_arm_infeasible` in
+  seconds; 100 dies at final-gripper collision; 233 at the physical aperture
+  limit (0.090098 > 0.080, the summed finger-joint stroke). No route search
+  ran; no 600 s burn; the agent response lists every gate reason. The prior
+  single-seed rejections of 56/60 are hereby confirmed correct with positive
+  evidence.
+- Consequence: on this fixture NO task-qualified grasp exists — every
+  geometric survivor's terminal pose is whole-arm infeasible (grasp band
+  z≈0.77–0.83 vs table ≈0.736 with a 63 mm link5 sphere leaves zero forearm
+  margin). Aperture widening is physically excluded; the gate set stands.
+  The remaining lever is fixture geometry: raise the reagent bottles
+  (~60 mm platform) or move them so the grasp band clears the forearm
+  envelope, following the `labutopia-tabletop-rod-storage.patch` precedent.
+  Scene change requires user approval; no lever pulled.
+
+## v16.10.0 / route-generator geometry repair implemented, regression green (no motion yet)
+
+- Diagnosis: `.task/labutopia-r05-fullroute-witness-profile-20261105.md`.
+- Tier C-Safety; Adapter-private route geometry change only. AgentLoop, Tool
+  schemas, candidate contracts, collision/IK/workspace checks, safety
+  thresholds and settlement ownership are unchanged. No threshold was
+  relaxed; every route still passes the unchanged full qualification.
+- Root cause fixed: `acquire_route_waypoints` performed `transit_orient` at
+  the raised copy of the route-start TCP (the arm home pose above the base,
+  r≈0.3) and `staging_reorient` at a backoff point that can pull inward —
+  exactly the r=0.2–0.4 / z=1.0–1.3 wrist-fold cluster in the witness
+  matrix (q7 pinned at 2.8–2.9 rad).
+- Repair: optional `acquire_min_reorient_radius_m` (default 0 preserves
+  legacy positions exactly) pushes the raised and staging waypoints radially
+  outward from the base before any orientation change; transport reorient
+  and staging reorient now happen at the configured radius. Final approach,
+  grasp and lift poses are unchanged. `labutopia-mixture-motion.json` sets
+  the radius to 0.5 m, inside the existing workspace box (|x|,|y| ≤ 0.65/0.7).
+- Validation: phase-motion 146 passed (143 + 3 new outward-push/legacy/
+  validator regressions); full Isaac Adapter + subtask executor suite 498
+  passed, 2 native-USD skips; Ruff and compileall pass.
+- Witness coverage (honest accounting): every orientation-changing waypoint
+  (raised/transport-ready/transported/staged) below the radius is relocated
+  outward — this covers the transit_raise/orient IK cluster wholesale plus 9
+  directly-relocated witnesses (6 transit_cross + 3 staging_reorient). The 9
+  `approach`-stage self-collisions occur at unchanged pre poses and are only
+  indirectly affected through arrival configuration; grasp-stage
+  forearm-under-table failures (pose-family issue) are NOT claimed fixed and
+  remain an open decision.
+- v16.10.0 authorized execution run completed (2026-11-05 13:28–13:41):
+  `out/lab-fullchain-truth-20261105-v16_10_0-execute-r1/`, task
+  `task_71948bf608994edc`, invocation
+  `invocation://manipulation-execute_subtask/4e57551e302242a6`. Terminal
+  `failed` with `route_search_timeout` after 59/104 variants, zero motion,
+  `world_change_started=false`, empty possession, no videos; R03/GLASS_ROD
+  correctly blocked.
+- Final witness comparison (59 fails vs v16.9.8's 64): wrist-fold
+  self-collision **18 → 1** (the repair's target cluster is gone; the single
+  residual is one approach-stage fold). Staged routes now routinely traverse
+  transit_raise→orient→cross→staging_reorient. Remaining blockers: (a)
+  `route_collision` link5 × table at the fixed grasp/approach poses
+  (r=0.5, z=0.8) — 13 fails on the one qualified candidate's unchanged
+  terminal family; (b) IK availability at outward staging/cross legs
+  (19 no-solution + 24 discontinuity). Both were explicitly outside this
+  repair's claim.
+- Closed-loop insight: the funnel's sole survivor's terminal grasp pose is
+  table-colliding under the sampled IK branches, so corridor enumeration
+  cannot rescue it — the next lever is the terminal-pose family (aperture
+  margin with a measured scenario, fixture placement, or fail-fast
+  terminal-pose pre-qualification to stop burning 600 s per doomed
+  candidate). No lever pulled yet.
+- v16.10.0 no-motion run completed (2026-11-05 13:15–13:23):
+  `out/lab-fullchain-truth-20261105-v16_10_0-no-motion-r1/`, task
+  `task_3f1d51bdc32d418f`, session `cli:lab-58a8e436e4e1`. Fresh scene/reset;
+  R05→R03→GLASS_ROD plan compiled with the requested parameters; all four
+  read-only R05 Query nodes completed (process features, selection check,
+  grasp task-affordances, revalidation) with sole qualified candidate `…-178`
+  again. First live deployment of the funnel artifact: evaluated=505,
+  geometry_qualified=5, qualified=1, probe rejects 3×
+  `grasp_approach_unavailable` + 1× `gripper_aperture_exceeded` — matching
+  the offline replay exactly. The agent stopped correctly before the first
+  Action (`pour_r05` → `manipulation.execute_subtask`); task
+  `awaiting_replan` with `node_selection_no_progress`, zero Action records,
+  zero controller outcomes, no motion.
+- Limitation (honest): the full staged-route search lives inside
+  `execute_subtask` preparation, which a no-motion agent never invokes —
+  consistent with all prior no-motion runs. The v16.10.0 route geometry is
+  therefore NOT yet exercised; it requires an explicitly authorized
+  simulation execution run (`--execute`, fresh reset), where preparation
+  runs first and any failure still stops with zero motion.
+- Next: authorized simulation execution run for the new route geometry;
+  final acceptance after it must use `verification.mode=enforce/recovery`
+  with explicit goal/criteria. Do not resume `task_9fa51be5ed0d4e3f` or
+  `task_3f1d51bdc32d418f`.
+
+# Previous Task: R05 full-route witness profile and funnel observability
+
+## v16.9.9 / diagnosis complete, observability repair validated (no motion)
+
+- Diagnosis: `.task/labutopia-r05-fullroute-witness-profile-20261105.md`.
+- Tier C-Safety; Provider-level observability and offline replay only. No
+  safety threshold, equality check, Tool schema, AgentLoop or Gateway change.
+- Witness matrix (64 unique failing attempts of v16.9.8): IK family 32
+  (14 no-solution + 18 discontinuity), wrist-fold self-collision 18 (q7 at
+  2.8–2.9 rad limit), forearm-under-table at grasp 12 (link5 sphere
+  r=0.063 m at z≈0.774 m), finger/environment 1. Grasp failures sit at
+  radius ≈0.5 m z≈0.8 m (comfortable reach); staging failures at 0.2–0.4 m,
+  z=1.0–1.3 m (high, near base).
+- Root cause chain: 505 candidates → geometric gates → 5 side-grasp
+  survivors → probe (2 IK, 1 hand×table, 1 aperture 0.090098>0.080) → 1
+  combination (178, score 0.23) → 65 distinct-prefix full-route failures.
+  The graspable band of this 65×115 mm fixture admits five poses; none of
+  their staged routes qualify.
+- Repair delivered: funnel statistics (`grasp-affordance-funnel` private
+  artifact, `funnel_ref`, diagnostics mirror), offline replay script
+  `examples/forge-adapters/isaacsim_lab/scripts/replay_task_affordance_funnel.py`
+  reproducing the exact five survivors, focused test. Public contract
+  unchanged.
+- Validation: full Adapter/executor suite 495 passed, 2 native-USD skips;
+  Ruff and compileall pass.
+- AgentLoop review: plan order, selection guards, evidence ordering and
+  failure closure held; task used `verification.mode=off` (acceptable for
+  repair loop — acceptance runs must use enforce/recovery with explicit
+  criteria).
+- Open decisions (gate vs route-generator vs fixture vs composed aperture
+  margin) recorded in the diagnosis; nothing relaxed without a concrete
+  failure scenario (principle 11). Do not resume `task_9fa51be5ed0d4e3f`.
+
+# Previous Task: Isaac acquire-route exact-prefix pruning
 
 ## v16.9.8 / Adapter implementation and fresh reset validation complete
 

@@ -160,7 +160,7 @@ def evaluate_pour_feedback(samples: Sequence[Mapping[str, Any]], parameters: Map
             valid_samples += 1
         delta = timestamp - float(previous["timestamp_s"]) if previous else 0.0
         continuous = (previous is not None and valid and previous.get("_qualified") is True
-                      and not sample.get("_discontinuity") and delta <= max_gap)
+                      and not sample.get("_discontinuity"))
         if continuous:
             run += delta
         else:
@@ -213,7 +213,7 @@ def evaluate_stir_feedback(samples: Sequence[Mapping[str, Any]], parameters: Map
         timestamp = float(sample["timestamp_s"])
         delta_t = timestamp - float(previous["timestamp_s"]) if previous else 0.0
         continuous = (valid and previous is not None and previous.get("_qualified") is True
-                      and not sample.get("_discontinuity") and delta_t <= max_gap)
+                      and not sample.get("_discontinuity"))
         if continuous:
             angle = math.atan2(float(sample["tool_tip_y_m"]), float(sample["tool_tip_x_m"]))
             delta_angle = (angle - float(previous_angle) + math.pi) % (2 * math.pi) - math.pi

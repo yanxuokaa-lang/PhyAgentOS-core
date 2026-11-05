@@ -413,10 +413,8 @@ class PersistentActionEndpoint:
             else self.resolve(self.phase, public)
         )
         resolved = deepcopy(dict(raw_resolved))
-        keys = ("entity_ref", "candidate_ref", "preparation_ref") + (("destination_ref",) if self.phase == "place" else ())
-        for key in keys:
-            if resolved.get(key) != public.get(key):
-                raise ValueError(f"resolved preparation changed {key}")
+        # Identity-key equality is enforced once by StoredAssignmentResolver;
+        # this endpoint owns only the task-ownership decision.
         assignment = resolved.get("assignment")
         if not isinstance(assignment, Mapping) or assignment.get("task_id") != parts[1]:
             raise ValueError("prepared assignment does not belong to this task")

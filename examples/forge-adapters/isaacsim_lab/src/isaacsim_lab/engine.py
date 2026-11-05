@@ -429,7 +429,7 @@ class IsaacSimLabEngine:
             "status": "available",
             "motion_authorized": False,
             "entity_ref": prepared["entity_ref"],
-            "arguments": deepcopy(prepared),
+            "arguments": prepared,
             "provider": "labutopia_isaacsim",
         }
 
@@ -451,7 +451,7 @@ class IsaacSimLabEngine:
             return {"status": "invalid", "outcome_known": False, "world_change_started": False,
                     "motion_authorized": False, "failure_code": "stale_scene_revision"}
         try:
-            request = deepcopy(dict(arguments))
+            request = dict(arguments)
             request["parameters"] = normalize_process_parameters(request, self.profile)
             if request["parameters"]["process_type"] in {"pour", "stir"}:
                 _validate_cycle_target(request, request["parameters"]["process_type"])
@@ -469,10 +469,11 @@ class IsaacSimLabEngine:
             return {"status": "unavailable", "outcome_known": False, "world_change_started": False,
                     "motion_authorized": False, "failure_code": "live_scene_revision_unavailable",
                     "error": str(exc)}
-        if not self.cycle_capability(operation)["execution"]:
+        capability = self.cycle_capability(operation)
+        if not capability["execution"]:
             return {"status": "unknown", "outcome_known": False, "world_change_started": False,
                     "motion_authorized": False,
-                    "failure_code": self.cycle_capability(operation).get("unavailable_reason", "isaacsim_unavailable")}
+                    "failure_code": capability.get("unavailable_reason", "isaacsim_unavailable")}
         try:
             result = self.backend.run_cycle(request, cancel)
         except Exception as exc:
@@ -495,7 +496,7 @@ class IsaacSimLabEngine:
                 "status": "unavailable", "motion_authorized": False,
                 "failure_code": "phase_preparation_not_supported",
             }
-        result = prepare(deepcopy(dict(arguments)))
+        result = prepare(dict(arguments))
         return dict(result) if isinstance(result, Mapping) else {
             "status": "unavailable", "motion_authorized": False,
             "failure_code": "invalid_phase_preparation_result",
@@ -515,7 +516,7 @@ class IsaacSimLabEngine:
                 "world_change_started": False,
                 "failure_code": "grasp_approach_probe_not_supported",
             }
-        result = qualify(deepcopy(dict(arguments)))
+        result = qualify(dict(arguments))
         return dict(result) if isinstance(result, Mapping) else {
             "status": "unavailable",
             **identity,
@@ -530,7 +531,7 @@ class IsaacSimLabEngine:
         if not callable(prepare):
             return {"status": "unavailable", "motion_authorized": False,
                     "failure_code": "held_preparation_not_supported"}
-        result = prepare(deepcopy(dict(arguments)))
+        result = prepare(dict(arguments))
         return dict(result) if isinstance(result, Mapping) else {
             "status": "unavailable", "motion_authorized": False,
             "failure_code": "invalid_held_preparation_result",
@@ -556,7 +557,7 @@ class IsaacSimLabEngine:
         if cancel.is_set():
             return {"status": "cancelled", "outcome_known": True,
                     "world_change_started": False, "motion_authorized": False}
-        result = execute(phase, deepcopy(dict(arguments)), cancel)
+        result = execute(phase, dict(arguments), cancel)
         return dict(result) if isinstance(result, Mapping) else {
             "status": "unknown", "outcome_known": False, "world_change_started": True,
             "failure_code": "invalid_phase_execution_result",
@@ -712,7 +713,7 @@ class LabUtopiaBackend:
             return {"status": "unavailable", "outcome_known": False,
                     "world_change_started": False, "motion_authorized": False,
                     "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
-        request = deepcopy(dict(arguments))
+        request = dict(arguments)
         request["operation"] = phase
         try:
             session = self._get_worker_session(create=True)

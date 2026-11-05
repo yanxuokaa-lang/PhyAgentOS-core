@@ -337,20 +337,6 @@ class SubtaskSpec(BaseModel):
         expected_calls = default_subtask_calls(self.operation)
         if calls != expected_calls:
             raise ValueError("tool_sequence must follow the governed acquire/prepare/process/place sequence")
-        if not calls:
-            raise ValueError("subtask requires at least one internal Tool")
-        if calls[0].tool_id != "manipulation.prepare" or calls[0].phase != "prepare":
-            raise ValueError("subtask must begin with manipulation.prepare")
-        if calls[-1].tool_id != "object.place" or calls[-1].phase != "place":
-            raise ValueError("subtask must end with object.place")
-        if self.operation in {"pour", "stir"}:
-            expected = "object.pour" if self.operation == "pour" else "tool.stir"
-            if not any(call.tool_id == expected and call.phase == "process" for call in calls):
-                raise ValueError(f"{self.operation} subtask requires {expected}")
-        try:
-            json.dumps(self.parameters, ensure_ascii=False, allow_nan=False)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("subtask parameters must contain finite JSON values") from exc
         if self.operation in {"pour", "stir"}:
             validate_process_parameters(self.operation, self.parameters)
             task_affordance = (self.grasp_task_affordance_candidate_set_ref, self.grasp_task_affordance_ref,
@@ -476,21 +462,16 @@ class SubtaskExecutionContext:
 
 
 def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> None:
+    # Structural checks on `assignments` already passed in _prepared_arguments;
+    # this boundary only guards the one fact that function does not establish.
     if store is None:
         return
     assignments = response.get("assignments")
     route_arguments = response.get("route_arguments")
-    if not isinstance(assignments, list) or len(assignments) != 1:
-        raise SubtaskExecutionError("preparation did not return one assignment to persist")
-    assignment = assignments[0]
-    if not isinstance(assignment, Mapping):
-        raise SubtaskExecutionError("preparation assignment is not an object")
-    assignment_ref = assignment.get("assignment_ref")
-    if not isinstance(assignment_ref, str) or not assignment_ref.startswith("artifact://"):
-        raise SubtaskExecutionError("preparation assignment has no canonical reference")
     if not isinstance(route_arguments, Mapping):
         raise SubtaskExecutionError("preparation did not return approved route arguments")
-    store.put(assignment_ref, {
+    assignment = assignments[0]
+    store.put(assignment["assignment_ref"], {
         "assignment": dict(assignment),
         "preparation_ref": response.get("preparation_ref"),
         "route_arguments": dict(route_arguments),
@@ -655,10 +636,10 @@ class SubtaskExecutor:
                     )
                 else:
                     prepared_arguments = context.prepared_arguments
-            except Exception:
+            except Exception as exc:
                 return self._result(
                     spec, receipts, completed, context, "failed", True,
-                    call.phase, "subtask_failed",
+                    call.phase, f"subtask_failed:{type(exc).__name__}",
                 )
             context = SubtaskExecutionContext(
                 possession_state=self._possession(response, context.possession_state),
@@ -881,7 +862,7 @@ class SubtaskExecutor:
             receipts=tuple(receipts),
             failed_phase=failed_phase,
             failure_code=failure_code,
-            possession_state=(context.possession_state if context.possession_state in {"empty", "holding", "uncertain"} else "uncertain"),
+            possession_state=context.possession_state,
             scene_revision=context.scene_revision,
             recommended_action=recommended_action,
             requires_replan=requires_replan,
@@ -1149,7 +1130,7 @@ class RuntimeSubtaskDriver:
         ).model_dump(mode="json")
         if error is not None:
             result["error"] = {"code": "runtime_subtask_driver_error", "message": error}
-        evidence_refs = list(result.get("evidence_refs", []))
+        evidence_refs: list[str] = []
         for receipt in self.receipts:
             for ref in receipt.response.get("evidence_refs", ()):
                 if isinstance(ref, str) and ref.startswith("artifact://") and ref not in evidence_refs:
@@ -1193,7 +1174,7 @@ class RuntimeSubtaskDriver:
             "possession_state": result["possession_state"],
             "new_scene_revision": result["scene_revision"],
             "evidence_refs": evidence_refs,
-            "world_change_started": any(item.response.get("world_change_started") is True for item in self.receipts),
+            "world_change_started": summary["world_change_started"],
         }
         return self.terminal
 

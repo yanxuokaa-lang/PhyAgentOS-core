@@ -49,6 +49,37 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.1.0 (2026-11-05 23:55) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [refactor] 对规划、Isaac 组合层与 pick-place 执行链的 40 项过度防御发现逐项裁决并完成约 20 项低风险清理：集中 stale-scene readiness 谓词、合并三段完全同构的恢复分支、减少同步边界内重复解析与深拷贝、去除已由上游模型保证的结构重复校验，并保留碰撞、IK、运动、possession、scene freshness 与信任边界门禁。 / Adjudicate all 40 over-defense findings across planning, Isaac composition and the pick-place execution chain, applying about 20 low-risk cleanups while retaining collision, IK, motion, possession, scene-freshness and trust-boundary gates. (local)
+- [policy] [fix] `prepare_held` 对期望参数做 JSON 往返归一化，修复 tuple/list 等价值误判；cycle/held Action 在同一同步 admission 流内复用已准入解析结果。 / Normalize expected `prepare_held` parameters through a JSON round trip to avoid tuple/list false positives; cycle and held Actions reuse admitted resolution in the same synchronous admission flow. (local)
+- [docs] [docs] 五项拟删除内容被测试证明为承载行为后已回退，完整裁决与 deferred follow-up 保存于 `docs/reviews/overdefense-review-fullchain-20261105.md`。 / Revert five proposed removals after tests proved them load-bearing; preserve the full adjudication and deferred follow-ups in the review document. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/agent/planning_dispatch.py` L42-L59, L193, L792；`PhyAgentOS/agent/planning_loop.py` L1345-L1372, L1493-L1495, L2081-L2084：集中 stale-scene predicate、合并重复 reconcile 并保留 load-bearing records 重读。 / Centralize the stale-scene predicate, collapse repeated reconciliation and retain the load-bearing records reread. (local)
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L432, L454, L472-L476, L499, L519, L534, L560, L716；`paos_client.py` L10, L234-L239, L303-L310, L326, L362：减少重复复制/能力探测并修复 held-route JSON 假阳性。 / Reduce repeated copies and capability probes and fix the held-route JSON false positive. (local)
+- [修改 / Modified] `cycle_protocol.py` L163, L216；`held_manipulation.py` L439, L464-L466, L655-L663, L756-L759, L843-L845, L925-L931；`persistent_runtime.py` L416-L417；`subtask_executor.py` L339-L352, L465-L475, L639-L642, L865, L1133, L1177：清理重复 gap、解析、结构校验、possession/evidence 汇总。 / Remove duplicate gap, resolution, structural validation, possession and evidence aggregation work. (local)
+- [修改 / Modified] `.task/current.md` L1-L24；`docs/reviews/overdefense-review-fullchain-20261105.md` L95-L132；`changelog/2026-11_part2.md` v17.1.0：保存完成状态、测试证据、回退依据和提交边界。 / Record completion state, test evidence, revert rationale and commit scope. (local)
+
+### 关键 Diff / Key Diff
+```diff
++def stale_scene_ready_nodes(graph, policies, settlements): ...
+-if selected: resume(); else: resume()
++resume()
+-if any(route.get(key) != value for key, value in arguments.items()):
++expected = json.loads(json.dumps(dict(arguments)))
+-resolved = resolve_current()  # repeated at start
++resolved = deepcopy(admitted)
+```
+
+### 验证 / Validation
+- [eval] [test] 聚焦模块 `410 passed, 6 failed`；完整 Core + Isaac Adapter + pick-place `2226 passed, 2 skipped, 16 failed`；全部失败节点均在独立 HEAD worktree 原样重现，本次新增失败为 0。 / Focused modules: `410 passed, 6 failed`; full Core + Isaac Adapter + pick-place: `2226 passed, 2 skipped, 16 failed`; every failure reproduces unchanged in an isolated HEAD worktree, so this cleanup adds zero failing tests. (local)
+- [eval] [chore] Ruff、compileall 与定向 `git diff --check` 通过；未启动 Runtime、相机、仿真器或运动。 / Ruff, compileall and targeted `git diff --check` pass; no Runtime, camera, simulator or motion was started. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`。Implementation commit 待本次提交后回填。 / Implementation commit will be backfilled after this commit. (local)
+
 ## v17.0.0 (2026-11-05 20:29) - codex
 
 ### 完成范围 / Completed Scope
@@ -102,113 +133,111 @@
 - Branch: `feature/planning-loop`.
 - Implementation commit: `0d92159b976a5b004b67319f7d8b52a7f204ad2d`.
 
-## v16.9.8 (2026-11-04 08:37) - codex
+## v16.10.1 (2026-11-05 22:40) - claude
 
-### 完成范围 / Completed Scope
-- [env] [fix] Isaac Adapter 在单次 acquire preparation 内保存已失败的精确 waypoint 前缀，只剪枝具有相同有序阶段和 4×4 pose 数值前缀的后续路线；缓存不跨候选、reset、scene revision 或 preparation。 / The Isaac Adapter retains failed exact waypoint prefixes inside one acquire preparation and prunes only later routes with the same ordered stages and 4×4 pose values; the cache does not cross candidates, resets, scene revisions or preparations. (local)
-- [env] [refactor] staged 搜索按 transport orientation、clearance、corridor、symmetry 的配置优先级枚举，并分别记录 attempted/pruned/failed-prefix 诊断及剪枝来源。 / Enumerate staged search by configured transport orientation, clearance, corridor and symmetry priority, with separate attempted/pruned/failed-prefix diagnostics and pruning lineage. (local)
-- [policy] [chore] 改动仅位于 Adapter 路线搜索；AgentLoop 保持 R05→R03→GLASS_ROD 顺序、同集合 opaque 引用、依赖阻塞和 settlement，公共合同与安全阈值不变。 / Keep the change inside Adapter route search while AgentLoop retains R05→R03→GLASS_ROD ordering, same-set opaque references, dependency blocking and settlement; public contracts and safety limits remain unchanged. (local)
+### 变更摘要 / Change Summary
+- [sense] [fix] 修复抓取接近探测的检查范围错配:原 `check_final_gripper_pose` 只验证 palm/finger 几何,而路线资格化以全臂(link5)碰撞击杀候选——漏斗最后一道门验证的性质严格弱于路线要求。探测现对最终抓取位姿做**有界确定性多种子 IK 采样**(`acquire_probe_terminal_seed_count`,默认 8,校验 1–32;当前关节+关节中点+确定性偏移),逐分支运行不变的全臂碰撞检查。 / Fix the grasp-approach probe scope mismatch: `check_final_gripper_pose` validates palm/finger geometry only while the route qualifier kills candidates on whole-arm link5 collisions — the funnel's last gate verified a strictly weaker property than routes require. The probe now samples the final grasp pose with bounded deterministic IK seeds (`acquire_probe_terminal_seed_count`, default 8, validated 1–32; current joints, joint midpoint, deterministic offsets) and runs the unchanged whole-arm collision check per sampled branch. (local)
+- [sense] [fix] 仅凭正向证据快速失败:当采样到 IK 解且**所有分支**碰撞时,变体以 `grasp_terminal_arm_infeasible` 拒绝(走廊枚举改变不了固定终点的死局);零解不剪枝;最后碰撞细节与诊断随错误下发,回执保留碰撞几何。幸存无碰分支反过来播种预抓 IK,替代原单一种子。 / Fail fast on positive evidence only: a variant is rejected with `grasp_terminal_arm_infeasible` when sampled IK solutions exist and every branch collides; zero solutions never prunes; the last collision detail and diagnostics ride on the error so receipts keep collision geometry. Surviving collision-free branches seed the pre-grasp IK, replacing the single current-joints warm start. (local)
+- [sense] [fix] 顺序保持:终态采样惰性执行,仅在某个 distance 的 workspace 边界通过之后进行,`workspace_violation` 仍先于任何 IK,回执顺序保证不变。 / Ordering preserved: terminal sampling runs lazily only after a distance's workspace bound passes, so `workspace_violation` still precedes any IK and the receipt ordering guarantees are unchanged. (local)
 
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L409-L416, L1128-L1325
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L452-L678
-- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L495-L514
-- `.task/labutopia-r05-route-prefix-pruning-20261104.md` L1-L141; `.task/current.md` L1-L41; `docs/forge/IMPLEMENTATION_REVIEW_V16_9_8.md` L1-L90
-
-```diff
-+failed_prefixes = {}
-+if matched_prefix is not None:
-+    pruned_count += 1
-+    continue
--product(clearances, transport_orientations, corridors, symmetries)
-+product(transport_orientations, clearances, corridors, symmetries)
-+diagnostics = {"attempted_count": attempted_count,
-+               "pruned_count": pruned_count,
-+               "failed_prefix_count": len(failed_prefixes)}
-```
-
-### 验证 / Validation
-- [eval] [test] 聚焦 11 passed；完整 phase-motion 143 passed；Adapter/executor 494 passed、2 skipped；Ruff、compileall、JSON 和 diff 检查通过。 / Focused tests pass 11; full phase-motion passes 143; Adapter/executor passes 494 with two skips; Ruff, compileall, JSON and diff checks pass. (local)
-- [eval] [exp] fresh reset/no-motion 确认空夹爪、零命令及新 scene/capture；fresh execution task `task_9fa51be5ed0d4e3f` 仅使用本次直接前驱证据，并在 600 秒、65/104 时以 `route_search_timeout` 停止。65 个失败前缀均唯一，故 `pruned_count=0`；无控制器 motion、feedback、video 或 world change，R03 与搅拌保持阻塞。 / Fresh reset/no-motion confirms an empty gripper, zero commands and a new scene/capture; fresh execution task `task_9fa51be5ed0d4e3f` uses only this run's direct-predecessor evidence and stops at 65/104 after 600 seconds with `route_search_timeout`. All 65 failed prefixes are unique, so `pruned_count=0`; no controller motion, feedback, video or world change occurs, and R03 plus stirring remain blocked. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`; implementation commit `b0f5061af9ea4b70dbfd17f36a4d8fd516b8ea69`; 2026-11-04 09:32:15 Asia/Shanghai.
-
-## v16.9.7 (2026-11-03 20:11) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] 为 acquire 路线搜索增加 600 秒 Adapter 私有预算，在 900 秒 worker transport deadline 前以 `route_search_timeout`、零动作和有界诊断返回；未放宽任何运动或抓取安全条件。 / Add a 600-second Adapter-private acquire-route budget that returns `route_search_timeout`, zero motion and bounded diagnostics before the 900-second worker transport deadline without relaxing motion or grasp safety criteria. (local)
-- [env] [fix] transport/child failure 后永久失效 worker wrapper；Backend 清除匹配 session，并在 fresh observe/reset 前用 `fresh_observation_required` 阻止 prepare/qualify/execute 创建空白 worker。 / Permanently invalidate a worker wrapper after transport or child failure; clear the matching Backend session and block prepare/qualify/execute from creating a blank worker with `fresh_observation_required` until a fresh observe/reset occurs. (local)
-- [env] [fix] socket 读取服从请求剩余 deadline，断连后不二次写响应；prepare transport failure 保持 known/no-world-change，execute transport loss 保持 conservative unknown。 / Make socket reads obey the remaining request deadline and avoid second writes after disconnect; keep prepare transport failure known/no-world-change and execute transport loss conservatively unknown. (local)
-
-### 文件变更详情 / File Changes
-- `phase_motion.py` L310-L320, L721, L1116-L1240; `worker_session.py` L51, L86-L98, L129-L136, L189-L204, L230
-- `engine.py` L596-L639, L661-L674, L688-L700, L718-L730, L739, L839-L859, L898-L900; `worker.py` L182-L199
-- `labutopia-mixture-motion.json` L14; `test_phase_motion.py` L15, L397-L468; `test_worker_session.py` L11, L287-L312; `test_engine.py` L277-L389
-- `.task/current.md` L1-L35; `.task/labutopia-worker-session-timeout-repair-20261103.md` L1-L97; `docs/forge/IMPLEMENTATION_REVIEW_V16_9_7.md` L1-L44
-
-```diff
-+if now >= search_deadline: raise PhaseMotionError("route_search_timeout", ...)
-+if recovery_requires_observation: return fresh_observation_required
-+socket.settimeout(min(0.2, remaining_request_budget))
-```
-
-### 验证 / Validation
-- [eval] [test] 聚焦 222 passed；完整 Adapter/executor 488 passed、2 skipped；Ruff、compileall、JSON 和 diff 检查通过；实现复核最终无 Blocker/Major。 / Focused tests pass 222 cases; full Adapter/executor passes 488 with two skips; Ruff, compileall, JSON and diff checks pass; final implementation review has no Blocker or Major. (local)
-- [eval] [exp] fresh no-motion reset 创建新 task/revision/scene 与当前 capture 的唯一 R05 合格 opaque 候选，Action 记录为 0；独立原生 probe 记录零运动命令和约 0.04 m 的双指张开状态。 / A fresh no-motion reset creates a new task, revision and scene with the sole current-capture qualified R05 opaque candidate and zero Action records; an independent native probe records zero motion commands and both fingers open near 0.04 m. (local)
-- [policy] [chore] 未恢复历史 task/readiness；未执行 R05 Action，R03 与 GLASS_ROD 保持阻塞。 / Do not restore historical tasks or readiness; no R05 Action executes, and R03 plus GLASS_ROD remain blocked. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`; implementation commit `de8c4a340b28a000c2d41a31ea86f9b1a0c8b426`; 2026-11-03 20:29:45 Asia/Shanghai.
-
-## v16.9.6 (2026-11-03 19:17) - codex
-
-### 完成范围 / Completed Scope
-- [policy] [test] 本轮目标严格固定为靠近机械臂的 R05 后 R03，不选择 R04；fresh execution 仅绑定当前 R05 直接前驱 preparation 的同集合 opaque 引用。 / Fix this run strictly to near-arm R05 followed by R03, excluding R04; fresh execution binds only the same-set opaque R05 reference from its direct predecessor preparation. (local)
-- [env] [exp] R05 Action 在首个 preparation 阶段因 Isaac worker request timeout 失败；终态 `outcome_known=true`、`world_change_started=false`、`possession_state=empty`，R03 与搅拌未开始。 / R05 Action fails in its first preparation phase because the Isaac worker request times out; the outcome is known with no world change and empty possession, so R03 and stirring never start. (local)
-- [docs] [docs] 诊断归属 Adapter worker/session 生命周期，不修改 AgentLoop、公共 Tool 合同、候选语义或安全阈值。 / Assign the diagnosis to Adapter worker/session lifetime without changing AgentLoop, public Tool contracts, candidate semantics or safety limits. (local)
-
-### 文件变更详情 / File Changes
-- `.task/labutopia-r05-r03-fresh-reset-runtime-timeout-20261103.md`
+### 预期修改 / Planned Files
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`
 - `.task/current.md`
-- `changelog/2026-11_part2.md`
-- `CHANGELOG.md`
 
-### 验证 / Validation
-- Fresh no-motion and execution task/revision/scene/candidate identifiers are distinct.
-- Execution lineage contains no historical task or no-motion readiness reference.
-- No phase video exists because controller motion never began.
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`.
-- Implementation/diagnosis commit: `f1b33f2cd6d949407ba85608af42baab670bacee`; 2026-11-03 19:54:49 Asia/Shanghai.
-
-## v16.9.5 (2026-11-03 17:04) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] 将当前控制窗口的双指正冲量与 fresh bilateral selected-body manifold 分离；只有 acquire 已确认闭合、物体仍在既有支撑离台窗口且夹持变换仍在既有阈值内时，静态 manifold 才可保持执行连续性。原始样本仍为无效 load/grasp。 / Separate bilateral positive impulse from fresh bilateral selected-body manifolds; static manifold continuity is allowed only after confirmed acquire closure inside existing support and grasp-transform bounds, while raw load/grasp remains invalid. (local)
-- [policy] [chore] 修复保持在 Isaac Adapter；AgentLoop、Coordinator、Provider、opaque 引用、公共 Tool 合同、动作参数、碰撞/IK/workspace 阈值和 settlement 所有权不变。 / Keep the repair in the Isaac Adapter without changing AgentLoop, Coordinator, Providers, opaque references, public Tool contracts, process parameters, collision/IK/workspace limits or settlement ownership. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L658-L672, L1726-L1744, L1847-L1881
-- `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L97-L230
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L1450-L1475
-- `.task/labutopia-static-contact-manifold-20261103.md` L1-L92; `.task/current.md` L1-L18
-- `docs/forge/IMPLEMENTATION_REVIEW_V16_9_5.md` L1-L55; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L994-L1038
-
+### 关键 Diff / Key Diff
 ```diff
--def one_finger_unloaded(self): ...
-+def fresh_bilateral_manifolds(self): ...
-+contact_manifold_valid = contact_window.fresh_bilateral_manifolds()
--if ... not lift_contact_grace_used and contact_window.one_finger_unloaded():
-+if ... measured_support_contact and samples[-1]["contact_manifold_valid"]:
-+    measured_sample["support_manifold_continuity_used"] = True
++def acquire_probe_terminal_seed_count(config): ...  # 1..32, default 8
++def deterministic_ik_seeds(seed_joints, limits, count): ...
++    def _sample_terminal_arm_branches(self, variant_desired, source, ...):
++        for warm in deterministic_ik_seeds(...):
++            joints, success = self.solver.compute_inverse_kinematics(..., warm_start=warm, ...)
++            self._collisions(joints, source, False, False, candidate_relation, False)
++                    if terminal is None:
++                        terminal = self._sample_terminal_arm_branches(...)
++                        if terminal["solution_count"] > 0 and terminal["collision_free_count"] == 0:
++                            raise PhaseMotionError("grasp_terminal_arm_infeasible", ...)
++warm_start=branch_seeds[0] if branch_seeds else seed_joints
 ```
 
 ### 验证 / Validation
-- [eval] [chore] 聚焦回归 15 passed；Isaac Adapter + subtask executor 477 passed、2 skipped；Ruff、compileall 和 `git diff --check` 通过。 / Focused regression passes 15 tests; full Adapter plus subtask executor passes 477 with 2 skips; Ruff, compileall and diff checks pass. (local)
-- [eval] [exp] 未发起新 Action；下一次 live 验证必须再次 reset，并生成新 scene revision、新感知和新完整 preparation。 / No new Action is issued; live validation requires another reset, scene revision, fresh perception and full preparation. (local)
+- [eval] [test] phase-motion 154 passed(146+4 新:全分支碰撞拒绝且跳过短路线工作、零解不剪枝、分支播种预抓 IK、校验器拒绝);全量 Isaac Adapter + subtask executor 506 passed、2 skipped(既有 native-USD);Ruff、compileall 通过。 / Phase-motion passes 154 (146 plus four new: all-branches-collide rejection with skipped short-route work, zero-solution no-prune, branch-seeded pre-IK, validator rejection); the full suite passes 506 with two pre-existing native-USD skips; Ruff and compileall pass. (local)
+- [policy] [exp] 预测(待 fresh run 验证):候选 178 的终态位姿在采样分支下将秒级判死,漏斗响应应诚实地给出零合格组合及具体原因,不再烧 600 秒走廊搜索。 / Prediction (pending fresh-run validation): candidate 178's terminal pose should be rejected in seconds under sampled branches, the funnel response should honestly surface zero qualified combinations with the concrete reason, and the 600 s corridor search should no longer burn. (local)
 
-### Git 提交 / Git Receipt
+### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`.
-- Implementation commit: `03d726f92bdee7a0a167b4398c908e5b4c696565`; 2026-11-03 19:11 Asia/Shanghai.
+- 尚未提交,等待用户审核。 / Not committed, pending user review. (local)
+
+### v16.10.1 预测验证 / Prediction validated (2026-11-05 23:05)
+
+- [eval] [exp] fresh 无运动跑 `out/lab-fullchain-truth-20261105-v16_10_1-no-motion-r1/`(task_7706c39bbe6a47eb)证实预测:漏斗 505→5→**0**,候选 56/60/178 的终态采样均为 solution_count=8、collision_free_count=0,以 `grasp_terminal_arm_infeasible` 秒级拒绝;100 死于终态夹爪碰撞,233 死于物理孔径极限。零路线搜索、零 600 秒燃烧,agent 回复列出全部门因。56/60 的历史单种子否决获正向证据确认。结论:当前夹具不存在任务合格抓取;孔径物理排除、几何门有谱系保留;剩余杠杆为夹具几何(垫高/外移试剂瓶,precedent:rod-storage patch),待用户批准。 / A fresh no-motion run confirms the prediction: funnel 505→5→0 with candidates 56/60/178 each sampled at 8 solutions and 0 collision-free branches, rejected `grasp_terminal_arm_infeasible` in seconds; 100 dies at final-gripper collision and 233 at the physical aperture limit. Zero route search, zero 600-second burn, and the agent response lists every gate reason. The historical single-seed rejections of 56/60 are confirmed with positive evidence. Consequence: no task-qualified grasp exists on this fixture; aperture widening is physically excluded, the gate set stands on lineage, and the remaining lever is fixture geometry (raise or relocate the reagent bottles), pending user approval. (local)
+
+## v16.10.0 (2026-11-05 21:10) - claude
+
+### 变更摘要 / Change Summary
+- [env] [fix] 修复 acquire 分段路线在基座头顶换向的结构问题:`acquire_route_waypoints` 原先在路线起点 TCP(机械臂 home 位,基座上方 r≈0.3)的 raised 副本处执行 `transit_orient`,且 `staging_reorient` 的 backoff 可将换向点内收——对应 witness 矩阵中 r=0.2–0.4 / z=1.0–1.3 的腕部折叠簇(q7 顶死 2.8–2.9 rad)。新增可选 `acquire_min_reorient_radius_m`(默认 0 精确保留旧 waypoint),把 raised 与 staging waypoint 在任何姿态变化之前沿基座径向外推;approach/grasp/close/lift 位姿不变,全部碰撞/IK/workspace/连续性资格化不变。 / Fix the structural near-base reorientation of the staged acquire route: `acquire_route_waypoints` performed `transit_orient` at the raised copy of the route-start TCP (the arm home pose above the base, r≈0.3) and the staging backoff could pull `staging_reorient` inward — matching the r=0.2–0.4 / z=1.0–1.3 wrist-fold cluster in the witness matrix (q7 pinned at 2.8–2.9 rad). An optional `acquire_min_reorient_radius_m` (default 0 preserves legacy waypoints exactly) pushes the raised and staging waypoints radially outward before any orientation change; approach/grasp/close/lift poses are unchanged and every collision/IK/workspace/continuity qualification is unchanged. (local)
+- [env] [config] `configs/labutopia-mixture-motion.json` 设置 `acquire_min_reorient_radius_m: 0.5`(在既有 workspace 盒 |x|≤0.65、|y|≤0.7 内)。 / Set `acquire_min_reorient_radius_m: 0.5` in the mixture motion profile, inside the existing workspace box. (local)
+
+### 预期修改 / Planned Files
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`
+- `.task/current.md`;`.task/labutopia-r05-fullroute-witness-profile-20261105.md`
+
+### 关键 Diff / Key Diff
+```diff
++def acquire_min_reorient_radius(config):
++    value = config.get("acquire_min_reorient_radius_m", 0.)
++    ...raise PhaseMotionError("invalid_motion_configuration", ...)
++
++def _push_to_reorient_radius(pose, radius):
++    ...pose[:2, 3] = xy * (radius / current)
++
++    reorient_radius = acquire_min_reorient_radius(config)
++    raised = _push_to_reorient_radius(raised, reorient_radius)
++    staged = _push_to_reorient_radius(staged, reorient_radius)
+```
+
+### 验证 / Validation
+- [eval] [test] phase-motion 146 passed(143 旧 + 3 新:外推几何/无配置保持旧位姿/校验器拒绝);Isaac Adapter + subtask executor 全量 498 passed、2 skipped(既有 native-USD skips);Ruff、compileall 通过。 / Phase-motion passes 146 (143 old plus three new: outward-push geometry, legacy positions without the key, validator rejection); the full Isaac Adapter plus subtask executor suite passes 498 with two pre-existing native-USD skips; Ruff and compileall pass. (local)
+- [eval] [exp] 覆盖面(诚实口径):全部姿态变化 waypoint 低于半径即外推——整体覆盖 transit_raise/orient IK 簇,并直接迁移 9 条 witness(6 transit_cross + 3 staging_reorient);9 条 `approach` 阶段自碰发生在未改动的 pre 位姿,仅经到达构型间接受益;grasp 阶段小臂沉桌(位姿族问题)不在本轮修复声明内。 / Coverage (honest accounting): every orientation-change waypoint below the radius is relocated — covering the transit_raise/orient IK cluster wholesale and directly relocating 9 witnesses (6 transit_cross + 3 staging_reorient); the 9 approach-stage self-collisions sit at unchanged pre poses and benefit only indirectly through arrival configuration; grasp-stage forearm-under-table failures (the pose-family issue) are not claimed. (local)
+- [policy] [exp] 未放宽任何安全阈值;未运行任何 motion;需要 fresh reset 无运动资格化运行后再经显式授权执行,且正式验收跑必须使用 `verification.mode=enforce/recovery` 与显式 goal/criteria(v16.9.8 使用 mode=off,仅适用于修复环)。 / No safety threshold was relaxed and no motion ran; a fresh-reset no-motion qualification run is required before any explicitly authorized execution, and the acceptance run must use `verification.mode=enforce/recovery` with an explicit goal and criteria (v16.9.8 used mode=off, acceptable for repair loops only). (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`.
+- 尚未提交,等待用户审核。 / Not committed, pending user review. (local)
+
+## v16.9.9 (2026-11-05 20:05) - claude
+
+### 变更摘要 / Change Summary
+- [sense] [feat] `LabGraspTaskAffordanceProvider.propose` 增加漏斗统计:几何门首败计数、探测前几何幸存数、探测拒绝计数、评估数与最终合格数,经既有 store 写入私有 `grasp-affordance-funnel` 工件,候选集记录 `funnel_ref` 并在 `perception.diagnostics` 存在时镜像;公共响应 schema 不变。 / Add funnel statistics to `LabGraspTaskAffordanceProvider.propose`: first-failure gate-reject counts, pre-probe geometry-survivor count, probe-reject counts, evaluated and final-qualified counts, persisted as a private `grasp-affordance-funnel` artifact through the existing store, with `funnel_ref` on the candidate set and a diagnostics mirror when available; the public response schema is unchanged. (local)
+- [sense] [tool] 新增离线回放器 `replay_task_affordance_funnel.py`:从既有 run 的 calibration、observed-geometry rim、object point cloud 与 grasp predictions 复放几何门漏斗,回执仅写入 scratch store,零 motion、零任务。 / Add offline replay `replay_task_affordance_funnel.py` that replays the geometric gate funnel from a persisted run's calibration, observed-geometry rim, object point cloud and grasp predictions; receipts go to a scratch store only, with zero motion and no task. (local)
+- [docs] [diag] 保存 v16.9.8 全路线 witness 画像(死因矩阵、失败点几何、505→5→1 漏斗链)、AgentLoop 审核与开放决策;不放宽任何阈值。 / Save the v16.9.8 full-route witness profile (failure matrix, failure-point geometry, 505→5→1 funnel chain), the AgentLoop review and open decisions; no threshold is relaxed. (local)
+
+### 预期修改 / Planned Files
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py`
+- `examples/forge-adapters/isaacsim_lab/scripts/replay_task_affordance_funnel.py`
+- `.task/labutopia-r05-fullroute-witness-profile-20261105.md`
+- `.task/current.md`
+
+### 关键 Diff / Key Diff
+```diff
++ gate_rejects: Counter[str] = Counter()
++ probe_rejects: Counter[str] = Counter()
++ funnel = {"operation": ..., "evaluated": len(grasp_candidates),
++           "geometry_qualified": geometry_qualified,
++           "gate_rejects": dict(sorted(gate_rejects.items())),
++           "probe_rejects": dict(sorted(probe_rejects.items())),
++           "qualified": len(candidates)}
++ funnel_ref = self.perception.store.write("grasp-affordance-funnel", funnel)
+```
+
+### 验证 / Validation
+- [eval] [test] Isaac Adapter + subtask executor 全量 495 passed、2 skipped(既有 native-USD skips);`test_visual_perception.py` 75 passed(含新漏斗回归);Ruff、compileall 通过。 / Full Isaac Adapter plus subtask executor suite passes 495 with two pre-existing native-USD skips; `test_visual_perception.py` passes 75 including the new funnel regression; Ruff and compileall pass. (local)
+- [eval] [exp] 回放器在 v16.9.8 R05 证据上精确复现线上行为:evaluated=505、geometry_qualified=5、幸存者 60/56/100/178/233 与五份探测回执一致;门直方图 support-end 178 / opening 146 / closing-axis 74 / occlusion 35 / asymmetric 34 / bilateral 31 / finger-span 2。 / The replay reproduces online behaviour exactly on v16.9.8 R05 evidence: evaluated=505, geometry_qualified=5, survivors 60/56/100/178/233 matching the five persisted probe receipts; gate histogram support-end 178, opening 146, closing-axis 74, occlusion 35, asymmetric 34, bilateral 31, finger-span 2. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`.
+- 尚未提交,等待用户审核(本轮另含 3 个可证明死亡的 robotwin20 脚本删除:evaluate_open_world_scene_understanding.py、qwen3_vl_worker.py、run_approved_simulation_probe.py,全语料零引用)。 / Not committed, pending user review (this round also removes three provably dead robotwin20 scripts with zero corpus references: evaluate_open_world_scene_understanding.py, qwen3_vl_worker.py, run_approved_simulation_probe.py). (local)

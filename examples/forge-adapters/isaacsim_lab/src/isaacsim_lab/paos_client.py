@@ -7,6 +7,7 @@ complete-cycle endpoint.
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
@@ -230,7 +231,12 @@ class LabUtopiaCycleProvider:
                         "error": str(result.get("failure_code", result.get("error", "held_route_unavailable")))
                         if isinstance(result, Mapping) else "held_route_unavailable"}
             route = result.get("route_arguments")
-            if not isinstance(route, Mapping) or any(route.get(k) != v for k, v in arguments.items()):
+            # Compare against the JSON-round-trip image of the request: the
+            # route crossed the worker wire (tuples become lists) while the
+            # request stayed in-process, so a raw equality check would
+            # false-positive on equivalent values.
+            expected = json.loads(json.dumps(dict(arguments)))
+            if not isinstance(route, Mapping) or any(route.get(k) != v for k, v in expected.items()):
                 raise ValueError("held route must preserve current request and parameters")
             preparation_ref = f"preparation://labutopia/{uuid4().hex}"
             assignment_ref = f"artifact://labutopia/assignments/{uuid4().hex}"
@@ -295,14 +301,6 @@ class LabUtopiaActionDriver:
                 "failure_owner": "isaacsim_adapter",
                 "failure_code": type(exc).__name__,
             }
-        if not isinstance(result, Mapping):
-            return {
-                "status": "unknown",
-                "outcome_known": False,
-                "world_change_started": True,
-                "failure_owner": "isaacsim_adapter",
-                "failure_code": "non_mapping_engine_result",
-            }
         return dict(result)
 
     def cancel(self) -> None:
@@ -325,7 +323,7 @@ class LabUtopiaCycleClient:
         assignment_store: Any | None = None,
         owns_assignment_store: bool = False,
     ):
-        if isinstance(max_workers, bool) or max_workers < 1:
+        if max_workers < 1:
             raise ValueError("max_workers must be a positive integer")
         self.engine = engine
         self.allow_live = bool(allow_live)
@@ -361,7 +359,7 @@ class LabUtopiaCycleClient:
         observe = getattr(self.engine, "observe", None)
         if not callable(observe):
             return None
-        result = observe(deepcopy(dict(request)))
+        result = observe(dict(request))
         if not isinstance(result, Mapping) or result.get("status") != "available":
             return None
         return result

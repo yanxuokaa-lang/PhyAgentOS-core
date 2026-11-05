@@ -1342,16 +1342,11 @@ class AgentLoopNodeExecutor:
             selected = persist_projected_query(context)
             if hasattr(selected, "__await__"):
                 selected = await selected
-            if selected:
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
-            else:
-                # A concurrent governed selection may have won while source
-                # qualification was completing. Reconcile before model use.
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
+            # Whether or not a governed selection won, reconcile persisted
+            # records once before any model use.
+            resumed = await self._resume_node(context)
+            if resumed is not None:
+                return resumed
         persist_frozen_query = getattr(
             self.agent_loop, "persist_deterministic_query_selection", None,
         )
@@ -1359,16 +1354,9 @@ class AgentLoopNodeExecutor:
             selected = persist_frozen_query(context.task_id, context.node_id)
             if hasattr(selected, "__await__"):
                 selected = await selected
-            if selected:
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
-            else:
-                # A concurrent governed selection may have been persisted after
-                # the first read.  Reconcile it before spending a model turn.
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
+            resumed = await self._resume_node(context)
+            if resumed is not None:
+                return resumed
         try_projected_query = getattr(
             self.agent_loop, "try_projected_query_decision", None
         )
@@ -1379,14 +1367,9 @@ class AgentLoopNodeExecutor:
             )
             if hasattr(selected, "__await__"):
                 selected = await selected
-            if selected:
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
-            else:
-                resumed = await self._resume_node(context)
-                if resumed is not None:
-                    return resumed
+            resumed = await self._resume_node(context)
+            if resumed is not None:
+                return resumed
         attempts = 1 + self.max_node_turn_continuations
         previous_fingerprint: tuple[Any, ...] | None = None
         for _attempt in range(attempts):
@@ -1507,6 +1490,9 @@ class AgentLoopNodeExecutor:
         self, context: NodeExecutionContext,
     ) -> ToolResultEnvelope | None:
         """Reconcile existing execution before consuming a selection or asking the model."""
+        # The second records read is load-bearing: reconciliation may surface
+        # records that did not exist before it (see over-defense review
+        # follow-up notes; not redundant).
         if self._node_records(context):
             await self._reconcile_executions(context.task_id, context.node_id)
             return self._result_from_records(context, self._node_records(context))
@@ -2092,6 +2078,10 @@ class PlanningLoopAdapter:
                 dict(admission.condition_facts),
             )
             if dict(admission.condition_facts).get("scene_current") is False:
+                # Prefilter only: admission is authoritatively gated by
+                # PlanningDispatch.stale_scene_ready_nodes; this copy must gain
+                # the policies seam to match it exactly (follow-up, see
+                # docs/reviews/overdefense-review-fullchain-20261105.md #4).
                 ready = tuple(node.node_id for node in graph.nodes
                               if node.node_id not in settlements
                               and all(settlements.get(dep) == "completed" for dep in node.dependencies))
