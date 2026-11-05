@@ -100,7 +100,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`.
-- Implementation commit: pending selective task-only commit.
+- Implementation commit: `0d92159b976a5b004b67319f7d8b52a7f204ad2d`.
 
 ## v16.9.8 (2026-11-04 08:37) - codex
 
