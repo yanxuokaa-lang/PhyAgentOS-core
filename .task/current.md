@@ -31,6 +31,7 @@
   failures; full Core + Isaac Adapter + pick-place suite 2226 passed, 2 skipped
   and 16 failed, with every failing node reproduced unchanged in an isolated
   HEAD worktree. Ruff, compileall and targeted diff checks pass.
+- Implementation commit: `f2e98f0a` on `feature/planning-loop`.
 
 # Previous Task: terminal-pose arm sampling in the grasp-approach probe
 

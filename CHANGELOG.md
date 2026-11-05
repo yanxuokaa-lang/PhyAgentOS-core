@@ -78,7 +78,7 @@
 - [eval] [chore] Ruff、compileall 与定向 `git diff --check` 通过；未启动 Runtime、相机、仿真器或运动。 / Ruff, compileall and targeted `git diff --check` pass; no Runtime, camera, simulator or motion was started. (local)
 
 ### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`。Implementation commit 待本次提交后回填。 / Implementation commit will be backfilled after this commit. (local)
+- Branch: `feature/planning-loop`。Implementation commit: `f2e98f0a`。 / Implementation commit: `f2e98f0a`. (local)
 
 ## v17.0.0 (2026-11-05 20:29) - codex
 
