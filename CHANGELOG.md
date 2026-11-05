@@ -77,7 +77,7 @@
 - 未启动仿真、相机、Action 或运动。 / No simulator, camera, Action or motion was started.
 
 ### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`。Implementation commit: pending. / Implementation commit: pending.
+- Branch: `feature/planning-loop`。Implementation commit: `d967fd37`. / Implementation commit: `d967fd37`.
 
 ## v17.1.0 (2026-11-05 23:55) - codex
 
