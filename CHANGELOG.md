@@ -57,10 +57,10 @@
 - [eval] [test] 31 项 Agent planning、RoboTwin approval/Adapter 定向测试通过；Ruff 与 diff whitespace 检查通过。 / 31 focused Agent-planning and RoboTwin approval/Adapter tests pass; Ruff and diff whitespace checks pass. (local)
 
 ### 文件变更详情 / File Changes
-- `agent_planning.py` L122-L197, L237-L299, L302-L410：关系目标模型及 fresh-scene 单段编译。 / Relation-goal model and fresh-scene segment compilation.
+- `agent_planning.py` L122-L197, L237-L299, L302-L420：关系目标模型及 fresh-scene 单段编译。 / Relation-goal model and fresh-scene segment compilation.
 - `robotwin_blocks_ranking_adapter.py` L223-L339、`robotwin_persistent_engine.py` L226-L237, L285-L288, L370-L377, L428-L433, L468-L472：stack task facts、Adapter-derived actor identity 与拒绝运动路径。 / Stack task facts, Adapter-derived actor identity and motion-path refusal.
-- `test_agent_planning.py` L308-L394、`test_robotwin_task_adapters.py` L1-L88、`test_persistent_action_approval.py` L267-L276, L327-L337, L418-L430：段规划、fake task 与 capability fixtures 回归。 / Segment-planning, fake-task and capability-fixture regressions.
-- `.task/current.md` L1-L13、`changelog/2026-11_part2.md` L346-L404：状态、边界、验证和后续续段工作。 / Status, boundary, validation and continuation follow-up.
+- `test_agent_planning.py` L308-L394、`test_robotwin_task_adapters.py` L1-L83、`test_persistent_action_approval.py` L267-L276, L327-L337, L418-L430：段规划、fake task 与 capability fixtures 回归。 / Segment-planning, fake-task and capability-fixture regressions.
+- `.task/current.md` L1-L12、`changelog/2026-11_part2.md` L346-L388：状态、边界、验证和后续续段工作。 / Status, boundary, validation and continuation follow-up.
 
 ### 关键 Diff / Key Diff
 ```diff
