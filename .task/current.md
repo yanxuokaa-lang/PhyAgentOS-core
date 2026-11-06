@@ -9,7 +9,7 @@
 - Fix: Coordinator filters known old-scene Query refs at atomic continuation append and rejects a proposed node that requires one before revision persistence. Historical Action evidence and Query refs without explicit scene identity retain their existing meaning.
 - Validation: continuation evidence suite `28 passed`; LongHorizon/recovery decision suites `34 passed`. Combined planning-task integration had `72 passed, 1 failed`; the failing test is an unrelated fixture in `resolve_subtask_context` (`planning_selections` missing from `SimpleNamespace`), before the edited continuation methods. No simulation, Gateway Action or motion was started.
 - RoboTwin `stack_blocks_three` remains non-executable: lifecycle continuation is now correctly bounded, but no relation-geometry/execution Provider has been implemented or qualified.
-- Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e` on `feature/planning-loop`; the receipt-only log update is being committed before pushing the branch.
+- Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e`; receipt commit `95f28a63` pushed to `origin/feature/planning-loop`.
 
 # Previous Task: RoboTwin relation-task planning expansion (v17.2.0)
 

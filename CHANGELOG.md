@@ -81,7 +81,7 @@ def begin_continuation_revision(..., scene_revision=None):
 - Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran. / Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran.
 
 ### Git 提交 / Git Commit
-- Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e` on `feature/planning-loop`; branch push outcome will be recorded in the monthly log. / Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e` on `feature/planning-loop`; branch push outcome will be recorded in the monthly log.
+- Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e`; receipt commit: `95f28a63`; pushed to `origin/feature/planning-loop`. / Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e`; receipt commit: `95f28a63`; pushed to `origin/feature/planning-loop`.
 
 ## v17.2.0 (2026-11-05 22:19) - codex
 
