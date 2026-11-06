@@ -99,6 +99,11 @@ from .persistent_runtime import (
     SQLiteAssignmentArtifactStore,
     StoredAssignmentResolver,
 )
+from .relation_target import (
+    RELATION_TARGET_TOOL_SPEC,
+    RelationTargetProvider,
+    RelationTargetQueryEndpoint,
+)
 from .semantic_task_creation import (
     AsyncQuerySemanticPlanBuilder,
     QuerySemanticPlanBuilder,
@@ -166,6 +171,9 @@ __all__ = [
     "PerceptionBindingAdapter",
     "PerceptionBindingError",
     "QueryInvoker",
+    "RELATION_TARGET_TOOL_SPEC",
+    "RelationTargetProvider",
+    "RelationTargetQueryEndpoint",
     "QuerySemanticPlanBuilder",
     "AsyncQuerySemanticPlanBuilder",
     "SemanticPlanBuilder",

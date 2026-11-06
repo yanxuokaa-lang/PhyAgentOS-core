@@ -19,6 +19,7 @@ from pick_place_workflow.persistent_runtime import (
     build_persistent_runtime,
     register_subtask_tool,
 )
+from pick_place_workflow.relation_target import RELATION_TARGET_TOOL_SPEC
 
 from .arm_candidates import CompleteRouteSelector
 from .contact_qualification import contact_qualification_mode
@@ -67,6 +68,35 @@ class PersistentTaskGoalProvider:
         return value
 
 
+class PersistentRelationTargetProvider:
+    """Query the runtime-owned relation geometry mechanism."""
+
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    def propose(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        return self.client.query("relation_target", request)
+
+
+class RelationTargetEndpoint:
+    def __init__(self, provider: PersistentRelationTargetProvider) -> None:
+        self.provider = provider
+
+    def invoke(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return dict(self.provider.propose(arguments) or {})
+        except (KeyError, ValueError, TypeError, OSError, PersistentWorkerError) as exc:
+            return {
+                "status": "unavailable",
+                "candidate_set_ref": "relation-target-set://unavailable",
+                **{key: arguments.get(key, "unknown") for key in (
+                    "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+                    "scene_revision", "frame_id", "calibration_ref",
+                )},
+                "candidates": [],
+                "motion_authorized": False,
+                "error": str(exc),
+            }
 class TaskGoalEndpoint:
     def __init__(self, provider: PersistentTaskGoalProvider) -> None:
         self.provider = provider
@@ -89,11 +119,13 @@ class PersistentDeployment:
     prepared_routes: PreparedRoutes
     grounding: Grounding | None = None
     task_goal_provider: Any | None = None
+    relation_target_provider: Any | None = None
 
     def runtime_arguments(self):
         return {"preparation_provider": self.preparation_provider,
                 "capability_provider": self.capability_provider,
-                "resolve_preparation": self.prepared_routes}
+                "resolve_preparation": self.prepared_routes,
+                "relation_target_provider": self.relation_target_provider}
 
 
 @dataclass(frozen=True)
@@ -217,6 +249,12 @@ def build_persistent_runtime_bundle(
             TaskGoalEndpoint(deployment.task_goal_provider),
             context_provider=lambda: tool_context_provider("task.goal"),
         )
+    if deployment.relation_target_provider is not None:
+        runtime.register_tool(
+            deepcopy(RELATION_TARGET_TOOL_SPEC),
+            RelationTargetEndpoint(deployment.relation_target_provider),
+            context_provider=lambda: tool_context_provider("relation.target"),
+        )
     transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
     return PersistentRuntimeBundle(deployment=deployment, runtime=runtime, transport=transport)
 
@@ -339,4 +377,5 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         routes,
         grounding,
         PersistentTaskGoalProvider(client, goal_source=goal_source),
+        PersistentRelationTargetProvider(client),
     )

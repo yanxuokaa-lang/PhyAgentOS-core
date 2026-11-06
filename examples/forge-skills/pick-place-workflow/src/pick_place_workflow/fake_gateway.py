@@ -83,6 +83,7 @@ from .process_features import (
     ProcessFeaturePreparationEndpoint,
     ProcessFeatureQueryEndpoint,
 )
+from .relation_target import RELATION_TARGET_TOOL_SPEC, RelationTargetQueryEndpoint
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
     UNDERSTANDING_OPERATION,
@@ -443,6 +444,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         capability_provider: Any | None = None,
         grounding_provider: Any | None = None,
         task_goal_provider: Any | None = None,
+        relation_target_provider: Any | None = None,
         process_feature_provider: Any | None = None,
         grasp_task_affordance_provider: Any | None = None,
         readiness_gate: ActionReadinessGate | None = None,
@@ -452,6 +454,11 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         self.endpoint = SceneObservationEndpoint(provider, now=now)
         self.grounding_provider = grounding_provider
         self.task_goal_provider = task_goal_provider or _StaticTaskGoalProvider()
+        self.relation_target_endpoint = (
+            RelationTargetQueryEndpoint(relation_target_provider)
+            if relation_target_provider is not None
+            else None
+        )
         self.process_feature_provider = process_feature_provider or _UnavailableProcessFeatureProvider()
         self.process_feature_endpoint = (
             ProcessFeatureQueryEndpoint(self.process_feature_provider)
@@ -516,6 +523,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         STAGING_TOOL_SPEC,
                         TARGET_TOOL_SPEC,
                         TASK_GOAL_TOOL_SPEC,
+                        RELATION_TARGET_TOOL_SPEC,
                         PROCESS_FEATURE_TOOL_SPEC,
                         PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
                         GRASP_TASK_AFFORDANCE_TOOL_SPEC,
@@ -565,6 +573,20 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             return self._ok({"ready": True, "binding_error": None, "motion_authorized": False})
         if request.method == "POST" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['endpoint_id']}/resolve:invoke":
             return self._ok(self.task_goal_provider.goal(json.loads(request.content)["arguments"]))
+        if request.method == "GET" and path == f"/tools/{RELATION_TARGET_TOOL_SPEC['tool_id']}":
+            return self._ok(RELATION_TARGET_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{RELATION_TARGET_TOOL_SPEC['tool_id']}/context":
+            ready = self.relation_target_endpoint is not None
+            return self._ok({
+                "ready": ready,
+                "binding_error": None if ready else "relation target provider unavailable",
+                "motion_authorized": False,
+            })
+        if request.method == "POST" and path == f"/tools/{RELATION_TARGET_TOOL_SPEC['endpoint_id']}/resolve:invoke":
+            if self.relation_target_endpoint is None:
+                return self._ok({"status": "unavailable", "motion_authorized": False})
+            arguments = json.loads(request.content).get("arguments")
+            return self._ok(self.relation_target_endpoint.invoke(arguments))
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
             return self._ok(
                 {

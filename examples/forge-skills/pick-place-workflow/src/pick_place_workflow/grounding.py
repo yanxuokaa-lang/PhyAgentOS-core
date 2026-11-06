@@ -48,29 +48,51 @@ TASK_GOAL_TOOL_SPEC["output_schema"]["properties"].update(
             "type": "array",
             "minItems": 1,
             "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "execution_entity_ref",
-                    "destination_ref",
-                    "frame_id",
-                    "unit",
-                    "world_T_object_target",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "execution_entity_ref", "destination_ref", "frame_id", "unit",
+                            "world_T_object_target",
+                        ],
+                        "properties": {
+                            "execution_entity_ref": _REF,
+                            "destination_ref": _REF,
+                            "frame_id": {"const": "world"},
+                            "unit": {"const": "m"},
+                            "world_T_object_target": _POSE,
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "subtask_id", "execution_entity_ref", "goal_relation",
+                            "relation_target_ref", "depends_on", "required_evidence",
+                            "produced_evidence",
+                        ],
+                        "properties": {
+                            "subtask_id": _REF,
+                            "execution_entity_ref": _REF,
+                            "goal_relation": {"type": "string", "minLength": 1},
+                            "relation_target_ref": {
+                                "type": "string", "pattern": "^(entity|surface)://[^/]+$"
+                            },
+                            "depends_on": {"type": "array", "items": _REF},
+                            "required_evidence": {"type": "array", "items": _REF},
+                            "produced_evidence": {"type": "array", "minItems": 1, "items": _REF},
+                        },
+                    },
                 ],
-                "properties": {
-                    "execution_entity_ref": _REF,
-                    "destination_ref": _REF,
-                    "frame_id": {"const": "world"},
-                    "unit": {"const": "m"},
-                    "world_T_object_target": _POSE,
-                },
             },
         },
     }
 )
+
 BIND_TOOL_SPEC = _spec(
     "scene.bind",
-    {**{k: _REF for k in IDENTITY_KEYS},
+    {**{key: _REF for key in IDENTITY_KEYS},
      "entity_refs": {"type": "array", "minItems": 1, "uniqueItems": True, "items": _REF}},
     [*IDENTITY_KEYS, "entity_refs"],
     "Resolve selected observed entities to execution objects using calibrated geometry. "
@@ -96,8 +118,7 @@ BIND_TOOL_SPEC["planning"].update({
     },
 })
 STAGING_TOOL_SPEC = _spec(
-    "manipulation.staging",
-    {"binding_ref": _REF, "entity_ref": _REF},
+    "manipulation.staging", {"binding_ref": _REF, "entity_ref": _REF},
     ["binding_ref", "entity_ref"],
     "Choose an observation-owned temporary destination on current free support space. "
     "Returns an opaque destination_ref and clearance evidence; does not authorize motion.",

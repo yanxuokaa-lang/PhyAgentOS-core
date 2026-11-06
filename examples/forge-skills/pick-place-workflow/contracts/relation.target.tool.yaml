@@ -1,0 +1,54 @@
+tool_id: relation.target
+implementation_id: relation.target
+endpoint_id: relation_target
+operation: propose
+semantics: query
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities: [relation.target]
+  input_binding_keys: [entity_ref, goal_relation, relation_target_ref, observation_ref, scene_revision, frame_id, calibration_ref]
+  scene_write_behavior: none
+  requires_before_plan: true
+description: Resolve a relational placement goal against current scene geometry without preparing or authorizing motion.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [entity_ref, goal_relation, relation_target_ref, observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms]
+  properties:
+    entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+    goal_relation: {type: string, minLength: 1}
+    relation_target_ref: {type: string, pattern: '^(entity|surface)://[^/]+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, pattern: '^artifact://\S+$'}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [status, candidate_set_ref, entity_ref, goal_relation, relation_target_ref, observation_ref, scene_revision, frame_id, calibration_ref, candidates, motion_authorized]
+  properties:
+    status: {enum: [available, empty, ambiguous, stale, invalid, unavailable]}
+    candidate_set_ref: {type: string, pattern: '^relation-target-set://\S+$'}
+    entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+    goal_relation: {type: string, minLength: 1}
+    relation_target_ref: {type: string, pattern: '^(entity|surface)://[^/]+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, pattern: '^artifact://\S+$'}
+    candidates:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [candidate_ref, destination_ref, world_T_object_target, evidence_refs]
+        properties:
+          candidate_ref: {type: string, pattern: '^relation-target://\S+$'}
+          destination_ref: {type: string, pattern: '^destination://\S+$'}
+          world_T_object_target: {type: array, minItems: 16, maxItems: 16, items: {type: number}}
+          evidence_refs: {type: array, minItems: 1, uniqueItems: true, items: {type: string, pattern: '^artifact://\S+$'}}
+    motion_authorized: {const: false}
+    error: {type: string}
+unknown_semantics: terminal_for_accounting_only

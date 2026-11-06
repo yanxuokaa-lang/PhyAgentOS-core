@@ -221,7 +221,7 @@ class BlocksRankingRgbTaskAdapter:
 
 
 class StackBlocksThreeTaskAdapter:
-    """Expose stack relations without claiming current target geometry or motion."""
+    """Expose stack relations and conservative simulator-derived target geometry."""
 
     task_name = "stack_blocks_three"
     motion_execution_supported = False
@@ -296,6 +296,61 @@ class StackBlocksThreeTaskAdapter:
             "goals": goals,
             "captured_at": datetime.now(timezone.utc).isoformat(),
             "motion_authorized": False,
+        }
+
+    def relation_target(self, task: Any, request: dict[str, Any]) -> dict[str, Any]:
+        """Resolve block-on-block center alignment from current simulator poses.
+
+        Table geometry is not exposed by this task binding and therefore remains
+        unavailable. This method only proposes geometry; it does not qualify a
+        route or authorize Action execution.
+        """
+        if request.get("goal_relation") != "on":
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "only the on relation is supported"}
+        entity = request.get("entity_ref")
+        target = request.get("relation_target_ref")
+        if entity == target:
+            return {**request, "status": "invalid", "candidates": [],
+                    "error": "an entity cannot be placed on itself"}
+        entity_binding = next((row for row in self.entities if row[0] == entity), None)
+        target_binding = next((row for row in self.entities if row[0] == target), None)
+        if entity_binding is None or target_binding is None:
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "support geometry is unavailable for this relation target"}
+        moving = getattr(task, entity_binding[1], None)
+        support = getattr(task, target_binding[1], None)
+        if moving is None or support is None:
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "stack actor binding is unavailable"}
+        moving_pose = _matrix(moving.get_pose())
+        support_pose = _matrix(support.get_pose())
+        if any(abs(abs(pose[2][2]) - 1.0) > 0.02 for pose in (moving_pose, support_pose)):
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "tilted support relations require a qualified surface model"}
+        moving_half = _half_extents(moving)
+        support_half = _half_extents(support)
+        moving_extent_z = sum(abs(moving_pose[2][axis]) * moving_half[axis] for axis in range(3))
+        support_extent_world = [
+            sum(abs(support_pose[axis][local]) * support_half[local] for local in range(3))
+            for axis in range(3)
+        ]
+        if moving_extent_z <= 0 or support_extent_world[2] <= 0:
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "actor support extents are unavailable"}
+        target_pose = [row[:] for row in moving_pose]
+        for axis in range(2):
+            target_pose[axis][3] = support_pose[axis][3]
+        target_pose[2][3] = support_pose[2][3] + support_extent_world[2] + moving_extent_z
+        candidate_key = f"{entity.removeprefix('entity://')}:{target.removeprefix('entity://')}"
+        return {
+            **request,
+            "status": "available",
+            "candidates": [{
+                "candidate_key": candidate_key,
+                "world_T_object_target": _flatten(target_pose),
+                "support_world_top_m": target_pose[2][3] - moving_extent_z,
+            }],
         }
 
     def benchmark_result(self, task: Any, *, seed: int, scene_revision: str) -> dict[str, Any]:
@@ -506,7 +561,8 @@ def _pose_from_pq_wxyz(value: Any) -> Any:
 
 
 def _half_extents(actor: Any) -> list[float]:
-    components = getattr(actor.actor, "components", None)
+    actor_handle = getattr(actor, "actor", None)
+    components = getattr(actor_handle, "components", None)
     if not isinstance(components, list):
         raise BlocksRankingRgbTaskAdapterError("actor physics components are unavailable")
     shapes = []

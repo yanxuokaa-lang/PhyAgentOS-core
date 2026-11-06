@@ -30,6 +30,7 @@ from .object_acquire import ACQUIRE_TOOL_SPEC
 from .object_acquire import validate_arguments as validate_acquire
 from .object_place import PLACE_TOOL_SPEC
 from .object_place import validate_arguments as validate_place
+from .relation_target import RELATION_TARGET_TOOL_SPEC, RelationTargetQueryEndpoint
 
 
 @dataclass
@@ -658,7 +659,8 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                              refresh_subtask_binding=None, resolve_subtask_context=None,
                              assignment_store: AssignmentArtifactStore | None = None,
                              process_feature_provider=None,
-                             grasp_task_affordance_provider=None) -> CapabilityRuntime:
+                             grasp_task_affordance_provider=None,
+                             relation_target_provider=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -749,6 +751,11 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                               GraspTaskAffordanceQueryEndpoint(grasp_task_affordance_provider)))
         registrations.append((GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
                               GraspTaskAffordancePreparationEndpoint(grasp_task_affordance_provider)))
+    if relation_target_provider is not None:
+        registrations.append((
+            RELATION_TARGET_TOOL_SPEC,
+            RelationTargetQueryEndpoint(relation_target_provider),
+        ))
     if register_legacy_actions:
         registrations.extend([
             (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),

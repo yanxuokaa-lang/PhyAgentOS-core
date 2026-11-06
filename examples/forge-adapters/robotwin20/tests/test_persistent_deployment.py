@@ -13,11 +13,13 @@ from robotwin20_adapter.persistent_action_approval import (
 )
 from robotwin20_adapter.persistent_client import PersistentWorkerError
 from robotwin20_adapter.persistent_deployment import (
+    PersistentRelationTargetProvider,
     PersistentTaskGoalProvider,
     TaskGoalEndpoint,
     build_persistent_deployment,
     build_persistent_runtime_bundle,
 )
+from robotwin20_adapter.runtime_profile import load_runtime_profile
 
 
 def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_path):
@@ -93,6 +95,34 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
         )
 
 
+def test_stack_blocks_three_profile_and_relation_provider_wiring(tmp_path):
+    profile_path = (
+        Path(__file__).parents[1]
+        / "profiles/robotwin20/stack-blocks-three.yaml"
+    ).resolve()
+    profile = load_runtime_profile(profile_path)
+    assert profile["task_name"] == "stack_blocks_three"
+    assert profile["task_config"] == "demo_clean"
+    assert profile["sensor_refs"] == ("camera/head", "camera/front")
+
+    arm_profile = tmp_path / "arms.yaml"
+    arm_profile.write_text(yaml.safe_dump(_profile()), encoding="utf-8")
+    deployment = build_persistent_deployment(
+        client=object(),
+        artifact_root=tmp_path / "artifacts",
+        scene_source=lambda _request: None,
+        materializer_command=("python", "materializer.py"),
+        materializer_arguments={
+            "arm-planning-profile": str(arm_profile),
+            "route-input-profile": str(
+                Path(__file__).parents[1] / "profiles/robotwin20/route-inputs-persistent.yaml"
+            ),
+        },
+        arm_profile_digest="a" * 64,
+        task_name="stack_blocks_three",
+    )
+    assert isinstance(deployment.relation_target_provider, PersistentRelationTargetProvider)
+    assert deployment.runtime_arguments()["relation_target_provider"] is deployment.relation_target_provider
 def test_deployment_projects_qualification_capability_refs_into_both_consumers(tmp_path):
     arm = tmp_path / "arms.yaml"
     arm.write_text(yaml.safe_dump(_profile()))
@@ -266,7 +296,8 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
     assert set(tools) == {
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
-        "scene.bind", "task.goal", "manipulation.staging", "manipulation.target",
+        "scene.bind", "task.goal", "relation.target", "manipulation.staging",
+        "manipulation.target",
     }
     assert tools["scene.observe"]["input_schema"]["properties"]["sensor_ref"]["default"] == "camera/head"
     assert tools["scene.observe"]["input_schema"]["properties"]["max_age_ms"]["default"] == 1000

@@ -21,6 +21,7 @@ EXPECTED_TOOLS = {
     "scene.understand",
     "scene.bind",
     "task.goal",
+    "relation.target",
     "manipulation.target",
     "manipulation.staging",
     "grasp.propose",

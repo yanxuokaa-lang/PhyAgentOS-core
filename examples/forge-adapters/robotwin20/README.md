@@ -489,6 +489,25 @@ The execution order is now:
 
 No Action, Gateway, Dora, or hardware motion is enabled by this profile work.
 
+### `stack_blocks_three` relation-target Query
+
+`profiles/robotwin20/stack-blocks-three.yaml` selects the benchmark task,
+Franka dual-single-arm embodiment, synchronized head/front camera observation,
+seed, and Adapter-owned robot/gripper/planner identities. It is a scene/runtime
+profile only; deployment paths remain caller-owned. The task Adapter can return
+one center-aligned block-on-block target candidate from current simulator actor
+poses and extents when both blocks are upright. It does not produce a table
+support candidate, route, grasp, collision result, or completion receipt.
+`relation.target` binds that candidate to a fresh current observation and
+stores the evidence artifact. Its output always has `motion_authorized=false`.
+
+`stack_blocks_three` still declares `motion_execution_supported=false`.
+Route readiness and Action preparation remain unavailable until a dedicated
+relation execution Provider qualifies relation geometry, grasp and route
+preparation, collision/support checks, release verification, and settlement
+against the real RoboTwin runtime. The current no-motion tests do not qualify
+live simulator execution.
+
 The Franka readiness gate for the first profiled scene is now complete for the
 no-motion review boundary. Capture geometry and point-cloud artifacts,
 GraspGen candidates, and the independent Curobo worker all bind

@@ -342,6 +342,16 @@ an explicit scene identity is not guessed stale and remains subject to the
 existing source and execution checks. The Agent chooses the semantic segment;
 the Coordinator remains the sole revision owner.
 
+Relational placement is not a static `object.place` destination. A Provider may
+expose a no-motion `relation.target` Query that accepts opaque entity/support
+references and the current observation, scene revision, frame, and calibration.
+Its candidate pose is geometry evidence only: it does not prove reachability,
+collision clearance, grasp feasibility, Action admission, relation completion,
+or task settlement. Providers must return explicit `unavailable`, `ambiguous`,
+or `stale` when support geometry or provenance is incomplete. A relation Action
+must reuse the existing Action admission and settlement lifecycle; do not add a
+parallel relation scheduler or let a geometry Query settle `relation.establish`.
+
 The initial discovery turn yields immediately after
 `forge_task_materialize_plan` succeeds. It does not activate, select, or execute
 the first node from the accumulated discovery transcript. The host-owned

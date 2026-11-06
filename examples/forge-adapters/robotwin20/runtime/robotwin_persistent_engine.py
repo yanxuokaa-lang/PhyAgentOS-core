@@ -8,6 +8,7 @@ import math
 import sys
 import time
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
 from typing import Any, Mapping
@@ -339,6 +340,73 @@ class RoboTwinPersistentEngine:
                 **value,
                 "goal_ref": self._goal_facts_ref,
                 "evidence_refs": [self._goal_facts_ref],
+            }
+        if operation == "relation_target":
+            required = {
+                "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+                "scene_revision", "frame_id", "calibration_ref", "freshness_ms", "max_age_ms",
+            }
+            if set(arguments) != required:
+                raise ValueError("relation target Query fields are invalid")
+            if self.task_adapter.task_name != "stack_blocks_three":
+                raise ValueError("active task has no relation-target Provider")
+            if arguments["scene_revision"] != self.backend.snapshot()["scene_revision"]:
+                raise ValueError("relation target Query is bound to a stale scene")
+            sensor_ref = {
+                "head_camera": "camera/head",
+                "front_camera": "camera/front",
+                "left_camera": "camera/left_wrist",
+                "right_camera": "camera/right_wrist",
+            }.get(arguments["frame_id"])
+            if sensor_ref is None:
+                raise ValueError("relation target Query frame is not a configured sensor")
+            observation = self.observation.observe(sensor_ref)
+            if (
+                observation is None
+                or observation.observation_ref != arguments["observation_ref"]
+                or observation.scene_revision != arguments["scene_revision"]
+                or observation.calibration_ref != arguments["calibration_ref"]
+            ):
+                raise ValueError("relation target Query does not match a fresh current observation")
+            measured_age_ms = max(
+                0,
+                int((datetime.now(timezone.utc) - observation.captured_at).total_seconds() * 1000),
+            )
+            if measured_age_ms > arguments["max_age_ms"]:
+                raise ValueError("relation target Query observation is stale")
+            value = self.task_adapter.relation_target(self.backend._task, arguments)
+            evidence_ref = f"artifact://persistent/{self.epoch}/relation-targets/{uuid4().hex}"
+            evidence = {
+                "schema_version": "paos-robotwin20-relation-target-evidence/v1",
+                "task_name": self.task_adapter.task_name,
+                "query": dict(arguments),
+                "geometry_source": "simulator_actor_geometry",
+                "support_world_top_m": (
+                    value["candidates"][0]["support_world_top_m"]
+                    if value.get("candidates") else None
+                ),
+                "motion_authorized": False,
+            }
+            artifact = probe._json_artifact(self.root, evidence_ref, evidence)
+            candidates = [
+                {
+                    "candidate_ref": f"relation-target://{self.epoch}/{uuid4().hex}",
+                    "destination_ref": f"destination://{self.epoch}/{uuid4().hex}",
+                    "world_T_object_target": item["world_T_object_target"],
+                    "evidence_refs": [artifact["artifact_ref"]],
+                }
+                for item in value.get("candidates", ())
+            ]
+            return {
+                "status": value["status"],
+                "candidate_set_ref": f"relation-target-set://{self.epoch}/{uuid4().hex}",
+                **{key: arguments[key] for key in (
+                    "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+                    "scene_revision", "frame_id", "calibration_ref",
+                )},
+                "candidates": candidates,
+                "motion_authorized": False,
+                **({"error": value["error"]} if value.get("error") else {}),
             }
         if operation == "benchmark_result":
             task_id = arguments.get("task_id")
