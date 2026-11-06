@@ -49,6 +49,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.2 (2026-11-06 17:23) - codex
+
+### 诊断与启动检查 / Diagnosis and Launch Check
+- [docs] [diag] 记录 stack_blocks_three 任务请求为何未发起：本机部署 profile 指向 blocks_ranking_rgb、配置的 RoboTwin Runtime/artifact root 缺失，且没有 RoboTwin/SAPIEN/Dora 仿真进程。 / Record why stack_blocks_three was not launched: local deployment points to blocks_ranking_rgb, configured RoboTwin Runtime/artifact roots are missing, and no RoboTwin/SAPIEN/Dora simulation process is running. (local)
+- [policy] [diag] `relation.establish` 尚无 Action/settlement Provider，stack Adapter 保持 `motion_execution_supported=false`；不创建不可执行任务、不借用错误 benchmark profile。 / `relation.establish` has no Action/settlement Provider and the stack Adapter remains `motion_execution_supported=false`; do not create an unexecutable task or use the wrong benchmark profile. (local)
+
+### 文件变更 / File Changes
+- `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L89-L129：记录启动环境检查、PAOS ownership 与分阶段实施/执行顺序。 / Record launch-environment checks, PAOS ownership and phased implementation/execution order.
+- `changelog/2026-11_part2.md` L466-L487：本次诊断与 no-motion 验证条目。 / This diagnosis and no-motion validation entry.
+
+### 关键 Diff / Key Diff
+```diff
++configured profile: franka-blocks-ranking.yaml (not stack_blocks_three)
++configured RoboTwin root: missing
++relation.establish executor/settlement: missing
++decision: no task record or motion launch; retain explicit unavailable state
+```
+
+### 验证 / Validation
+- Adapter/profile/relation-target/Agent planning no-motion tests: `37 passed`. / Adapter/profile/relation-target/Agent planning no-motion tests: `37 passed`.
+- No Runtime, Gateway Action, simulator or robot motion was started. / No Runtime, Gateway Action, simulator or robot motion was started.
+
+### Git 提交 / Git Commit
+- Local diagnostic-only commit pending; remote push remains unavailable from the prior HTTPS attempts. / Local diagnostic-only commit pending; remote push remains unavailable from the prior HTTPS attempts.
+
 ## v17.3.1 (2026-11-06 17:13) - codex
 
 ### 回执补全 / Receipt Completion
