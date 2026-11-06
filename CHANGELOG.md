@@ -49,6 +49,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.1 (2026-11-06 17:13) - codex
+
+### 回执补全 / Receipt Completion
+- [chore] [docs] 记录 RoboTwin relation-target 实现提交 `d1a838884e546d2ae19e05a10909266794707df0`；向 `origin/feature/planning-loop` 的 HTTPS push 两次挂起且中断，远端回执未取得。 / Record the RoboTwin relation-target implementation commit `d1a838884e546d2ae19e05a10909266794707df0`; two HTTPS pushes to `origin/feature/planning-loop` stalled and were interrupted, so no remote receipt was obtained. (local)
+
+### 文件变更 / File Changes
+- `CHANGELOG.md` L52-L56、`changelog/2026-11_part2.md` L431-L466：更正实现 hash 并记录 push 状态。 / Correct the implementation hash and record push status.
+
+### Git 提交 / Git Commit
+- Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
+
 ## v17.3.0 (2026-11-06 16:03) - codex
 
 ### 变更摘要 / Change Summary
@@ -75,7 +86,7 @@
 - 未运行仿真、Gateway Action 或机器人运动；完整 relation execution Provider 与 simulator qualification 尚未交付。 / No simulation, Gateway Action or robot motion ran; full relation execution Provider and simulator qualification remain outstanding.
 
 ### Git 提交 / Git Commit
-- Commit: `60cf75ac`; branch: `feature/planning-loop`; push receipt pending. / Commit: `60cf75ac`; branch: `feature/planning-loop`; push receipt pending.
+- Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
 
 ## v17.2.1 (2026-11-06 15:17) - codex
 
