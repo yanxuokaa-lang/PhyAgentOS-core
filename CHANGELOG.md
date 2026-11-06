@@ -49,6 +49,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.3 (2026-11-06 17:23) - codex
+
+### 回执补全 / Receipt Completion
+- [chore] [docs] 记录 stack_blocks_three 启动诊断提交 `498187ea28413f7bb21bf1f413aa5d7d295071a7`；`git push` 30 秒超时，未取得远端回执。 / Record the stack_blocks_three launch-diagnosis commit `498187ea28413f7bb21bf1f413aa5d7d295071a7`; `git push` timed out after 30 seconds and no remote receipt was obtained. (local)
+
+### 文件变更 / File Changes
+- `CHANGELOG.md` L52-L57、`changelog/2026-11_part2.md` L466-L497：补录本地提交与 push 结果。 / Record the local commit and push result.
+
+### Git 提交 / Git Commit
+- Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending. / Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending.
+
 ## v17.3.2 (2026-11-06 17:23) - codex
 
 ### 诊断与启动检查 / Diagnosis and Launch Check
@@ -72,7 +83,7 @@
 - No Runtime, Gateway Action, simulator or robot motion was started. / No Runtime, Gateway Action, simulator or robot motion was started.
 
 ### Git 提交 / Git Commit
-- Local diagnostic-only commit pending; remote push remains unavailable from the prior HTTPS attempts. / Local diagnostic-only commit pending; remote push remains unavailable from the prior HTTPS attempts.
+- Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push timed out. / Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push timed out.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 
