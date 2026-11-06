@@ -49,6 +49,40 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.2.1 (2026-11-06 15:17) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] Coordinator 续段追加按当前 scene revision 过滤旧 Query evidence，并在 revision 创建前拒绝依赖 stale ref 的新节点。 / Filter old Query evidence at Coordinator continuation append using the current scene revision, and reject a new node depending on stale refs before creating its revision. (local)
+- [policy] [fix] 将可信 scene revision 传入 Coordinator，并在 SQLite 原子更新内重读 scene/evidence lineage。 / Pass the trusted scene revision to the Coordinator and re-read scene/evidence lineage inside the atomic SQLite update. (local)
+- [docs] [diag] 纠正 v17.2.0 对续段缺失的误诊，记录已有续段/恢复及真实 stale-evidence 缺口。 / Correct v17.2.0's false diagnosis that continuation was missing; record existing continuation/recovery and the actual stale-evidence gap. (local)
+
+### 文件变更详情 / File Changes
+- `PhyAgentOS/forge/task.py` L2839-L3041, L5207-L5251；`PhyAgentOS/agent/tools/forge_task.py` L797-L804
+- `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py` L294-L418
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L336-L343；`.task/agent-loop-continuation-diagnosis-20261106.md` L1-L115；`.task/current.md` L2-L19
+
+### 关键 Diff / Key Diff
+```diff
+def begin_continuation_revision(..., scene_revision=None):
+    stale_query_evidence = _known_stale_query_evidence_refs(task, scene_revision)
+    if required_evidence.intersection(stale_query_evidence):
+        raise AgentTaskError("plan continuation cannot require Query evidence from an older scene")
+    # Recompute scene/evidence inside the SQLite update before append.
+    discovery_evidence_refs=tuple(dict.fromkeys(
+        tuple(ref for ref in current_revision.discovery_evidence_refs
+              if ref not in current_stale_query_evidence)
+        + current_selected_evidence_refs
+    ))
+```
+
+### 架构与验证 / Architecture and Validation
+- Coordinator 仍是唯一 revision owner；Agent 选择语义段，Provider/Adapter 持有物理恢复。无新 scheduler、公共 Provider 字段、hash、安全阈值或运动授权。 / Coordinator remains the sole revision owner; the Agent chooses semantic segments and Providers/Adapters own physical recovery. No scheduler, public provider field, hash, safety-threshold change or motion authorization is added.
+- Continuation evidence tests 28 passed; LongHorizon/recovery tests 34 passed; total 62 passed. Planning-task integration: 72 passed, one separate fixture failure (`resolve_subtask_context` fixture lacks `planning_selections`, before the changed continuation methods). / Continuation evidence tests 28 passed; LongHorizon/recovery tests 34 passed; total 62 passed. Planning-task integration: 72 passed, one separate fixture failure (`resolve_subtask_context` fixture lacks `planning_selections`, before the changed continuation methods).
+- Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran. / Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`; commit/push receipt will be recorded in the monthly log after the scoped commit. / Branch: `feature/planning-loop`; commit/push receipt will be recorded in the monthly log after the scoped commit.
+
 ## v17.2.0 (2026-11-05 22:19) - codex
 
 ### 变更摘要 / Change Summary
@@ -201,38 +235,3 @@
 ### v16.10.1 预测验证 / Prediction validated (2026-11-05 23:05)
 
 - [eval] [exp] fresh 无运动跑 `out/lab-fullchain-truth-20261105-v16_10_1-no-motion-r1/`(task_7706c39bbe6a47eb)证实预测:漏斗 505→5→**0**,候选 56/60/178 的终态采样均为 solution_count=8、collision_free_count=0,以 `grasp_terminal_arm_infeasible` 秒级拒绝;100 死于终态夹爪碰撞,233 死于物理孔径极限。零路线搜索、零 600 秒燃烧,agent 回复列出全部门因。56/60 的历史单种子否决获正向证据确认。结论:当前夹具不存在任务合格抓取;孔径物理排除、几何门有谱系保留;剩余杠杆为夹具几何(垫高/外移试剂瓶,precedent:rod-storage patch),待用户批准。 / A fresh no-motion run confirms the prediction: funnel 505→5→0 with candidates 56/60/178 each sampled at 8 solutions and 0 collision-free branches, rejected `grasp_terminal_arm_infeasible` in seconds; 100 dies at final-gripper collision and 233 at the physical aperture limit. Zero route search, zero 600-second burn, and the agent response lists every gate reason. The historical single-seed rejections of 56/60 are confirmed with positive evidence. Consequence: no task-qualified grasp exists on this fixture; aperture widening is physically excluded, the gate set stands on lineage, and the remaining lever is fixture geometry (raise or relocate the reagent bottles), pending user approval. (local)
-
-## v16.10.0 (2026-11-05 21:10) - claude
-
-### 变更摘要 / Change Summary
-- [env] [fix] 修复 acquire 分段路线在基座头顶换向的结构问题:`acquire_route_waypoints` 原先在路线起点 TCP(机械臂 home 位,基座上方 r≈0.3)的 raised 副本处执行 `transit_orient`,且 `staging_reorient` 的 backoff 可将换向点内收——对应 witness 矩阵中 r=0.2–0.4 / z=1.0–1.3 的腕部折叠簇(q7 顶死 2.8–2.9 rad)。新增可选 `acquire_min_reorient_radius_m`(默认 0 精确保留旧 waypoint),把 raised 与 staging waypoint 在任何姿态变化之前沿基座径向外推;approach/grasp/close/lift 位姿不变,全部碰撞/IK/workspace/连续性资格化不变。 / Fix the structural near-base reorientation of the staged acquire route: `acquire_route_waypoints` performed `transit_orient` at the raised copy of the route-start TCP (the arm home pose above the base, r≈0.3) and the staging backoff could pull `staging_reorient` inward — matching the r=0.2–0.4 / z=1.0–1.3 wrist-fold cluster in the witness matrix (q7 pinned at 2.8–2.9 rad). An optional `acquire_min_reorient_radius_m` (default 0 preserves legacy waypoints exactly) pushes the raised and staging waypoints radially outward before any orientation change; approach/grasp/close/lift poses are unchanged and every collision/IK/workspace/continuity qualification is unchanged. (local)
-- [env] [config] `configs/labutopia-mixture-motion.json` 设置 `acquire_min_reorient_radius_m: 0.5`(在既有 workspace 盒 |x|≤0.65、|y|≤0.7 内)。 / Set `acquire_min_reorient_radius_m: 0.5` in the mixture motion profile, inside the existing workspace box. (local)
-
-### 预期修改 / Planned Files
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`
-- `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`
-- `.task/current.md`;`.task/labutopia-r05-fullroute-witness-profile-20261105.md`
-
-### 关键 Diff / Key Diff
-```diff
-+def acquire_min_reorient_radius(config):
-+    value = config.get("acquire_min_reorient_radius_m", 0.)
-+    ...raise PhaseMotionError("invalid_motion_configuration", ...)
-+
-+def _push_to_reorient_radius(pose, radius):
-+    ...pose[:2, 3] = xy * (radius / current)
-+
-+    reorient_radius = acquire_min_reorient_radius(config)
-+    raised = _push_to_reorient_radius(raised, reorient_radius)
-+    staged = _push_to_reorient_radius(staged, reorient_radius)
-```
-
-### 验证 / Validation
-- [eval] [test] phase-motion 146 passed(143 旧 + 3 新:外推几何/无配置保持旧位姿/校验器拒绝);Isaac Adapter + subtask executor 全量 498 passed、2 skipped(既有 native-USD skips);Ruff、compileall 通过。 / Phase-motion passes 146 (143 old plus three new: outward-push geometry, legacy positions without the key, validator rejection); the full Isaac Adapter plus subtask executor suite passes 498 with two pre-existing native-USD skips; Ruff and compileall pass. (local)
-- [eval] [exp] 覆盖面(诚实口径):全部姿态变化 waypoint 低于半径即外推——整体覆盖 transit_raise/orient IK 簇,并直接迁移 9 条 witness(6 transit_cross + 3 staging_reorient);9 条 `approach` 阶段自碰发生在未改动的 pre 位姿,仅经到达构型间接受益;grasp 阶段小臂沉桌(位姿族问题)不在本轮修复声明内。 / Coverage (honest accounting): every orientation-change waypoint below the radius is relocated — covering the transit_raise/orient IK cluster wholesale and directly relocating 9 witnesses (6 transit_cross + 3 staging_reorient); the 9 approach-stage self-collisions sit at unchanged pre poses and benefit only indirectly through arrival configuration; grasp-stage forearm-under-table failures (the pose-family issue) are not claimed. (local)
-- [policy] [exp] 未放宽任何安全阈值;未运行任何 motion;需要 fresh reset 无运动资格化运行后再经显式授权执行,且正式验收跑必须使用 `verification.mode=enforce/recovery` 与显式 goal/criteria(v16.9.8 使用 mode=off,仅适用于修复环)。 / No safety threshold was relaxed and no motion ran; a fresh-reset no-motion qualification run is required before any explicitly authorized execution, and the acceptance run must use `verification.mode=enforce/recovery` with an explicit goal and criteria (v16.9.8 used mode=off, acceptable for repair loops only). (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`.
-- 尚未提交,等待用户审核。 / Not committed, pending user review. (local)

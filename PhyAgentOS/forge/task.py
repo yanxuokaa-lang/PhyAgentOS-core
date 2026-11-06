@@ -2844,6 +2844,7 @@ class AgentTaskCoordinator:
         plan_graph: PlanGraph,
         plan_graph_ref: str,
         evidence_refs: tuple[str, ...] = (),
+        scene_revision: str | None = None,
     ) -> AgentTaskRecord:
         """Append a successful next plan segment without consuming recovery budget."""
         task = self.store.get(task_id)
@@ -2881,6 +2882,37 @@ class AgentTaskCoordinator:
             )
         if not reason.strip():
             raise AgentTaskError("plan continuation reason must be non-empty")
+        persisted_scene_revision = _task_scene_revision(task)
+        if scene_revision is not None:
+            scene_revision = scene_revision.strip()
+            if not scene_revision:
+                raise AgentTaskError("plan continuation scene revision must be non-empty")
+            if (
+                persisted_scene_revision is not None
+                and scene_revision != persisted_scene_revision
+            ):
+                raise AgentTaskError(
+                    "plan continuation scene revision is stale: "
+                    f"{scene_revision} != {persisted_scene_revision}"
+                )
+        else:
+            scene_revision = persisted_scene_revision
+        stale_query_evidence = (
+            _known_stale_query_evidence_refs(task, scene_revision)
+            if scene_revision is not None
+            else set()
+        )
+        required_evidence = {
+            evidence_ref
+            for node in plan_graph.nodes
+            for evidence_ref in node.required_evidence
+        }
+        stale_node_evidence = sorted(required_evidence.intersection(stale_query_evidence))
+        if stale_node_evidence:
+            raise AgentTaskError(
+                "plan continuation cannot require Query evidence from an older scene: "
+                + ", ".join(stale_node_evidence)
+            )
         _validate_plan_graph_input(
             plan_graph,
             plan_graph_ref,
@@ -2929,6 +2961,33 @@ class AgentTaskCoordinator:
                     "plan continuation is blocked by non-terminal task-owned Action/Session records: "
                     + ", ".join(current_nonterminal)
                 )
+            current_scene_revision = _task_scene_revision(current)
+            if (
+                scene_revision is not None
+                and current_scene_revision is not None
+                and scene_revision != current_scene_revision
+            ):
+                raise AgentTaskError(
+                    "plan continuation scene revision changed during admission: "
+                    f"{scene_revision} != {current_scene_revision}"
+                )
+            current_stale_query_evidence = (
+                _known_stale_query_evidence_refs(current, scene_revision)
+                if scene_revision is not None
+                else set()
+            )
+            current_stale_node_evidence = sorted(
+                required_evidence.intersection(current_stale_query_evidence)
+            )
+            if current_stale_node_evidence:
+                raise AgentTaskError(
+                    "plan continuation cannot require Query evidence from an older scene: "
+                    + ", ".join(current_stale_node_evidence)
+                )
+            current_selected_evidence_refs = tuple(
+                reference for reference in evidence_refs
+                if reference not in current_stale_query_evidence
+            )
             current.active_revision.closed_at = utc_now()
             current.revisions.append(
                 PlanRevision(
@@ -2953,11 +3012,16 @@ class AgentTaskCoordinator:
                     policy_snapshot_digest=plan_graph.policy_snapshot_digest,
                     # A continuation keeps the prior segment's explicitly
                     # authorized discovery receipts available to downstream
-                    # consumers in the same scene.  New evidence is additive;
-                    # undeclared historical records remain unavailable.
+                    # consumers in the same scene. Known old-scene Query
+                    # evidence is not inherited into the new scene.
                     discovery_evidence_refs=tuple(
                         dict.fromkeys(
-                            current_revision.discovery_evidence_refs + tuple(evidence_refs)
+                            tuple(
+                                reference
+                                for reference in current_revision.discovery_evidence_refs
+                                if reference not in current_stale_query_evidence
+                            )
+                            + current_selected_evidence_refs
                         )
                     ),
                 )
@@ -5147,7 +5211,7 @@ def _task_scene_revision(
 ) -> str | None:
     """Read the latest scene identity emitted by a persisted Tool response."""
     scene_revision: str | None = None
-    for record in task.active_revision.execution_records:
+    for record in task.execution_records:
         if record.record_id == exclude_record_id:
             continue
         facts = _planning_response_facts(record.response)
@@ -5156,6 +5220,35 @@ def _task_scene_revision(
             if isinstance(value, str) and value.strip():
                 scene_revision = value.strip()
     return scene_revision
+
+
+def _known_stale_query_evidence_refs(
+    task: AgentTaskRecord,
+    current_scene_revision: str | None,
+) -> set[str]:
+    """Identify successful Query evidence explicitly bound to another scene."""
+    if not isinstance(current_scene_revision, str) or not current_scene_revision.strip():
+        return set()
+    stale: set[str] = set()
+    for record in task.execution_records:
+        if record.semantics != "query" or record.status != "succeeded":
+            continue
+        facts = _planning_response_facts(record.response)
+        evidence_scene = next(
+            (
+                value.strip()
+                for key in ("new_scene_revision", "scene_revision")
+                if isinstance((value := facts.get(key)), str) and value.strip()
+            ),
+            None,
+        )
+        if evidence_scene is None:
+            arguments = record.arguments if isinstance(record.arguments, dict) else {}
+            value = arguments.get("scene_revision")
+            evidence_scene = value.strip() if isinstance(value, str) and value.strip() else None
+        if evidence_scene is not None and evidence_scene != current_scene_revision:
+            stale.update(reference for reference in record.evidence_refs if reference)
+    return stale
 
 
 def _tool_result_from_execution(

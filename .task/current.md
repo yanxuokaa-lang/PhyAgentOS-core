@@ -1,13 +1,21 @@
 
-# Current Task: RoboTwin relation-task planning expansion (v17.2.0)
+# Current Task: scene-fresh AgentLoop continuation (v17.2.1)
 
-## Implemented: read-only `stack_blocks_three` semantics and fresh-scene Agent planning segments
+## Implemented: correct the continuation diagnosis and close stale Query-evidence carryover
+
+- Existing lifecycle: successful segment settlement already routes through `LongHorizonTaskController` to `AgentLoop.run_segment_continuation_turn`; `AgentTaskCoordinator.begin_continuation_revision` appends a non-replan revision for the same `task_id` after all nodes settle and no task-owned Action/Session remains pending.
+- Existing recovery: known failures may replan only after Provider/Adapter evidence proves its configured safe recovery and fresh observation. Unknown physical outcomes remain reconciliation-blocked; no generic return-home or blind retry is allowed.
+- Diagnosis: `.task/agent-loop-continuation-diagnosis-20261106.md`. The actual gap was that old-scene successful Query refs could be inherited into a new revision after world change/fresh observation, then fail only at node-context execution.
+- Fix: Coordinator filters known old-scene Query refs at atomic continuation append and rejects a proposed node that requires one before revision persistence. Historical Action evidence and Query refs without explicit scene identity retain their existing meaning.
+- Validation: continuation evidence suite `28 passed`; LongHorizon/recovery decision suites `34 passed`. Combined planning-task integration had `72 passed, 1 failed`; the failing test is an unrelated fixture in `resolve_subtask_context` (`planning_selections` missing from `SimpleNamespace`), before the edited continuation methods. No simulation, Gateway Action or motion was started.
+- RoboTwin `stack_blocks_three` remains non-executable: lifecycle continuation is now correctly bounded, but no relation-geometry/execution Provider has been implemented or qualified.
+
+# Previous Task: RoboTwin relation-task planning expansion (v17.2.0)
 
 - Planner: `AgentSubtaskSpec` accepts relation goals with opaque target references; `compose_relation_goal_plan` binds one obligation to the current `scene_revision` and `observation_ref`, and requires settlement evidence for predecessor segments.
 - RoboTwin: `stack_blocks_three` exposes three support relations and observed actor geometry without static destination poses. Its Adapter declares `motion_execution_supported=False`; the persistent engine rejects static route and motion preparation. Existing `blocks_ranking_rgb` stays motion-capable.
 - Validation: 31 focused Agent-planning, action-approval and Adapter tests pass; Ruff and `git diff --check` pass. No simulation, camera, Action or motion was started.
-- Architecture boundary: Coordinator/AgentLoop does not yet expose parent-task continuation after segment settlement. This change is planning/Adapter groundwork, not end-to-end stack execution.
-- Next: define and implement same-parent continuation/revision append from a settled segment, require a fresh observation and its settlement evidence, then add a replaceable relation geometry/execution Provider. Keep `stack_blocks_three` non-executable until that path exists.
+- Correction: the prior statement that Coordinator/AgentLoop lacked a parent-task continuation entry point was inaccurate; the lifecycle existed. v17.2.1 records and fixes a separate scene-evidence freshness gap.
 - Implementation commit: `d967fd37`.
 
 # Previous Task: full-chain over-defense cleanup (v17.1.0)

@@ -800,6 +800,7 @@ class ForgeTaskContinuePlanTool(Tool):
             plan_graph=graph,
             plan_graph_ref=f"artifact://plans/{task_id}/{graph.revision_id}",
             evidence_refs=selected_evidence,
+            scene_revision=context.scene_revision,
         )
         return _json({"ok": True, "data": continued, "motion_authorized": False})
 

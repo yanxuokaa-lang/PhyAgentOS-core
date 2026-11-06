@@ -333,6 +333,15 @@ same task identity, marks the new revision as not counting toward replan budget,
 and performs no Gateway call. Failure replan remains exclusive to
 `awaiting_replan`.
 
+At append, the Coordinator binds evidence freshness to the current persisted
+scene. Successful Query refs explicitly tied to an older scene are excluded
+from inherited and newly selected evidence; if a proposed node requires one,
+the continuation is rejected before the new revision is persisted. Historical
+Action evidence remains historical task evidence, while Query evidence without
+an explicit scene identity is not guessed stale and remains subject to the
+existing source and execution checks. The Agent chooses the semantic segment;
+the Coordinator remains the sole revision owner.
+
 The initial discovery turn yields immediately after
 `forge_task_materialize_plan` succeeds. It does not activate, select, or execute
 the first node from the accumulated discovery transcript. The host-owned

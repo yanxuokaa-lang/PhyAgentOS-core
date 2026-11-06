@@ -22,7 +22,7 @@ from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
     PreparationSnapshot,
 )
 from PhyAgentOS.forge.manipulation import arm_assignment_digest
-from PhyAgentOS.forge.task import AgentTaskCoordinator, ToolExecutionRecord
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, ToolExecutionRecord
 from PhyAgentOS.planning import (
     NodeSettlement,
     PlanGraph,
@@ -289,6 +289,132 @@ async def test_continuation_keeps_inherited_projection_authorization(tmp_path):
     assert result["ok"]
     assert (await select_prepare(coordinator))["ok"]
     assert client.calls == []
+
+
+def _continuation_graph(task_id, revision_id, *, required_evidence=(), capability="object.arrange"):
+    node = PlanNode(
+        node_id="next-segment-node",
+        obligation_id="next-segment-obligation",
+        capability=capability,
+        required_evidence=required_evidence,
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    return PlanGraph.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_continuation_tool_rejects_old_scene_query_evidence_before_revision_append(tmp_path):
+    coordinator, _, _ = completed_grasp_task(tmp_path)
+
+    def seed_post_observation(current):
+        current.active_revision.discovery_evidence_refs = (
+            "tool:observe", "tool:capabilities", "tool:grasp",
+        )
+        fresh = current.active_revision.execution_records[0].model_copy(deep=True)
+        fresh.record_id = "observe-fresh"
+        fresh.arguments = {"scene_revision": "scene-1"}
+        fresh.evidence_refs = ["tool:observe-fresh"]
+        fresh.response = {"ok": True, "data": {
+            "status": "available", "scene_revision": "scene-2",
+            "observation_ref": "observation://scene-2/camera",
+        }}
+        current.active_revision.execution_records.append(fresh)
+        observation_tool = next(
+            index for index, tool in enumerate(current.tool_bindings)
+            if tool.tool_id == "scene.observe"
+        )
+        tool = current.tool_bindings[observation_tool]
+        current.tool_bindings[observation_tool] = tool.model_copy(update={
+            "planning_policy": tool.planning_policy.model_copy(
+                update={"refreshes_scene": True}
+            ),
+        })
+
+    coordinator.store.update(
+        "task-container", seed_post_observation, event_type="test_fresh_scene_observation"
+    )
+    with pytest.raises(AgentTaskError, match="Query evidence from an older scene"):
+        await ForgeTaskContinuePlanTool(coordinator).execute(
+            "task-container",
+            nodes=[PlanNode(
+                node_id="next-observation-segment",
+                obligation_id="next-observation-segment",
+                capability="grasp.propose",
+                required_evidence=("tool:grasp",),
+            ).model_dump(mode="json")],
+            reason="continue from fresh scene evidence",
+            evidence_refs=["tool:observe-fresh", "tool:grasp"],
+        )
+
+    task = coordinator.get_task("task-container")
+    assert len(task.revisions) == 1
+    assert task.active_revision_id == "revision-propose"
+
+
+def test_continuation_filters_old_queries_but_keeps_historical_and_unknown_evidence(tmp_path):
+    coordinator, _, _ = completed_grasp_task(tmp_path)
+
+    def seed_evidence(current):
+        current.active_revision.discovery_evidence_refs = (
+            "tool:grasp", "tool:historical-action", "tool:unknown-scene",
+        )
+        action = ToolExecutionRecord(
+            record_id="historical-action",
+            revision_id=current.active_revision_id,
+            runtime_binding_id=current.runtime_binding.binding_id,
+            tool_id="object.place",
+            semantics="action",
+            caller_id="test",
+            status="succeeded",
+            response={"ok": True, "data": {
+                "world_change_started": True,
+                "outcome_known": True,
+                "new_scene_revision": "scene-2",
+            }},
+            evidence_refs=["tool:historical-action"],
+        )
+        current.active_revision.execution_records.append(action)
+        unknown = current.active_revision.execution_records[-2].model_copy(deep=True)
+        unknown.record_id = "query-without-scene"
+        unknown.arguments = {}
+        unknown.evidence_refs = ["tool:unknown-scene"]
+        unknown.response = {"ok": True, "data": {"status": "available"}}
+        current.active_revision.execution_records.append(unknown)
+        fresh = current.active_revision.execution_records[0].model_copy(deep=True)
+        fresh.record_id = "observe-fresh"
+        fresh.arguments = {"scene_revision": "scene-1"}
+        fresh.evidence_refs = ["tool:observe-fresh"]
+        fresh.response = {"ok": True, "data": {
+            "status": "available", "scene_revision": "scene-2",
+        }}
+        current.active_revision.execution_records.append(fresh)
+
+    coordinator.store.update(
+        "task-container", seed_evidence, event_type="test_continuation_evidence_lineage"
+    )
+    graph = _continuation_graph("task-container", "revision-filtered-continuation")
+
+    continued = coordinator.begin_continuation_revision(
+        "task-container",
+        reason="continue with current and historical task evidence",
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-container/revision-filtered-continuation",
+        evidence_refs=("tool:observe-fresh", "tool:historical-action", "tool:unknown-scene"),
+        scene_revision="scene-2",
+    )
+
+    assert continued.active_revision.discovery_evidence_refs == (
+        "tool:historical-action", "tool:unknown-scene", "tool:observe-fresh",
+    )
 
 
 @pytest.mark.asyncio
