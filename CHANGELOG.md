@@ -49,6 +49,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.7 (2026-11-07 18:02) - codex
+
+### 完成范围 / Completed Scope
+- [policy] [feat] 在现有 `relation.target` Query 后新增 no-motion 候选投影，验证当前节点的 entity/relation/support/observation/scene/frame/calibration identity，并保留 selected destination、pose、candidate set 和 geometry evidence。该投影不是 relation Action Provider，也不授权运动。 / Add a no-motion candidate projection after the existing `relation.target` Query, validating entity/relation/support/observation/scene/frame/calibration identity for the current node and preserving the selected destination, pose, candidate set and geometry evidence. This projection is not a relation Action Provider and does not authorize motion. (local)
+- [eval] [test] 覆盖 freshness lineage、candidate selection、stale/unknown selection、missing evidence；RoboTwin table support 与 motion refusal 继续显式失败。 / Cover freshness lineage, candidate selection, stale/unknown selections and missing evidence; RoboTwin table support and motion refusal remain explicit failures. (local)
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py` L94-L153、L275-L278：提供 Action-facing domain binding projection，`motion_authorized=False`。 / Provide the Action-facing domain-binding projection with `motion_authorized=False`.
+- [修改] `examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L7、L94-L146：增加 relation binding contract 与拒绝路径。 / Add relation-binding contract and refusal-path tests.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L183-L203：记录本次边界及尚缺的 table geometry、Action Provider 和 route/contact qualification。 / Record this change's boundary and remaining table geometry, Action Provider and route/contact qualification gaps.
+- [修改] `changelog/2026-11_part2.md` L545-L568：记录双语变更、文件范围、Diff、验证和无运动声明。 / Record bilingual changes, file scope, diff, validation and no-motion statement.
+
+### 关键 Diff / Key Diff
+```diff
+before: Query candidate geometry had no provider-neutral domain projection
+after:  bind_relation_target_candidate(result, candidate_ref, expected_current_node)
+        -> destination + transform + evidence + scene/observation lineage; motion_authorized=False
+still:  no relation.establish Action Provider; table support and stack route preparation unavailable
+```
+
+### 架构与验证 / Architecture and Validation
+- AgentLoop/Coordinator lifecycle unchanged; Coordinator remains the sole settlement owner and RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement. / AgentLoop/Coordinator lifecycle is unchanged; Coordinator remains the sole settlement owner and the RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement.
+- 定向测试 `40 passed, 1 warning`；warning 为 pytest 环境不识别 `asyncio_mode` 配置；`git diff --check` 通过。 / Focused tests: `40 passed, 1 warning`; the warning is that this pytest environment does not recognize the `asyncio_mode` option; `git diff --check` passes.
+- 未创建 PAOS task、未调用 Gateway Action、未启动模拟或运动；stack Adapter 仍 `motion_execution_supported=False`。 / No PAOS task or Gateway Action was created or invoked, and no simulation or motion was started; the stack Adapter remains `motion_execution_supported=False`.
+
 ## v17.3.6 (2026-11-07 17:46) - codex
 
 ### 推送回执 / Push Receipt
@@ -99,31 +124,6 @@ decision = no task record / no Gateway Action / no simulation / motion remains d
 
 ### Git 提交 / Git Commit
 - Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending. / Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending.
-
-## v17.3.2 (2026-11-06 17:23) - codex
-
-### 诊断与启动检查 / Diagnosis and Launch Check
-- [docs] [diag] 记录 stack_blocks_three 任务请求为何未发起：本机部署 profile 指向 blocks_ranking_rgb、配置的 RoboTwin Runtime/artifact root 缺失，且没有 RoboTwin/SAPIEN/Dora 仿真进程。 / Record why stack_blocks_three was not launched: local deployment points to blocks_ranking_rgb, configured RoboTwin Runtime/artifact roots are missing, and no RoboTwin/SAPIEN/Dora simulation process is running. (local)
-- [policy] [diag] `relation.establish` 尚无 Action/settlement Provider，stack Adapter 保持 `motion_execution_supported=false`；不创建不可执行任务、不借用错误 benchmark profile。 / `relation.establish` has no Action/settlement Provider and the stack Adapter remains `motion_execution_supported=false`; do not create an unexecutable task or use the wrong benchmark profile. (local)
-
-### 文件变更 / File Changes
-- `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L89-L129：记录启动环境检查、PAOS ownership 与分阶段实施/执行顺序。 / Record launch-environment checks, PAOS ownership and phased implementation/execution order.
-- `changelog/2026-11_part2.md` L466-L487：本次诊断与 no-motion 验证条目。 / This diagnosis and no-motion validation entry.
-
-### 关键 Diff / Key Diff
-```diff
-+configured profile: franka-blocks-ranking.yaml (not stack_blocks_three)
-+configured RoboTwin root: missing
-+relation.establish executor/settlement: missing
-+decision: no task record or motion launch; retain explicit unavailable state
-```
-
-### 验证 / Validation
-- Adapter/profile/relation-target/Agent planning no-motion tests: `37 passed`. / Adapter/profile/relation-target/Agent planning no-motion tests: `37 passed`.
-- No Runtime, Gateway Action, simulator or robot motion was started. / No Runtime, Gateway Action, simulator or robot motion was started.
-
-### Git 提交 / Git Commit
-- Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push timed out. / Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push timed out.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

@@ -1,4 +1,10 @@
-from pick_place_workflow.relation_target import RelationTargetQueryEndpoint
+import pytest
+
+from pick_place_workflow.relation_target import (
+    RelationTargetBindingError,
+    RelationTargetQueryEndpoint,
+    bind_relation_target_candidate,
+)
 
 
 def _request(**overrides):
@@ -83,3 +89,58 @@ def test_relation_target_query_rejects_non_rigid_candidate_pose():
     assert result["status"] == "invalid"
     assert result["candidates"] == []
     assert result["motion_authorized"] is False
+
+
+def test_relation_candidate_binding_preserves_fresh_query_lineage_without_authorizing_motion():
+    result = RelationTargetQueryEndpoint(_RelationProvider()).invoke(_request())
+    expected = {key: _request()[key] for key in (
+        "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+        "scene_revision", "frame_id", "calibration_ref",
+    )}
+
+    binding = bind_relation_target_candidate(
+        result,
+        candidate_ref="relation-target://run-1/candidate-1",
+        expected=expected,
+    )
+
+    assert binding["destination_ref"] == "destination://run-1/destination-1"
+    assert binding["relation_candidate_set_ref"] == "relation-target-set://run-1/set-1"
+    assert binding["evidence_refs"] == ["artifact://run-1/geometry-1"]
+    assert binding["world_T_object_target"] == result["candidates"][0]["world_T_object_target"]
+    assert binding["motion_authorized"] is False
+
+
+def test_relation_candidate_binding_rejects_stale_identity_and_unknown_selection():
+    result = RelationTargetQueryEndpoint(_RelationProvider()).invoke(_request())
+    expected = {key: _request()[key] for key in (
+        "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+        "scene_revision", "frame_id", "calibration_ref",
+    )}
+
+    with pytest.raises(RelationTargetBindingError, match="current node observation"):
+        bind_relation_target_candidate(
+            result, candidate_ref="relation-target://run-1/candidate-1",
+            expected={**expected, "scene_revision": "scene-9"},
+        )
+    with pytest.raises(RelationTargetBindingError, match="absent or duplicated"):
+        bind_relation_target_candidate(
+            result, candidate_ref="relation-target://run-1/other",
+            expected=expected,
+        )
+
+
+def test_relation_candidate_binding_rejects_missing_geometry_evidence():
+    result = RelationTargetQueryEndpoint(_RelationProvider()).invoke(_request())
+    result["candidates"][0]["evidence_refs"] = []
+    expected = {key: _request()[key] for key in (
+        "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+        "scene_revision", "frame_id", "calibration_ref",
+    )}
+
+    with pytest.raises(RelationTargetBindingError, match="lacks valid geometry or evidence"):
+        bind_relation_target_candidate(
+            result,
+            candidate_ref="relation-target://run-1/candidate-1",
+            expected=expected,
+        )

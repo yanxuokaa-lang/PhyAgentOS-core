@@ -179,3 +179,25 @@ there is no automatic return-home or retry.
 4. Run no-motion capability, route, and failure-path tests first. Only after
    those pass, run an explicitly scoped simulation through AgentLoop and
    preserve separate contract, Provider, and live-simulation evidence.
+
+## 2026-11-07 Relation Binding Implementation
+
+Added `bind_relation_target_candidate` at the provider-neutral relation Query
+boundary. It projects an explicitly selected candidate into an
+Action-facing domain binding only when the result is available, motion remains
+unauthorized, and entity/relation/support/observation/scene/frame/calibration
+all match the caller's current node. It preserves the opaque destination,
+candidate-set identity, target transform, and geometry evidence refs. Missing,
+duplicated, invalid, or stale candidates fail before an Action can consume the
+binding.
+
+This closes the Query-to-domain-binding projection gap; it does **not** add a
+`relation.establish` Tool/Action provider or route readiness. The binding is
+not yet consumed by `SubtaskActionEndpoint`, because the current stack adapter
+cannot resolve the first `surface://table` target and the persistent engine
+still refuses stack motion preparation. Do not treat the projection as a
+placement route or settlement. `motion_execution_supported` remains false;
+no task, Gateway Action, simulator, or robot motion was started. The next
+implementation boundary is provider consumption of this domain binding plus
+table geometry and route/contact qualification, using the existing Action
+admission and Coordinator settlement path.

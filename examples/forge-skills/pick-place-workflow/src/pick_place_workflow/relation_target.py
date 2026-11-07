@@ -91,6 +91,68 @@ RELATION_TARGET_TOOL_SPEC = {
 _CANDIDATE_REF = re.compile(r"^relation-target://\S+$")
 
 
+class RelationTargetBindingError(ValueError):
+    """A relation Query cannot be bound to the current execution node."""
+
+
+def bind_relation_target_candidate(
+    result: Mapping[str, Any],
+    *,
+    candidate_ref: str,
+    expected: Mapping[str, str],
+) -> dict[str, Any]:
+    """Project one fresh Query candidate into an Action-facing domain binding.
+
+    This does not authorize motion or qualify a route. It creates a
+    provider-neutral value that an Action Provider can consume.
+    """
+    identity_keys = (
+        "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
+        "scene_revision", "frame_id", "calibration_ref",
+    )
+    if result.get("status") != "available" or result.get("motion_authorized") is not False:
+        raise RelationTargetBindingError("relation target Query is not available for execution binding")
+    if any(result.get(key) != expected.get(key) for key in identity_keys):
+        raise RelationTargetBindingError("relation target Query does not match the current node observation")
+    expected_observation = f"observation://{result.get('scene_revision')}/{result.get('frame_id')}"
+    if result.get("observation_ref") != expected_observation:
+        raise RelationTargetBindingError("relation target Query observation identity is inconsistent")
+    if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:
+        raise RelationTargetBindingError("selected relation candidate reference is invalid")
+    candidates = result.get("candidates")
+    if not isinstance(candidates, (list, tuple)):
+        raise RelationTargetBindingError("relation target Query candidates are invalid")
+    matches = [
+        item for item in candidates
+        if isinstance(item, Mapping) and item.get("candidate_ref") == candidate_ref
+    ]
+    if len(matches) != 1:
+        raise RelationTargetBindingError("selected relation candidate is absent or duplicated")
+    candidate = matches[0]
+    pose = candidate.get("world_T_object_target")
+    evidence_refs = candidate.get("evidence_refs")
+    if (
+        not isinstance(result.get("candidate_set_ref"), str)
+        or not result["candidate_set_ref"].startswith("relation-target-set://")
+        or not isinstance(candidate.get("destination_ref"), str)
+        or not candidate["destination_ref"].startswith("destination://")
+        or not _valid_rigid_pose(pose)
+        or not isinstance(evidence_refs, (list, tuple))
+        or not evidence_refs
+        or any(not isinstance(ref, str) or not ref.startswith("artifact://") for ref in evidence_refs)
+    ):
+        raise RelationTargetBindingError("selected relation candidate lacks valid geometry or evidence")
+    return {
+        **{key: result[key] for key in identity_keys},
+        "relation_candidate_ref": candidate_ref,
+        "relation_candidate_set_ref": result["candidate_set_ref"],
+        "destination_ref": candidate["destination_ref"],
+        "world_T_object_target": [float(value) for value in pose],
+        "evidence_refs": list(dict.fromkeys(evidence_refs)),
+        "motion_authorized": False,
+    }
+
+
 class RelationTargetQueryEndpoint:
     """Validate relation geometry output and bind it to the exact fresh Query."""
 
@@ -210,4 +272,7 @@ def _valid_rigid_pose(value: Any) -> bool:
     return True
 
 
-__all__ = ["RELATION_TARGET_TOOL_SPEC", "RelationTargetProvider", "RelationTargetQueryEndpoint"]
+__all__ = [
+    "RELATION_TARGET_TOOL_SPEC", "RelationTargetBindingError", "RelationTargetProvider",
+    "RelationTargetQueryEndpoint", "bind_relation_target_candidate",
+]
