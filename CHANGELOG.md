@@ -75,7 +75,7 @@ still:  no relation.establish Action Provider; table support and stack route pre
 - 未创建 PAOS task、未调用 Gateway Action、未启动模拟或运动；stack Adapter 仍 `motion_execution_supported=False`。 / No PAOS task or Gateway Action was created or invoked, and no simulation or motion was started; the stack Adapter remains `motion_execution_supported=False`.
 
 ### Git 提交 / Git Commit
-- Implementation: `5dab63fc`; branch: `feature/planning-loop`; push pending. / Implementation: `5dab63fc`; branch: `feature/planning-loop`; push pending.
+- Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded. / Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded.
 
 ## v17.3.6 (2026-11-07 17:46) - codex
 
