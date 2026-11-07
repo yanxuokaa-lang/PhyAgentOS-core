@@ -59,7 +59,7 @@
 - [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py` L94-L153、L275-L278：提供 Action-facing domain binding projection，`motion_authorized=False`。 / Provide the Action-facing domain-binding projection with `motion_authorized=False`.
 - [修改] `examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L7、L94-L146：增加 relation binding contract 与拒绝路径。 / Add relation-binding contract and refusal-path tests.
 - [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L183-L203：记录本次边界及尚缺的 table geometry、Action Provider 和 route/contact qualification。 / Record this change's boundary and remaining table geometry, Action Provider and route/contact qualification gaps.
-- [修改] `changelog/2026-11_part2.md` L545-L568：记录双语变更、文件范围、Diff、验证和无运动声明。 / Record bilingual changes, file scope, diff, validation and no-motion statement.
+- [修改] `changelog/2026-11_part2.md` L545-L571：记录双语变更、文件范围、Diff、验证和 Git 提交信息。 / Record bilingual changes, file scope, diff, validation and Git commit information.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -73,6 +73,9 @@ still:  no relation.establish Action Provider; table support and stack route pre
 - AgentLoop/Coordinator lifecycle unchanged; Coordinator remains the sole settlement owner and RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement. / AgentLoop/Coordinator lifecycle is unchanged; Coordinator remains the sole settlement owner and the RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement.
 - 定向测试 `40 passed, 1 warning`；warning 为 pytest 环境不识别 `asyncio_mode` 配置；`git diff --check` 通过。 / Focused tests: `40 passed, 1 warning`; the warning is that this pytest environment does not recognize the `asyncio_mode` option; `git diff --check` passes.
 - 未创建 PAOS task、未调用 Gateway Action、未启动模拟或运动；stack Adapter 仍 `motion_execution_supported=False`。 / No PAOS task or Gateway Action was created or invoked, and no simulation or motion was started; the stack Adapter remains `motion_execution_supported=False`.
+
+### Git 提交 / Git Commit
+- Implementation: `5dab63fc`; branch: `feature/planning-loop`; push pending. / Implementation: `5dab63fc`; branch: `feature/planning-loop`; push pending.
 
 ## v17.3.6 (2026-11-07 17:46) - codex
 
