@@ -127,3 +127,55 @@ No source behavior was changed and no task record, Gateway Action, simulator,
 or robot motion was started in this initiation check. The requested task launch
 is blocked by the missing Runtime root and missing `relation.establish`
 execution/settlement Provider, not by the same-task continuation lifecycle.
+
+## 2026-11-07 Recheck and Execution Decision
+
+The launch prerequisites were rechecked on 2026-11-07 at 17:37 Asia/Shanghai.
+The configured deployment still selects
+`/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/profiles/robotwin20/franka-blocks-ranking.yaml`,
+while the task-specific `stack-blocks-three.yaml` profile exists in the
+repository. Both `/home/yanxu/robotwin20-runtime/RoboTwin` and the configured
+`/home/yanxu/robotwin20-runtime/artifacts` root remain absent. The `RoboTwin20`
+Python environment resolves `sapien` and `torch`, but not `robotwin` or
+`curobo`; no RoboTwin, SAPIEN, Dora, or Isaac Sim process is running.
+
+The implementation boundary is unchanged: `relation.target` is a fresh-scene
+geometry Query, not an Action. `compose_relation_goal_plan` emits the semantic
+capability `relation.establish`, but no Tool/Action admission and settlement
+Provider handles that capability. The stack Adapter still declares
+`motion_execution_supported = False`, rejects route readiness and preparation,
+and returns unavailable for table support geometry. Block-on-block geometry
+alone cannot complete `stack_blocks_three`, whose first relation is block-on-
+table.
+
+The concrete unsafe failure remains: converting a Query candidate directly to
+`object.place` could use an unqualified support surface, route, contact model,
+or stale scene binding, and would incorrectly treat a geometric proposal as a
+settled physical effect. Existing task/revision IDs and Coordinator settlement
+do not establish those missing physical facts. No hash or parallel lifecycle
+is needed; the necessary evidence must come from the Runtime/Adapter and the
+existing Action receipt/Coordinator settlement path.
+
+**Execution decision:** do not create a PAOS task record or invoke AgentLoop
+against the current deployment. It would use the wrong benchmark profile and
+cannot pass Runtime readiness or `relation.establish` Action admission. No
+Gateway Action, simulation, or robot motion was started. Unknown execution,
+possession, contact, or support state must remain blocked for reconciliation;
+there is no automatic return-home or retry.
+
+**Next implementation/qualification sequence:**
+
+1. Provision the operator-owned RoboTwin source/runtime and task dependencies,
+   select the stack-specific profile in an isolated deployment config, and
+   provide its artifact root. Do not overwrite the blocks-ranking deployment.
+2. Implement relation execution through the stable domain capability and
+   existing PAOS Action admission path. Keep generic AgentLoop/Coordinator
+   responsible for semantic node selection and settlement; keep target geometry,
+   route generation, collision/support checks, execution feedback, and
+   environment-specific references inside the RoboTwin Adapter/Provider.
+3. Prove table and block support geometry against current observation, scene
+   revision, frame, and calibration. Reuse acquire/place Actions and their
+   receipts; unknown outcomes stop for reconciliation.
+4. Run no-motion capability, route, and failure-path tests first. Only after
+   those pass, run an explicitly scoped simulation through AgentLoop and
+   preserve separate contract, Provider, and live-simulation evidence.

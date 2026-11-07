@@ -49,6 +49,27 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.4 (2026-11-07 17:37) - codex
+
+### 诊断更新 / Diagnosis Update
+- [docs] [docs] 保存 2026-11-07 RoboTwin `stack_blocks_three` readiness 复核：部署仍指向 blocks-ranking profile；Runtime/artifact root 和 `robotwin`/Curobo 缺失；`relation.establish` Action/settlement Provider、table support geometry 尚未实现，因此不创建 PAOS task 或启动仿真。 / Preserve the 2026-11-07 RoboTwin `stack_blocks_three` readiness recheck: deployment still selects the blocks-ranking profile; Runtime/artifact roots and `robotwin`/Curobo are missing; `relation.establish` Action/settlement Provider and table support geometry are not implemented, so no PAOS task or simulation is launched. (local)
+
+### 文件变更 / File Changes
+- `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L131-L181：记录当日环境复核、Query/Action 边界、具体失败场景、未启动决定与实施/验收顺序。 / Record today's environment recheck, Query/Action boundary, concrete failure scenario, no-launch decision and implementation/qualification sequence.
+- `changelog/2026-11_part2.md` L497-L523：记录中英文变更、文件行号、关键 diff、测试与无物理执行边界。 / Record bilingual changes, file line numbers, key diff, tests and the no-physical-execution boundary.
+
+### 关键 Diff / Key Diff
+```diff
+relation.target = fresh-scene geometry Query, not Action settlement
+stack_blocks_three first relation = block on table; table geometry unavailable
+Runtime root + robotwin + curobo = missing
+decision = no task record / no Gateway Action / no simulation / motion remains disabled
+```
+
+### 验证 / Validation
+- 定向 Adapter、persistent deployment、Action approval、relation-target 与 Agent planning 测试：`51 passed, 1 warning`；警告为 pytest 环境未启用 `asyncio_mode` 配置。`git diff --check` 通过。 / Focused Adapter, persistent-deployment, Action-approval, relation-target and Agent-planning tests: `51 passed, 1 warning`; the warning is that the pytest environment does not enable `asyncio_mode`. `git diff --check` passes.
+- 未启动 PAOS task、RoboTwin Runtime、Gateway Action、仿真或机器人运动。 / No PAOS task, RoboTwin Runtime, Gateway Action, simulation or robot motion was started.
+
 ## v17.3.3 (2026-11-06 17:23) - codex
 
 ### 回执补全 / Receipt Completion
@@ -123,40 +144,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
-
-## v17.2.1 (2026-11-06 15:17) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] Coordinator 续段追加按当前 scene revision 过滤旧 Query evidence，并在 revision 创建前拒绝依赖 stale ref 的新节点。 / Filter old Query evidence at Coordinator continuation append using the current scene revision, and reject a new node depending on stale refs before creating its revision. (local)
-- [policy] [fix] 将可信 scene revision 传入 Coordinator，并在 SQLite 原子更新内重读 scene/evidence lineage。 / Pass the trusted scene revision to the Coordinator and re-read scene/evidence lineage inside the atomic SQLite update. (local)
-- [docs] [diag] 纠正 v17.2.0 对续段缺失的误诊，记录已有续段/恢复及真实 stale-evidence 缺口。 / Correct v17.2.0's false diagnosis that continuation was missing; record existing continuation/recovery and the actual stale-evidence gap. (local)
-
-### 文件变更详情 / File Changes
-- `PhyAgentOS/forge/task.py` L2839-L3041, L5207-L5251；`PhyAgentOS/agent/tools/forge_task.py` L797-L804
-- `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py` L294-L418
-- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L336-L343；`.task/agent-loop-continuation-diagnosis-20261106.md` L1-L115；`.task/current.md` L2-L19
-
-### 关键 Diff / Key Diff
-```diff
-def begin_continuation_revision(..., scene_revision=None):
-    stale_query_evidence = _known_stale_query_evidence_refs(task, scene_revision)
-    if required_evidence.intersection(stale_query_evidence):
-        raise AgentTaskError("plan continuation cannot require Query evidence from an older scene")
-    # Recompute scene/evidence inside the SQLite update before append.
-    discovery_evidence_refs=tuple(dict.fromkeys(
-        tuple(ref for ref in current_revision.discovery_evidence_refs
-              if ref not in current_stale_query_evidence)
-        + current_selected_evidence_refs
-    ))
-```
-
-### 架构与验证 / Architecture and Validation
-- Coordinator 仍是唯一 revision owner；Agent 选择语义段，Provider/Adapter 持有物理恢复。无新 scheduler、公共 Provider 字段、hash、安全阈值或运动授权。 / Coordinator remains the sole revision owner; the Agent chooses semantic segments and Providers/Adapters own physical recovery. No scheduler, public provider field, hash, safety-threshold change or motion authorization is added.
-- Continuation evidence tests 28 passed; LongHorizon/recovery tests 34 passed; total 62 passed. Planning-task integration: 72 passed, one separate fixture failure (`resolve_subtask_context` fixture lacks `planning_selections`, before the changed continuation methods). / Continuation evidence tests 28 passed; LongHorizon/recovery tests 34 passed; total 62 passed. Planning-task integration: 72 passed, one separate fixture failure (`resolve_subtask_context` fixture lacks `planning_selections`, before the changed continuation methods).
-- Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran. / Ruff, targeted `compileall` and `git diff --check` pass. No Gateway Action, simulation or robot motion ran.
-
-### Git 提交 / Git Commit
-- Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e`; receipt commit: `95f28a63`; pushed to `origin/feature/planning-loop`. / Implementation commit: `31e3cd573afb4f46f9c3b8ed2b78e5d6206d3b6e`; receipt commit: `95f28a63`; pushed to `origin/feature/planning-loop`.
 
 ## v17.2.0 (2026-11-05 22:19) - codex
 
