@@ -49,16 +49,24 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.6 (2026-11-07 17:46) - codex
+
+### 推送回执 / Push Receipt
+- [chore] [docs] `git push origin feature/planning-loop` 在 45 秒超时（exit 124）；随后只读 `git ls-remote` 在 20 秒超时（exit 124），未获得远端回执，本地分支仍 ahead 6。停止重复网络尝试。 / `git push origin feature/planning-loop` timed out after 45 seconds (exit 124); the subsequent read-only `git ls-remote` timed out after 20 seconds (exit 124), so no remote receipt is available and the local branch remains ahead by 6. Stop repeated network attempts. (local)
+
+### 文件变更 / File Changes
+- `changelog/2026-11_part2.md`：记录 v17.3.5 推送尝试结果。 / Record the v17.3.5 push attempt result.
+
 ## v17.3.5 (2026-11-07 17:44) - codex
 
 ### 回执补全 / Receipt Completion
-- [chore] [docs] 记录 `v17.3.4` RoboTwin 启动诊断提交 `7ad79d71`；当前分支 `feature/planning-loop` 含本次及之前四个 RoboTwin 栈任务提交，按仓库规则尝试整体推送。 / Record `v17.3.4` RoboTwin launch-diagnosis commit `7ad79d71`; current branch `feature/planning-loop` contains this and four earlier RoboTwin stack-task commits, and will be pushed as required by repository rules. (local)
+- [chore] [docs] 记录 `v17.3.4` RoboTwin 启动诊断提交 `7ad79d71`；其 push 尝试超时，未取得远端回执。 / Record `v17.3.4` RoboTwin launch-diagnosis commit `7ad79d71`; its push attempt timed out without a remote receipt. (local)
 
 ### 文件变更 / File Changes
 - `changelog/2026-11_part2.md` L525-L531：新增提交回执。 / Add the commit receipt.
 
 ### Git 提交 / Git Commit
-- v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push pending. / v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push pending.
+- v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; remote receipt unavailable. / v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; no remote receipt.
 
 ## v17.3.4 (2026-11-07 17:37) - codex
 
