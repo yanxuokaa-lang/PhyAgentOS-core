@@ -49,6 +49,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.5 (2026-11-07 17:44) - codex
+
+### 回执补全 / Receipt Completion
+- [chore] [docs] 记录 `v17.3.4` RoboTwin 启动诊断提交 `7ad79d71`；当前分支 `feature/planning-loop` 含本次及之前四个 RoboTwin 栈任务提交，按仓库规则尝试整体推送。 / Record `v17.3.4` RoboTwin launch-diagnosis commit `7ad79d71`; current branch `feature/planning-loop` contains this and four earlier RoboTwin stack-task commits, and will be pushed as required by repository rules. (local)
+
+### 文件变更 / File Changes
+- `changelog/2026-11_part2.md` L525-L531：新增提交回执。 / Add the commit receipt.
+
+### Git 提交 / Git Commit
+- v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push pending. / v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push pending.
+
 ## v17.3.4 (2026-11-07 17:37) - codex
 
 ### 诊断更新 / Diagnosis Update
@@ -116,34 +127,6 @@ decision = no task record / no Gateway Action / no simulation / motion remains d
 
 ### Git 提交 / Git Commit
 - Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
-
-## v17.3.0 (2026-11-06 16:03) - codex
-
-### 变更摘要 / Change Summary
-- [env] [feat] 新增 stack_blocks_three 专用 RoboTwin profile、provider-neutral `relation.target` Query 和基于当前仿真块位姿/碰撞范围的直立 block-on-block 几何候选；桌面与倾斜支撑保持 unavailable。 / Add a stack_blocks_three RoboTwin profile, provider-neutral `relation.target` Query and upright block-on-block geometry from current simulator poses/collision extents; tabletop and tilted support remain unavailable. (local)
-- [policy] [fix] 将 Query 绑定到新鲜 observation、scene revision、frame/calibration 与持久证据；不把候选当作 Action readiness/settlement，任务 motion capability 仍关闭。 / Bind the Query to fresh observation, scene revision, frame/calibration and persisted evidence; candidates are not Action readiness/settlement and task motion capability remains disabled. (local)
-- [eval] [test] 新增 provider substitution、stale/missing result 与 geometry 回归；定向测试 36 passed。 / Add Provider-substitution, stale/missing-result and geometry regressions; focused tests pass 36. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml` L1-L18、`examples/forge-skills/pick-place-workflow/contracts/relation.target.tool.yaml` L1-L54、`src/pick_place_workflow/relation_target.py` L1-L213：stack 配置与稳定 domain Query contract。 / Stack profile and stable domain Query contract.
-- `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py` L223-L357, L563-L575、`robotwin_persistent_engine.py` L344-L410：Adapter geometry 與 scene/observation evidence binding。 / Adapter geometry and scene/observation evidence binding.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L72-L96, L119-L130, L244-L260、`examples/forge-skills/pick-place-workflow/src/pick_place_workflow/grounding.py` L68-L134, L198-L244：经现有 Tool/Provider 注册接线。 / Wire through existing Tool/Provider registration.
-- `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L1-L165、`examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L98-L125、`examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L84：几何、部署、freshness 与 substitution 测试。 / Geometry, deployment, freshness and substitution tests.
-- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L345-L353、`examples/forge-adapters/robotwin20/README.md` L492-L509、`.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L1-L87：架构、运行和未完成边界记录。 / Architecture, runtime and outstanding boundaries.
-
-### 关键 Diff / Key Diff
-```diff
-+relation.target: fresh observation + scene-bound candidate/evidence
-+stack adapter: upright block-on-block geometry only
-+motion_execution_supported = False
-```
-
-### 验证 / Validation
-- 36 项定向测试通过；扩展测试 982 passed、1 skipped、13 failed（12 grounding fake fixtures 缺 `_reserved_execution_actors`，1 task-video fixture 的 `release_confirmed` 断言失败）。Ruff、目标 compileall、diff check 通过。 / 36 focused tests pass; expanded suite: 982 passed, 1 skipped, 13 failed (12 grounding fake fixtures omit `_reserved_execution_actors`; one task-video fixture fails `release_confirmed`). Ruff, targeted compileall and diff check pass.
-- 未运行仿真、Gateway Action 或机器人运动；完整 relation execution Provider 与 simulator qualification 尚未交付。 / No simulation, Gateway Action or robot motion ran; full relation execution Provider and simulator qualification remain outstanding.
-
-### Git 提交 / Git Commit
-- Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Commit: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
 
 ## v17.2.0 (2026-11-05 22:19) - codex
 
