@@ -63,7 +63,7 @@
 - [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py` L585-L625、L628-L644：SAPIEN `get_components()` 兼容及 current table collision geometry Query。 / Support SAPIEN `get_components()` and current-table collision-geometry Query.
 - [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L22-L62、L147-L160：使用实体 API fixture，断言 block 尺寸和目标高度。 / Use Entity-API fixtures and assert block dimensions and target height.
 - [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L401-L449：更正 artifact 根路径并记录实际 preflight/setup/Query 及 Provider 阻断。 / Correct the artifact-root path and record live preflight/setup/Query evidence and Provider blockers.
-- [修改] `changelog/2026-11_part2.md` L644-L705：更新双语阶段结果、Diff、行号、验证和明确未完成的 Provider 项。 / Record bilingual stage results, diff, line references, validation and the explicitly unfinished Provider work.
+- [修改] `changelog/2026-11_part2.md` L644-L695：更新双语阶段结果、Diff、行号、验证和明确未完成的 Provider 项。 / Record bilingual stage results, diff, line references, validation and the explicitly unfinished Provider work.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -80,7 +80,7 @@ still:  no stoppable, route/contact-qualified relation Action Provider
 - 未调用 `play_once`、机械臂动作或 motion Action。同步整轨迹调用无法满足 Action cancellation/unknown-result 语义，缺少 stack route/contact 与 runtime-monitored approval；不能据此启用执行。 / No `play_once`, robot action or motion Action was invoked. Synchronous full-trajectory calls do not satisfy Action cancellation/unknown-result semantics, and stack route/contact plus runtime-monitored approval are absent; execution cannot be enabled on this evidence.
 
 ### Git 提交 / Git Commit
-- Pending implementation and log-receipt commits on `feature/planning-loop`. / Pending implementation and log-receipt commits on `feature/planning-loop`.
+- Implementation: `0e469853`; branch: `feature/planning-loop`; push receipt pending. / Implementation: `0e469853`; branch: `feature/planning-loop`; push receipt pending.
 
 ## v17.3.11 (2026-11-08 12:49) - codex
 
