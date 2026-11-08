@@ -49,6 +49,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.11 (2026-11-08 12:49) - codex
+
+### 完成范围 / Completed Scope
+- [env] [diag] 确认配置的 Runtime/artifact roots 不存在，`RoboTwin20` 环境可导入 SAPIEN/Torch 但缺少 `robotwin`/Curobo；创建空目录不会提供 task class、资产或执行机制。 / Confirm configured Runtime/artifact roots are absent and `RoboTwin20` imports SAPIEN/Torch but lacks `robotwin`/Curobo; empty directories would not provide task classes, assets or execution mechanisms.
+- [env] [diag] 官方 `RoboTwin-1.0` task inventory 是 `blocks_stack_easy`/`blocks_stack_hard`，没有 `stack_blocks_three`；不能通过直接安装官方 branch 修复当前 profile。 / Official `RoboTwin-1.0` task inventory has `blocks_stack_easy`/`blocks_stack_hard`, not `stack_blocks_three`; installing that branch alone cannot repair the current profile.
+- [policy] [diag] 已有通用 Provider 注入路径，但没有基于确切 task/controller 接口实现并资格验证的 RoboTwin relation Provider、table geometry、route/contact 或执行反馈。保持 motion disabled；后续需提供定制 task source/revision，或明确接受改用官方 `blocks_stack_easy`。 / The generic Provider injection path exists, but no RoboTwin relation Provider based on exact task/controller interfaces has been implemented and qualified for table geometry, route/contact or execution feedback. Keep motion disabled; provide the custom task source/revision or explicitly accept official `blocks_stack_easy`.
+
+### 文件变更详情 / File Changes
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L313-L356：保存 Runtime/dependency/task inventory 复核、benchmark 替换风险、PAOS Provider 缺口和继续条件。 / Record Runtime/dependency/task-inventory checks, benchmark-substitution risk, the PAOS Provider gap and continuation prerequisites.
+- [修改] `changelog/2026-11_part2.md` L644-L674：追加本版本双语诊断、关键 Diff 和验证。 / Add this version's bilingual diagnosis, key diff and validation.
+- [修改] `CHANGELOG.md` L52-L81：更新最近五版本。 / Update the latest-five versions.
+
+### 关键 Diff / Key Diff
+```diff
+before: missing Runtime root/provider treated as generic provisioning gaps
+after:  official RoboTwin-1.0 inventory does not contain stack_blocks_three;
+        current environment also lacks robotwin and Curobo
+decision: no empty roots, guessed task handles, silent benchmark substitution or motion enablement
+```
+
+### 架构与验证 / Architecture and Validation
+- Coordinator/AgentLoop ownership unchanged; environment geometry, route/contact qualification and execution feedback remain Adapter/Provider responsibilities. No task, Action, simulator or motion was started. / Coordinator/AgentLoop ownership is unchanged; environment geometry, route/contact qualification and execution feedback remain Adapter/Provider responsibilities. No task, Action, simulator or motion was started.
+- Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed. / Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed.
+
+### Git 提交 / Git Commit
+- 待本地提交并推送；本次仅触及诊断与日志。 / Pending local commit and push; this turn only touched diagnosis and logs.
+
 ## v17.3.10 (2026-11-08 11:16) - codex
 
 ### 完成范围 / Completed Scope
@@ -171,14 +198,6 @@ still:  no relation.establish Action Provider; table support and stack route pre
 
 ### Git 提交 / Git Commit
 - Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded. / Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded.
-
-## v17.3.6 (2026-11-07 17:46) - codex
-
-### 推送回执 / Push Receipt
-- [chore] [docs] `git push origin feature/planning-loop` 在 45 秒超时（exit 124）；随后只读 `git ls-remote` 在 20 秒超时（exit 124），未获得远端回执，本地分支仍 ahead 6。停止重复网络尝试。 / `git push origin feature/planning-loop` timed out after 45 seconds (exit 124); the subsequent read-only `git ls-remote` timed out after 20 seconds (exit 124), so no remote receipt is available and the local branch remains ahead by 6. Stop repeated network attempts. (local)
-
-### 文件变更 / File Changes
-- `changelog/2026-11_part2.md`：记录 v17.3.5 推送尝试结果。 / Record the v17.3.5 push attempt result.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

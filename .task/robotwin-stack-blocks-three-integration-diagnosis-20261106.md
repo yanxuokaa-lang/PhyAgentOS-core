@@ -307,3 +307,43 @@ This does not supply the concrete RoboTwin relation Provider or make
 `stack_blocks_three` executable. Table support geometry, qualified routes and
 contact behavior, and live RoboTwin runtime evidence remain absent. Motion is
 still unqualified, so no task or simulation is started.
+
+## 2026-11-08 Runtime Provisioning Recheck
+
+The configured `/home/yanxu/robotwin20-runtime/RoboTwin` and artifact root do
+not exist. The configured `RoboTwin20` interpreter imports `sapien` and
+`torch`, but does not resolve `robotwin` or `curobo`. Creating an empty artifact
+directory would satisfy only a filesystem check; it would not provide simulator
+assets, task classes, observations, route planning, or execution evidence.
+
+The official `RoboTwin-1.0` repository tree was checked through GitHub's API.
+Its task configs include `blocks_stack_easy.yml` and `blocks_stack_hard.yml`,
+not `stack_blocks_three`. The checked-in PAOS profile names
+`stack_blocks_three`, so cloning that upstream branch and pointing the current
+profile at it would still fail task resolution. Renaming the profile or
+silently substituting another benchmark would change the requested task and is
+not an acceptable infrastructure repair.
+
+The current PAOS stack Adapter also has no qualified `relation.establish`
+Provider. The generic Tool injection path now exists, but the stack Adapter
+cannot provide table support geometry, route/contact qualification, or measured
+execution/settlement feedback. These mechanisms require a task implementation
+whose actor, support-surface and controller interfaces are known. The
+configured runtime root is absent, so implementing against guessed RoboTwin
+handles would create an untestable Provider and falsely imply execution
+readiness.
+
+**Decision:** preserve `motion_execution_supported = False`; do not create an
+empty Runtime/artifact root, switch to `blocks_stack_easy`, create a PAOS task,
+or invoke an Action. To continue without changing task semantics, provide the
+intended `stack_blocks_three` task source/config and its supported RoboTwin
+revision (or explicitly authorize adapting the task to official
+`blocks_stack_easy`). Once that source is fixed, provision its external assets
+and dependencies, then implement table/block support geometry and relation
+execution inside the RoboTwin Adapter Provider; validate no-motion contracts,
+route/contact behavior and failure/unknown outcomes before any simulation
+execution. Coordinator and AgentLoop lifecycle ownership remains unchanged.
+
+No repository source behavior was changed in this recheck. The official task
+inventory and local environment facts are diagnostic evidence only; they are
+not RoboTwin runtime, Provider, or simulation qualification evidence.
