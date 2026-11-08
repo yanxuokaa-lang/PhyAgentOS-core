@@ -77,7 +77,7 @@ omitted: unchanged default Tool set; no Action endpoint is registered
 - 无 task、Action admission、RoboTwin runtime、仿真或运动；stack 仍不可执行。 / No task, Action admission, RoboTwin runtime, simulation or motion; stack remains non-executable.
 
 ### Git 提交 / Git Commit
-- Implementation: pending; branch: `feature/planning-loop`. / Implementation: pending; branch: `feature/planning-loop`.
+- Implementation: `c1bbd7e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 11:26 Asia/Shanghai. / Implementation: `c1bbd7e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 11:26 Asia/Shanghai.
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 
