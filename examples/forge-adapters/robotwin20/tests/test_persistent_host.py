@@ -288,6 +288,36 @@ def test_coordinator_ports_fail_closed_on_partial_or_path_bound_configuration(tm
         build_coordinator_ports(profile)
 
 
+@pytest.mark.parametrize(
+    ("provider", "resolver"),
+    [(object(), None), (None, lambda _caller_id: {})],
+)
+def test_host_rejects_partial_relation_provider_ports_before_startup(
+    tmp_path, provider, resolver
+):
+    profile, environ = _profile(tmp_path)
+
+    with pytest.raises(PersistentHostConfigurationError, match="supplied together"):
+        build_persistent_host(
+            profile,
+            environ=environ,
+            relation_execution_provider=provider,
+            resolve_relation_context=resolver,
+        )
+
+
+def test_host_rejects_relation_provider_without_admission_port_before_startup(tmp_path):
+    profile, environ = _profile(tmp_path)
+
+    with pytest.raises(PersistentHostConfigurationError, match="expose admit"):
+        build_persistent_host(
+            profile,
+            environ=environ,
+            relation_execution_provider=object(),
+            resolve_relation_context=lambda _caller_id: {},
+        )
+
+
 def test_host_closes_lifecycle_manager_when_fallback_credential_is_missing(
     tmp_path, monkeypatch
 ):
@@ -437,7 +467,10 @@ def test_non_qwen_provider_context_does_not_expose_qwen_recovery_commands():
 
 @pytest.mark.parametrize("route_source", ["observed", "oracle"])
 @pytest.mark.parametrize("action_mode", ["disabled", "runtime_monitored"])
-def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source, action_mode):
+@pytest.mark.parametrize("relation_enabled", [False, True])
+def test_host_composes_tools_around_one_persistent_worker_client(
+    tmp_path, monkeypatch, route_source, action_mode, relation_enabled
+):
     profile, environ = _profile(tmp_path)
     profile["model"] = {
         "provider": "qwen3_vl_vllm",
@@ -540,7 +573,20 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
 
     monkeypatch.setattr(host_module, "build_persistent_deployment", deployment_factory)
 
-    host = build_persistent_host(profile, environ=environ)
+    relation_provider = SimpleNamespace(admit=lambda *_args, **_kwargs: None)
+
+    def resolve_relation_context(caller_id):
+        return {"caller_id": caller_id}
+
+    relation_ports = (
+        {
+            "relation_execution_provider": relation_provider,
+            "resolve_relation_context": resolve_relation_context,
+        }
+        if relation_enabled
+        else {}
+    )
+    host = build_persistent_host(profile, environ=environ, **relation_ports)
 
     assert captured["client"] is client
     assert captured["preparation_timeout_s"] == 4.0
@@ -551,7 +597,8 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert captured["goal_source"] == "observation_owned"
     assert captured["depth_scale_to_m"] == pytest.approx(0.001)
     assert len(worker_configs) == 1
-    assert {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]} == {
+    tool_ids = {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]}
+    expected_tool_ids = {
         "scene.observe",
         "manipulation.capabilities",
         "scene.understand",
@@ -560,6 +607,14 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         "object.acquire",
         "object.place",
     }
+    if relation_enabled:
+        expected_tool_ids.add("relation.establish")
+        relation_endpoint = host.bundle.runtime._registration(
+            "relation.establish"
+        ).endpoint
+        assert relation_endpoint.provider is relation_provider
+        assert relation_endpoint.resolve_context is resolve_relation_context
+    assert tool_ids == expected_tool_ids
     assert all(
         host.bundle.runtime.get_context(item["tool_id"])["motion_authorized"] is False
         for item in host.bundle.runtime.list_tools()["tools"]

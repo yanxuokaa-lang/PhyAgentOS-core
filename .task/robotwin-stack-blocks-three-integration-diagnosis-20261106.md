@@ -281,3 +281,29 @@ Validation covers contract, lineage mismatch, Provider substitution, explicit
 unavailable propagation, and unknown Provider failure. Contract evidence is
 separate from RoboTwin Provider evidence and live simulation evidence; neither
 of the latter is claimed.
+
+## 2026-11-08 Production Host Provider Injection
+
+The previous bundle-level wiring was not reachable through the standard
+`build_persistent_host` entry point: the host did not accept a relation
+execution Provider or Coordinator resolver and therefore called the bundle
+without either. A Provider injected only by directly constructing the bundle
+would not be available to the normal host composition path.
+
+The host now accepts the optional Provider/resolver pair, checks the Provider's
+`admit` port and resolver callability before starting host resources, and
+forwards both to the existing bundle. Tests cover the host-to-Runtime
+registration path with the Provider enabled, default behavior with it omitted,
+partial-pair rejection, and invalid Provider rejection. No Action admission is
+invoked by these tests.
+
+Ownership remains unchanged: the host composes Adapter mechanisms; the generic
+workflow endpoint validates relation identity and Query lineage; the Provider
+owns geometry, route/contact qualification and execution; Runtime owns Action
+invocation; Coordinator owns task/revision/settlement; AgentLoop remains the
+workflow driver. No second scheduler or settlement store was added.
+
+This does not supply the concrete RoboTwin relation Provider or make
+`stack_blocks_three` executable. Table support geometry, qualified routes and
+contact behavior, and live RoboTwin runtime evidence remain absent. Motion is
+still unqualified, so no task or simulation is started.

@@ -508,6 +508,15 @@ preparation, collision/support checks, release verification, and settlement
 against the real RoboTwin runtime. The current no-motion tests do not qualify
 live simulator execution.
 
+Embedded hosts may pass a qualified `relation_execution_provider` and its
+task-bound `resolve_relation_context` to `build_persistent_host`; the host
+forwards the pair through the existing Runtime Bundle to the generic
+`relation.establish` endpoint. Both ports are required together, and the
+Provider must implement `admit`. Omitting them leaves the default Tool set
+unchanged. This injection path composes a Provider but does not qualify its
+geometry, route, contact behavior, or live execution; it does not enable
+`stack_blocks_three` by itself.
+
 The Franka readiness gate for the first profiled scene is now complete for the
 no-motion review boundary. Capture geometry and point-cloud artifacts,
 GraspGen candidates, and the independent Curobo worker all bind

@@ -49,6 +49,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.10 (2026-11-08 11:16) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] 将可选 `relation.establish` Provider/resolver 从生产 `build_persistent_host` 贯通到既有 Persistent Runtime Bundle；缺少其一或 Provider 缺少 `admit` 时在 host 资源启动前拒绝。 / Forward the optional `relation.establish` Provider/resolver from production `build_persistent_host` to the existing Persistent Runtime Bundle; reject a partial pair or a Provider without `admit` before host resources start.
+- [eval] [test] 覆盖 host 集成路径中 Provider 启用/省略、半配置拒绝和错误 Provider 拒绝。 / Cover enabled/omitted Provider composition and partial/invalid-provider rejection through the host integration path.
+- [docs] [diag] 保存 host 入口之前遗漏端口转发的诊断；stack 几何、route/contact qualification 和仿真证据仍未具备。 / Record the missing forwarding at the host entry point; stack geometry, route/contact qualification and simulation evidence remain unavailable.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L393-L400, L408-L423, L926-L944：暴露并校验 Provider/resolver 注入，再转交 bundle。 / Expose and validate Provider/resolver injection, then forward to the bundle.
+- [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L291-L319, L468-L617：测试成对契约和启用/禁用 Provider 的 production-host 组合。 / Test the paired contract and production-host composition with and without the Provider.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L285-L309：追加 host 入口诊断和 PAOS 所有权边界。 / Add the host-entry diagnosis and PAOS ownership boundary.
+- [修改] `changelog/2026-11_part2.md` L644-L680：记录计划、详细 Diff、行号与验证。 / Record the plan, detailed diff, line references and validation.
+- [修改] `CHANGELOG.md` L52-L81：更新最近五版本。 / Update the latest-five index.
+
+### 关键 Diff / Key Diff
+```diff
+before: build_persistent_host -> Runtime Bundle without relation Provider/resolver
+after:  build_persistent_host(optional Provider/resolver) -> pair/port validation
+        -> Runtime Bundle -> optional relation.establish registration
+omitted: unchanged default Tool set; no Action endpoint is registered
+```
+
+### 架构与验证 / Architecture and Validation
+- Host 仅组合 Adapter Provider；通用 endpoint 校验 relation 和 evidence lineage；Runtime、Coordinator、AgentLoop 生命周期所有权不变。 / The host only composes the Adapter Provider; the generic endpoint validates relation/evidence lineage; Runtime, Coordinator and AgentLoop lifecycle ownership is unchanged.
+- 定向 pytest `49 passed, 1 warning`；Ruff、compileall 通过。warning 是 pytest 环境不识别 `asyncio_mode`。 / Focused pytest: `49 passed, 1 warning`; Ruff and compileall pass. The warning is the environment's unrecognized `asyncio_mode` option.
+- 无 task、Action admission、RoboTwin runtime、仿真或运动；stack 仍不可执行。 / No task, Action admission, RoboTwin runtime, simulation or motion; stack remains non-executable.
+
+### Git 提交 / Git Commit
+- Implementation: pending; branch: `feature/planning-loop`. / Implementation: pending; branch: `feature/planning-loop`.
+
 ## v17.3.9 (2026-11-08 15:10) - codex
 
 ### 完成范围 / Completed Scope
@@ -149,17 +179,6 @@ still:  no relation.establish Action Provider; table support and stack route pre
 
 ### 文件变更 / File Changes
 - `changelog/2026-11_part2.md`：记录 v17.3.5 推送尝试结果。 / Record the v17.3.5 push attempt result.
-
-## v17.3.5 (2026-11-07 17:44) - codex
-
-### 回执补全 / Receipt Completion
-- [chore] [docs] 记录 `v17.3.4` RoboTwin 启动诊断提交 `7ad79d71`；其 push 尝试超时，未取得远端回执。 / Record `v17.3.4` RoboTwin launch-diagnosis commit `7ad79d71`; its push attempt timed out without a remote receipt. (local)
-
-### 文件变更 / File Changes
-- `changelog/2026-11_part2.md` L525-L531：新增提交回执。 / Add the commit receipt.
-
-### Git 提交 / Git Commit
-- v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; remote receipt unavailable. / v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; no remote receipt.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

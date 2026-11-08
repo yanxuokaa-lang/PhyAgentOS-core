@@ -395,6 +395,8 @@ def build_persistent_host(
     perception_binding_adapter: Any | None = None,
     resolve_subtask_context=None,
     assignment_store=None,
+    relation_execution_provider: Any | None = None,
+    resolve_relation_context=None,
 ) -> PersistentHost:
     """Construct the adapter Tool API around one worker client.
 
@@ -406,6 +408,19 @@ def build_persistent_host(
     variables = dict(os.environ if environ is None else environ)
     lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
     owned_runtime_resources: list[Any] = []
+    if (relation_execution_provider is None) != (resolve_relation_context is None):
+        raise PersistentHostConfigurationError(
+            "relation_execution_provider and resolve_relation_context must be supplied together"
+        )
+    if relation_execution_provider is not None:
+        if not callable(getattr(relation_execution_provider, "admit", None)):
+            raise PersistentHostConfigurationError(
+                "relation_execution_provider must expose admit(request, invocation_id, attempt_id)"
+            )
+        if not callable(resolve_relation_context):
+            raise PersistentHostConfigurationError(
+                "resolve_relation_context must be callable"
+            )
     perception_binding_adapter, resolve_subtask_context = build_coordinator_ports(
         profile,
         perception_binding_adapter=perception_binding_adapter,
@@ -924,6 +939,8 @@ def build_persistent_host(
             perception_binding_adapter=perception_binding_adapter,
             resolve_subtask_context=resolve_subtask_context,
             assignment_store=assignment_store,
+            relation_execution_provider=relation_execution_provider,
+            resolve_relation_context=resolve_relation_context,
         )
     except Exception:
         for resource in reversed(owned_runtime_resources):
