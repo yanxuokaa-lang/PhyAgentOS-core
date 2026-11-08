@@ -157,7 +157,8 @@ def _layout_checks(config: PreflightConfig) -> list[PreflightCheck]:
         checks.append(PreflightCheck(f"file:{relative}", path.is_file(), str(path)))
     for name in _ASSET_DIRS:
         asset_dir = root / "assets" / name
-        count = sum(1 for item in asset_dir.rglob("*") if item.is_file()) if asset_dir.is_dir() else 0
+        scan_dir = asset_dir.resolve() if asset_dir.is_symlink() else asset_dir
+        count = sum(1 for item in scan_dir.rglob("*") if item.is_file()) if scan_dir.is_dir() else 0
         checks.append(
             PreflightCheck(
                 f"asset:{name}",

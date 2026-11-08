@@ -284,6 +284,27 @@ def test_runtime_profile_rejects_artifacts_inside_forbidden_paos_root(tmp_path):
         profile.validate()
 
 
+def test_resolve_embodiment_path_allows_only_runtime_and_linked_embodiment_assets(tmp_path):
+    runtime_root = tmp_path / "runtime"
+    local_embodiment = runtime_root / "robots/local-panda"
+    local_embodiment.mkdir(parents=True)
+    external_store = tmp_path / "task-assets/embodiments"
+    external_embodiment = external_store / "franka-panda"
+    external_embodiment.mkdir(parents=True)
+    runtime_embodiments = runtime_root / "assets/embodiments"
+    runtime_embodiments.parent.mkdir(parents=True)
+    runtime_embodiments.symlink_to(external_store, target_is_directory=True)
+
+    assert backend_module.resolve_embodiment_path(
+        runtime_root, "assets/embodiments/franka-panda"
+    ) == external_embodiment
+    assert backend_module.resolve_embodiment_path(
+        runtime_root, "robots/local-panda"
+    ) == local_embodiment
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="escapes allowed runtime assets"):
+        backend_module.resolve_embodiment_path(runtime_root, str(tmp_path / "outside"))
+
+
 def test_public_camera_refs_do_not_include_truth_channels():
     assert set(backend_module._CAMERA_REFS) == {
         "camera/head",

@@ -347,3 +347,103 @@ execution. Coordinator and AgentLoop lifecycle ownership remains unchanged.
 No repository source behavior was changed in this recheck. The official task
 inventory and local environment facts are diagnostic evidence only; they are
 not RoboTwin runtime, Provider, or simulation qualification evidence.
+
+## 2026-11-08 Corrected Runtime and Table Geometry Findings
+
+Correction: the preceding section's statement that the RoboTwin Runtime root
+is absent was incorrect. A usable checkout is present at
+`/home/data/yanxu_migrated/RoboTwin` (`main`, revision `3095469`), and it
+contains both `envs/stack_blocks_three.py` and
+`env_cfg/task_config/demo_clean.yml`. The deployment file pointed at an
+obsolete path and selected the unrelated `blocks_ranking_rgb` profile; this
+was a configuration defect, not a missing task source.
+
+The deployment now selects the existing checkout and a dedicated
+`stack-blocks-three.yaml` profile. Its artifact root is the isolated
+`/home/data/yanxu_migrated/robotwin-stack-blocks-three/artifacts`; the prior
+benchmark artifact tree is untouched. The profile loads successfully and
+resolves `stack_blocks_three`, `demo_clean`, the dual Franka embodiment, and
+the two configured camera references.
+
+The stack Adapter now resolves the table support candidate from the current
+SAPIEN table actor's collision shapes, requires exactly one broad horizontal
+tabletop shape, and derives the object's support height from its current
+collision extents. Placement XY comes from the task's declared
+`block1_target_pose`. Missing, malformed, ambiguous, or tilted support
+geometry returns `unavailable`; this Query does not qualify a route or
+authorize Action execution. Tests cover table and block support geometry,
+stale-observation rejection, and missing table geometry.
+
+No-motion preflight evidence on 2026-11-08: Runtime root, Python, task source,
+task config, Torch CUDA kernel, SAPIEN renderer, and Vulkan passed. Preflight
+still fails because `assets/background_texture`, `assets/embodiments`, and
+`assets/objects` are empty, the Franka embodiment config is absent, `curobo`
+is not installed, and importing the task fails on
+`assets/objects/objaverse/list.json`. At check time `/home/data` had only
+6.0 GB free, less than the approximately 14.9 GB official asset archive; no
+download or installer was started. The root filesystem had 735 MB free and
+was not used for provisioning.
+
+The concrete RoboTwin `relation.establish` execution Provider remains
+unimplemented and unqualified. The current relation Query supplies target
+geometry only; it does not supply a qualified stack grasp/contact route. The
+benchmark's synchronous `pick_and_place_block` helper is not wired as a
+Provider because it advances the simulator outside the Gateway-owned,
+pollable/stoppable Action driver and does not provide PAOS route/contact
+qualification evidence. `motion_execution_supported` therefore remains
+false and no task, Action, simulator, or motion was started.
+
+Architecture ownership remains: task/revision/settlement in Coordinator,
+workflow driving in AgentLoop, geometry and any future route/execution
+mechanism in the RoboTwin Adapter Provider, and invocation state in the
+existing CapabilityRuntime. No lifecycle or settlement store was added.
+
+## 2026-11-08 Runtime Smoke and SAPIEN Entity API Correction
+
+The earlier statement above that the artifact root is
+`/home/data/yanxu_migrated/robotwin-stack-blocks-three/artifacts` was
+incorrect. The active deployment uses the isolated writable root
+`/home/yanxu/robotwin20-runtime/stack-blocks-three/artifacts`; it is outside
+both the Runtime checkout and the PAOS repository. The external
+`runtime.env` selects the existing `/home/data/yanxu_migrated/RoboTwin`
+checkout and the checked-in `stack-blocks-three.yaml` profile.
+
+The dedicated preflight passed all checks on 2026-11-08, including the real
+asset families (11,000 background files, 229 embodiment files, 9,368 object
+files), Franka configs, RoboTwin imports, Torch 2.9.1+cu128 CUDA execution on
+RTX 5060 Ti capability 12.0, CuRobo modules, SAPIEN renderer and Vulkan.
+CuRobo's local CUDA extension was rebuilt for `compute_120/sm_120`. A no-motion
+`demo_clean` seed-0 `setup_demo` plus RGB/depth/state capture completed and
+wrote typed artifacts under the isolated artifact root; it did not call
+`play_once`, a robot action, or a simulation motion step. SAPIEN emitted OIDN
+CUDA-device warnings, but capture completed with `sensor_available=true`.
+
+The first real table relation Query returned `unavailable`. The concrete
+failure was an Adapter/SAPIEN API mismatch: RoboTwin `create_table()` returns a
+SAPIEN `Entity` whose collision components are obtained from
+`get_components()`, while the Adapter only looked for `table.actor.components`.
+The Adapter now reads `get_components()` on SAPIEN Entities and retains the
+legacy wrapper fallback. Regression fixtures follow the actual Entity API.
+The rerun returned one candidate using `current_table_collision_shape`, with
+table top `z=0.7400000 m` and block-center target `z=0.7650010 m` for the live
+scene revision `stack_blocks_three-0-1`.
+
+This fixes current-scene support geometry, not relation execution. There is
+still no qualified stack `relation.establish` Provider: the benchmark's
+`pick_and_place_block()` synchronously advances a full trajectory and cannot
+be stopped between control ticks through the Gateway Action driver. Wrapping
+it in a background future would allow motion to continue after cancellation or
+an unknown Action result. In addition, no stack-specific route/contact
+qualification and runtime-monitored approval evidence exists. Ordinary
+contract tests cannot establish simulator-thread stop behavior or physical
+contact outcomes; enabling motion without those would permit post-cancellation
+motion or report a relation without measured support. Keep
+`motion_execution_supported = False`; no PAOS task or Action was admitted.
+
+Architecture remains unchanged: Coordinator owns task/revision/settlement,
+AgentLoop drives the workflow, CapabilityRuntime owns Action invocation, and
+the RoboTwin Adapter owns environment geometry and any future qualified
+execution mechanism. The remaining implementation must provide a simulator-
+thread-affine bounded control-tick driver, stack-specific route/contact
+qualification, explicit stop behavior, and measured placement feedback before
+motion can be enabled.

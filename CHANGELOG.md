@@ -49,6 +49,39 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.12 (2026-11-08 14:35) - codex
+
+### 阶段结果 / Stage Result
+- [env] [fix] 更正 Runtime inventory 误判，部署配置指向真实 `/home/data/yanxu_migrated/RoboTwin` checkout 与 `stack_blocks_three` 专用 profile；在 `/home/yanxu/robotwin20-runtime/stack-blocks-three/` 使用独立 artifact/assets 根，外置资产只通过明确链接接入。 / Correct the Runtime inventory error and point deployment at the real `/home/data/yanxu_migrated/RoboTwin` checkout and the task-specific `stack_blocks_three` profile; use isolated artifact/assets roots under `/home/yanxu/robotwin20-runtime/stack-blocks-three/` and explicitly link external assets.
+- [env] [fix] preflight 现在计数受控资产 symlink 的实际文件；embodiment 路径接受 Runtime 根或明确的 `assets/embodiments` 资产根，仍拒绝任意逃逸；RTX 5060 Ti CuRobo extension 按 `sm_120` 重建。 / Count real files behind controlled asset symlinks; permit embodiment paths only under Runtime or the designated `assets/embodiments` root while rejecting arbitrary escapes; rebuild CuRobo extensions for RTX 5060 Ti `sm_120`.
+- [env] [fix] 从真实 SAPIEN Entity 修复 table/block collision component 读取：优先 `get_components()`，保留 wrapper fallback。当前 no-motion Query 返回 tabletop 顶面 `z=0.7400000 m`、block target center `z=0.7650010 m`。 / Fix table/block collision-component access for real SAPIEN Entities by preferring `get_components()` while retaining the wrapper fallback. The live no-motion Query returns a tabletop height of `z=0.7400000 m` and block target center of `z=0.7650010 m`.
+- [eval] [test] 增加贴合 SAPIEN Entity API 的 Adapter 回归；stack 的真实 no-motion setup/capture 和 preflight 通过。关系执行 Provider、route/contact qualification、stop behavior 尚未完成，故保持 `motion_execution_supported=False`，不创建 task 或调用 Action。 / Add Adapter regressions matching the SAPIEN Entity API; real stack no-motion setup/capture and preflight pass. Relation execution Provider, route/contact qualification and stop behavior remain unfinished, so `motion_execution_supported=False` and no task or Action is started.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_backend.py` L77-L86、L320-L324：受控解析 Runtime 与外置 embodiment assets。 / Resolve Runtime and external embodiment assets through explicit allowed roots.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/preflight.py` L157-L163、`tests/test_preflight.py`：跟随受控资产 symlink 统计实际资源。 / Count actual assets by following controlled asset symlinks.
+- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py` L585-L625、L628-L644：SAPIEN `get_components()` 兼容及 current table collision geometry Query。 / Support SAPIEN `get_components()` and current-table collision-geometry Query.
+- [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L22-L62、L147-L160：使用实体 API fixture，断言 block 尺寸和目标高度。 / Use Entity-API fixtures and assert block dimensions and target height.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L401-L449：更正 artifact 根路径并记录实际 preflight/setup/Query 及 Provider 阻断。 / Correct the artifact-root path and record live preflight/setup/Query evidence and Provider blockers.
+- [修改] `changelog/2026-11_part2.md` L644-L705：更新双语阶段结果、Diff、行号、验证和明确未完成的 Provider 项。 / Record bilingual stage results, diff, line references, validation and the explicitly unfinished Provider work.
+
+### 关键 Diff / Key Diff
+```diff
+before: table.actor.components -> unavailable on real SAPIEN Entity
+after:  Entity.get_components() -> inspect collision geometry -> available target
+before: deployed Runtime/artifact paths did not resolve the intended task
+after:  real task/profile + isolated artifact/assets roots + preflight ready
+still:  no stoppable, route/contact-qualified relation Action Provider
+```
+
+### 架构与验证 / Architecture and Validation
+- Coordinator 继续拥有 task/revision/settlement，AgentLoop 继续驱动工作流，CapabilityRuntime 拥有 Action invocation；Adapter 只拥有 RoboTwin geometry 与 future execution mechanism。未增加生命周期或 settlement store。 / Coordinator retains task/revision/settlement ownership, AgentLoop drives the workflow, CapabilityRuntime owns Action invocation, and the Adapter owns RoboTwin geometry and future execution mechanisms. No lifecycle or settlement store was added.
+- 专用 preflight `ready=true`；no-motion `demo_clean` setup 与 RGB/depth/state capture 成功，实际 table Query 可用；`test_robotwin_task_adapters.py` `10 passed`，Ruff 与 `git diff --check` 通过。SAPIEN/OIDN 发出 CUDA-device warning 但 capture 返回 `sensor_available=true`。 / Dedicated preflight is `ready=true`; no-motion `demo_clean` setup and RGB/depth/state capture succeed, and the live table Query is available; `test_robotwin_task_adapters.py` reports `10 passed`, Ruff and `git diff --check` pass. SAPIEN/OIDN reports CUDA-device warnings, but capture returns `sensor_available=true`.
+- 未调用 `play_once`、机械臂动作或 motion Action。同步整轨迹调用无法满足 Action cancellation/unknown-result 语义，缺少 stack route/contact 与 runtime-monitored approval；不能据此启用执行。 / No `play_once`, robot action or motion Action was invoked. Synchronous full-trajectory calls do not satisfy Action cancellation/unknown-result semantics, and stack route/contact plus runtime-monitored approval are absent; execution cannot be enabled on this evidence.
+
+### Git 提交 / Git Commit
+- Pending implementation and log-receipt commits on `feature/planning-loop`. / Pending implementation and log-receipt commits on `feature/planning-loop`.
+
 ## v17.3.11 (2026-11-08 12:49) - codex
 
 ### 完成范围 / Completed Scope
@@ -170,34 +203,6 @@ RoboTwin stack Provider/table geometry/route qualification remain absent; motion
 
 ### Git 提交 / Git Commit
 - Implementation commit: `0f5fb8c7`; log-receipt commit: `f86cf9e6`; branch: `feature/planning-loop`; `git push` succeeded at 2026-11-08 10:26 Asia/Shanghai. / Implementation commit: `0f5fb8c7`; log-receipt commit: `f86cf9e6`; branch: `feature/planning-loop`; `git push` succeeded at 2026-11-08 10:26 Asia/Shanghai.
-
-## v17.3.7 (2026-11-07 18:02) - codex
-
-### 完成范围 / Completed Scope
-- [policy] [feat] 在现有 `relation.target` Query 后新增 no-motion 候选投影，验证当前节点的 entity/relation/support/observation/scene/frame/calibration identity，并保留 selected destination、pose、candidate set 和 geometry evidence。该投影不是 relation Action Provider，也不授权运动。 / Add a no-motion candidate projection after the existing `relation.target` Query, validating entity/relation/support/observation/scene/frame/calibration identity for the current node and preserving the selected destination, pose, candidate set and geometry evidence. This projection is not a relation Action Provider and does not authorize motion. (local)
-- [eval] [test] 覆盖 freshness lineage、candidate selection、stale/unknown selection、missing evidence；RoboTwin table support 与 motion refusal 继续显式失败。 / Cover freshness lineage, candidate selection, stale/unknown selections and missing evidence; RoboTwin table support and motion refusal remain explicit failures. (local)
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py` L94-L153、L275-L278：提供 Action-facing domain binding projection，`motion_authorized=False`。 / Provide the Action-facing domain-binding projection with `motion_authorized=False`.
-- [修改] `examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L7、L94-L146：增加 relation binding contract 与拒绝路径。 / Add relation-binding contract and refusal-path tests.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L183-L203：记录本次边界及尚缺的 table geometry、Action Provider 和 route/contact qualification。 / Record this change's boundary and remaining table geometry, Action Provider and route/contact qualification gaps.
-- [修改] `changelog/2026-11_part2.md` L545-L571：记录双语变更、文件范围、Diff、验证和 Git 提交信息。 / Record bilingual changes, file scope, diff, validation and Git commit information.
-
-### 关键 Diff / Key Diff
-```diff
-before: Query candidate geometry had no provider-neutral domain projection
-after:  bind_relation_target_candidate(result, candidate_ref, expected_current_node)
-        -> destination + transform + evidence + scene/observation lineage; motion_authorized=False
-still:  no relation.establish Action Provider; table support and stack route preparation unavailable
-```
-
-### 架构与验证 / Architecture and Validation
-- AgentLoop/Coordinator lifecycle unchanged; Coordinator remains the sole settlement owner and RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement. / AgentLoop/Coordinator lifecycle is unchanged; Coordinator remains the sole settlement owner and the RoboTwin Adapter owns environment geometry/route mechanisms. The projection does not bypass Action admission or settlement.
-- 定向测试 `40 passed, 1 warning`；warning 为 pytest 环境不识别 `asyncio_mode` 配置；`git diff --check` 通过。 / Focused tests: `40 passed, 1 warning`; the warning is that this pytest environment does not recognize the `asyncio_mode` option; `git diff --check` passes.
-- 未创建 PAOS task、未调用 Gateway Action、未启动模拟或运动；stack Adapter 仍 `motion_execution_supported=False`。 / No PAOS task or Gateway Action was created or invoked, and no simulation or motion was started; the stack Adapter remains `motion_execution_supported=False`.
-
-### Git 提交 / Git Commit
-- Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded. / Implementation: `5dab63fc`; receipt: `e61cf47a`; branch: `feature/planning-loop`; push succeeded.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

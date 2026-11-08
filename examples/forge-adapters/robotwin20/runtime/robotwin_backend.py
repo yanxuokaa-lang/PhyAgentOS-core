@@ -74,6 +74,18 @@ def _normalize_additional_static_cameras(value: Any) -> tuple[dict[str, Any], ..
         raise RoboTwinRuntimeError(str(exc)) from exc
 
 
+def resolve_embodiment_path(runtime_root: Path, file_path: str) -> Path:
+    """Resolve an embodiment under Runtime or its explicitly linked asset family."""
+    root = runtime_root.resolve()
+    candidate = (root / file_path).resolve()
+    embodiment_asset_root = (root / "assets" / "embodiments").resolve()
+    if not candidate.is_relative_to(root) and not candidate.is_relative_to(embodiment_asset_root):
+        raise RoboTwinRuntimeError("RoboTwin embodiment path escapes allowed runtime assets")
+    if not candidate.is_dir():
+        raise RoboTwinRuntimeError("RoboTwin embodiment path is unavailable")
+    return candidate
+
+
 def load_runtime_profile(path: Path) -> dict[str, Any]:
     """Load one adapter-owned task/embodiment profile without importing PAOS."""
     try:
@@ -308,9 +320,7 @@ class RoboTwinSensorBackend:
         robot_files: list[str] = []
         for entry in entries:
             robot_file = str(entry["file_path"])
-            robot_path = (root / robot_file).resolve()
-            if root not in robot_path.parents or not robot_path.is_dir():
-                raise RoboTwinRuntimeError("RoboTwin embodiment path escapes runtime_root")
+            robot_path = resolve_embodiment_path(root, robot_file)
             robot_files.append(robot_file)
             configs.append(self._read_embodiment(robot_path))
         if self.profile.additional_static_cameras:

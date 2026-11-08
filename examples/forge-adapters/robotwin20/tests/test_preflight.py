@@ -55,6 +55,20 @@ def test_preflight_fails_when_an_asset_family_is_missing(tmp_path):
     assert next(check for check in report.checks if check.name == "asset:objects").passed is False
 
 
+def test_preflight_counts_external_asset_directory_symlinks(tmp_path):
+    root, python = runtime_layout(tmp_path / "RoboTwin")
+    runtime_objects = root / "assets/objects"
+    external_objects = root.parent / "asset-store/objects"
+    external_objects.parent.mkdir(parents=True)
+    runtime_objects.rename(external_objects)
+    runtime_objects.symlink_to(external_objects, target_is_directory=True)
+
+    report = run_preflight(PreflightConfig(root, python), runner=passing_runner)
+
+    assert report.ready is True
+    assert next(check for check in report.checks if check.name == "asset:objects").passed is True
+
+
 def test_preflight_propagates_runtime_probe_failure_without_running_actions(tmp_path):
     root, python = runtime_layout(tmp_path / "RoboTwin")
     commands: list[str] = []

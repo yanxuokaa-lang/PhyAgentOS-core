@@ -1,33 +1,81 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import robotwin_blocks_ranking_adapter as adapters
 
+from robotwin20_adapter.runtime_profile import load_runtime_profile
 
-def _pose(x: float) -> SimpleNamespace:
+
+def _pose(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> SimpleNamespace:
     matrix = np.eye(4)
     matrix[0, 3] = x
+    matrix[1, 3] = y
+    matrix[2, 3] = z
     return SimpleNamespace(to_transformation_matrix=lambda: matrix)
 
 
 def _stack_task() -> SimpleNamespace:
+    block_shape = SimpleNamespace(
+        get_half_size=lambda: [0.025, 0.025, 0.025],
+        get_local_pose=lambda: _pose(),
+    )
     actors = [
         SimpleNamespace(
             get_pose=lambda index=index: _pose(index * 0.1),
             get_functional_point=lambda *_args, index=index: _pose(index * 0.1),
+            actor=SimpleNamespace(get_components=lambda: [SimpleNamespace(
+                get_collision_shapes=lambda: [block_shape],
+            )]),
         )
         for index in range(3)
+    ]
+    table_shapes = [
+        SimpleNamespace(
+            get_half_size=lambda: [0.6, 0.35, 0.025],
+            get_local_pose=lambda: _pose(z=-0.025),
+        ),
+        *[
+            SimpleNamespace(
+                get_half_size=lambda: [0.025, 0.025, 0.35],
+                get_local_pose=lambda x=x, y=y: _pose(x=x, y=y, z=-0.742),
+            )
+            for x, y in ((-0.575, -0.325), (-0.575, 0.325), (0.575, -0.325), (0.575, 0.325))
+        ],
     ]
     return SimpleNamespace(
         block1=actors[0],
         block2=actors[1],
         block3=actors[2],
+        table=SimpleNamespace(
+            get_pose=lambda: _pose(z=0.74),
+            get_components=lambda: [SimpleNamespace(
+                get_collision_shapes=lambda: table_shapes,
+            )],
+        ),
+        block1_target_pose=[0, -0.13, 0.75, 0, 1, 0, 0],
         check_success=lambda: True,
     )
+
+
+def test_stack_blocks_three_runtime_profile_selects_the_real_task():
+    profile_path = (
+        Path(__file__).parents[1]
+        / "profiles"
+        / "robotwin20"
+        / "stack-blocks-three.yaml"
+    )
+
+    profile = load_runtime_profile(profile_path)
+
+    assert profile["task_name"] == "stack_blocks_three"
+    assert profile["task_config"] == "demo_clean"
+    assert profile["embodiment"] == ("franka-panda", "franka-panda", 0.8)
+    assert profile["sensor_refs"] == ("camera/head", "camera/front")
 
 
 def test_stack_adapter_exposes_relation_goals_without_static_target_poses(monkeypatch):
@@ -89,8 +137,63 @@ def test_stack_relation_target_requires_current_support_geometry(monkeypatch):
 
     assert result["status"] == "available"
     assert result["candidates"][0]["world_T_object_target"][11] == pytest.approx(0.04)
-    assert table["status"] == "unavailable"
-    assert table["candidates"] == []
+    assert table["status"] == "available"
+    assert table["candidates"][0]["world_T_object_target"][7] == pytest.approx(-0.13)
+    assert table["candidates"][0]["world_T_object_target"][11] == pytest.approx(0.76)
+    assert table["candidates"][0]["support_world_top_m"] == pytest.approx(0.74)
+    assert table["candidates"][0]["support_geometry_source"] == "current_table_collision_shape"
+
+
+def test_stack_table_query_reads_sapien_entity_component_api():
+    adapter = adapters.task_adapter("stack_blocks_three")
+    task = _stack_task()
+
+    result = adapter.relation_target(task, {
+        "entity_ref": "entity://stack-block-1",
+        "goal_relation": "on",
+        "relation_target_ref": "surface://table",
+    })
+
+    assert result["status"] == "available"
+    assert result["candidates"][0]["support_geometry_source"] == "current_table_collision_shape"
+    assert result["candidates"][0]["world_T_object_target"][11] == pytest.approx(0.765)
+    assert adapters._half_extents(task.block1) == [0.025, 0.025, 0.025]
+
+
+def test_stack_table_relation_abstains_when_current_collision_geometry_is_missing(monkeypatch):
+    monkeypatch.setattr(adapters, "_half_extents", lambda _actor: [0.02, 0.02, 0.02])
+    adapter = adapters.task_adapter("stack_blocks_three")
+    task = _stack_task()
+    task.table = None
+    request = {
+        "entity_ref": "entity://stack-block-1",
+        "goal_relation": "on",
+        "relation_target_ref": "surface://table",
+    }
+
+    result = adapter.relation_target(task, request)
+
+    assert result["status"] == "unavailable"
+    assert result["candidates"] == []
+    assert "collision geometry" in result["error"]
+
+
+def test_stack_table_relation_abstains_when_target_footprint_exceeds_tabletop(monkeypatch):
+    monkeypatch.setattr(adapters, "_half_extents", lambda _actor: [0.02, 0.02, 0.02])
+    adapter = adapters.task_adapter("stack_blocks_three")
+    task = _stack_task()
+    task.block1_target_pose = [0.7, -0.13, 0.75, 0, 1, 0, 0]
+    request = {
+        "entity_ref": "entity://stack-block-1",
+        "goal_relation": "on",
+        "relation_target_ref": "surface://table",
+    }
+
+    result = adapter.relation_target(task, request)
+
+    assert result["status"] == "unavailable"
+    assert result["candidates"] == []
+    assert "geometry" in result["error"]
 
 
 def test_stack_adapter_cannot_enter_route_preparation_or_action():

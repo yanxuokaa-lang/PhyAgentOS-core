@@ -299,11 +299,10 @@ class StackBlocksThreeTaskAdapter:
         }
 
     def relation_target(self, task: Any, request: dict[str, Any]) -> dict[str, Any]:
-        """Resolve block-on-block center alignment from current simulator poses.
+        """Resolve block/table support targets from current simulator geometry.
 
-        Table geometry is not exposed by this task binding and therefore remains
-        unavailable. This method only proposes geometry; it does not qualify a
-        route or authorize Action execution.
+        This method only proposes geometry; it does not qualify a route or
+        authorize Action execution.
         """
         if request.get("goal_relation") != "on":
             return {**request, "status": "unavailable", "candidates": [],
@@ -315,20 +314,43 @@ class StackBlocksThreeTaskAdapter:
                     "error": "an entity cannot be placed on itself"}
         entity_binding = next((row for row in self.entities if row[0] == entity), None)
         target_binding = next((row for row in self.entities if row[0] == target), None)
-        if entity_binding is None or target_binding is None:
+        if entity_binding is None or (target_binding is None and target != "surface://table"):
             return {**request, "status": "unavailable", "candidates": [],
                     "error": "support geometry is unavailable for this relation target"}
         moving = getattr(task, entity_binding[1], None)
-        support = getattr(task, target_binding[1], None)
-        if moving is None or support is None:
+        if moving is None:
             return {**request, "status": "unavailable", "candidates": [],
                     "error": "stack actor binding is unavailable"}
         moving_pose = _matrix(moving.get_pose())
+        moving_half = _half_extents(moving)
+        if target == "surface://table":
+            table = getattr(task, "table", None)
+            try:
+                target_pose = _table_support_target(task, table, moving_pose, moving_half)
+            except (AttributeError, IndexError, TypeError, ValueError):
+                target_pose = None
+            if target_pose is None:
+                return {**request, "status": "unavailable", "candidates": [],
+                        "error": "current table collision geometry or task target pose is unavailable"}
+            candidate_key = f"{entity.removeprefix('entity://')}:surface-table"
+            return {
+                **request,
+                "status": "available",
+                "candidates": [{
+                    "candidate_key": candidate_key,
+                    "world_T_object_target": _flatten(target_pose[0]),
+                    "support_world_top_m": target_pose[1],
+                    "support_geometry_source": "current_table_collision_shape",
+                }],
+            }
+        support = getattr(task, target_binding[1], None)
+        if support is None:
+            return {**request, "status": "unavailable", "candidates": [],
+                    "error": "stack actor binding is unavailable"}
         support_pose = _matrix(support.get_pose())
         if any(abs(abs(pose[2][2]) - 1.0) > 0.02 for pose in (moving_pose, support_pose)):
             return {**request, "status": "unavailable", "candidates": [],
                     "error": "tilted support relations require a qualified surface model"}
-        moving_half = _half_extents(moving)
         support_half = _half_extents(support)
         moving_extent_z = sum(abs(moving_pose[2][axis]) * moving_half[axis] for axis in range(3))
         support_extent_world = [
@@ -561,9 +583,8 @@ def _pose_from_pq_wxyz(value: Any) -> Any:
 
 
 def _half_extents(actor: Any) -> list[float]:
-    actor_handle = getattr(actor, "actor", None)
-    components = getattr(actor_handle, "components", None)
-    if not isinstance(components, list):
+    components = _physics_components(actor)
+    if components is None:
         raise BlocksRankingRgbTaskAdapterError("actor physics components are unavailable")
     shapes = []
     for component in components:
@@ -591,3 +612,95 @@ def _half_extents(actor: Any) -> list[float]:
             "non-identity collision-shape pose is unsupported"
         )
     return values
+
+
+def _physics_components(entity: Any) -> list[Any] | None:
+    """Read collision components from RoboTwin wrappers or SAPIEN Entities."""
+    handle = getattr(entity, "actor", entity)
+    getter = getattr(handle, "get_components", None)
+    if callable(getter):
+        components = getter()
+        return list(components) if components is not None else None
+    components = getattr(handle, "components", None)
+    return list(components) if isinstance(components, (list, tuple)) else None
+
+
+def _table_support_target(
+    task: Any,
+    table: Any,
+    moving_pose: list[list[float]],
+    moving_half: list[float],
+) -> tuple[list[list[float]], float] | None:
+    if table is None:
+        return None
+    table_pose = _matrix(table.get_pose())
+    components = _physics_components(table)
+    if components is None:
+        return None
+    shapes = []
+    for component in components:
+        getter = getattr(component, "get_collision_shapes", None)
+        if callable(getter):
+            shapes.extend(getter())
+    tabletop = []
+    for shape in shapes:
+        get_half_size = getattr(shape, "get_half_size", None)
+        get_local_pose = getattr(shape, "get_local_pose", None)
+        if not callable(get_half_size) or not callable(get_local_pose):
+            continue
+        half = [float(value) for value in get_half_size()]
+        if len(half) != 3 or any(not math.isfinite(value) or value <= 0 for value in half):
+            continue
+        local_pose = _matrix(get_local_pose())
+        world_shape = _multiply(table_pose, local_pose)
+        world_half_z = sum(abs(world_shape[2][axis]) * half[axis] for axis in range(3))
+        if (
+            half[0] >= 0.25
+            and half[1] >= 0.25
+            and world_half_z <= 0.1
+            and abs(abs(world_shape[2][2]) - 1.0) <= 0.02
+        ):
+            tabletop.append((world_shape, half, world_half_z))
+    if len(tabletop) != 1:
+        return None
+    world_shape, support_half, support_half_z = tabletop[0]
+    support_top = world_shape[2][3] + support_half_z
+    target_spec = getattr(task, "block1_target_pose", None)
+    if not isinstance(target_spec, (list, tuple)) or len(target_spec) != 7:
+        return None
+    target_xyz = target_spec[:3]
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value))
+        for value in target_xyz
+    ):
+        return None
+    target_pose = [row[:] for row in moving_pose]
+    target_pose[0][3] = float(target_xyz[0])
+    target_pose[1][3] = float(target_xyz[1])
+    table_from_world = _inverse_rigid(world_shape)
+    target_in_table = _multiply(
+        table_from_world,
+        [[*target_pose[0][:3], target_pose[0][3]],
+         [*target_pose[1][:3], target_pose[1][3]],
+         [*target_pose[2][:3], target_pose[2][3]],
+         [0.0, 0.0, 0.0, 1.0]],
+    )
+    relative_rotation = [
+        [
+            sum(table_from_world[row][index] * target_pose[index][column] for index in range(3))
+            for column in range(3)
+        ]
+        for row in range(3)
+    ]
+    footprint_x = sum(abs(relative_rotation[0][axis]) * moving_half[axis] for axis in range(3))
+    footprint_y = sum(abs(relative_rotation[1][axis]) * moving_half[axis] for axis in range(3))
+    if (
+        abs(target_in_table[0][3]) + footprint_x > support_half[0]
+        or abs(target_in_table[1][3]) + footprint_y > support_half[1]
+    ):
+        return None
+    moving_extent_z = sum(abs(moving_pose[2][axis]) * moving_half[axis] for axis in range(3))
+    if moving_extent_z <= 0:
+        return None
+    target_pose[2][3] = support_top + moving_extent_z
+    return target_pose, support_top
