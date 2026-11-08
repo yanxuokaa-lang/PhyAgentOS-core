@@ -84,7 +84,7 @@ still: no stack-specific route-preparation factory or controller qualification;
 - 未创建 PAOS task、未调用 Gateway Action、未启动 RoboTwin 仿真或运动。当前只证明 contract/Provider 行为，不证明实际 controller route/contact/stop。 / No PAOS task or Gateway Action was created or invoked, and no RoboTwin simulation or motion was started. Evidence proves only contract/Provider behavior, not actual controller route/contact/stop behavior.
 
 ### Git 提交 / Git Commit
-- Implementation/diagnosis commit: `777cb547`; branch: `feature/planning-loop`; committed 2026-11-08 18:27 Asia/Shanghai. / 实现与诊断提交 `777cb547`；分支 `feature/planning-loop`；提交时间 2026-11-08 18:27 Asia/Shanghai。
+- Implementation/diagnosis commit: `777cb547`; log-receipt commit: `f323c357`; branch: `feature/planning-loop`; both pushed successfully, verified 2026-11-08 18:34 Asia/Shanghai. / 实现与日志回执提交分别为 `777cb547`、`f323c357`；分支 `feature/planning-loop`；均已成功推送，2026-11-08 18:34 Asia/Shanghai 确认。
 
 ## v17.3.13 (2026-11-08 15:45) - codex
 
