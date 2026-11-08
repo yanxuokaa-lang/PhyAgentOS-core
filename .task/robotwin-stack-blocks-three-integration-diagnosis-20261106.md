@@ -447,3 +447,114 @@ execution mechanism. The remaining implementation must provide a simulator-
 thread-affine bounded control-tick driver, stack-specific route/contact
 qualification, explicit stop behavior, and measured placement feedback before
 motion can be enabled.
+
+## 2026-11-08 Provider Implementation Recheck
+
+The configured RoboTwin checkout and isolated artifact root both exist:
+`/home/data/yanxu_migrated/RoboTwin` and
+`/home/yanxu/robotwin20-runtime/stack-blocks-three/artifacts`. The artifact
+directory currently contains no qualification outputs. The configured
+controller qualification `qualification.json`, `plan.json`, `evidence.json`,
+and `validation.json` are absent. This is not a missing-directory defect.
+
+Correction to the implementation handoff: PAOS relation Action plumbing is
+already present. `RelationEstablishActionEndpoint` binds the request to the
+Coordinator node and defers start until Gateway invocation/attempt IDs exist;
+`build_persistent_runtime_bundle` registers the injected provider; and
+`build_persistent_host` accepts the provider and matching context resolver.
+Do not add another endpoint or lifecycle store. The unresolved work is the
+concrete RoboTwin stack execution mechanism and its route/contact qualification,
+not generic PAOS wiring.
+
+The stack Adapter still reports `motion_execution_supported = False`. Keep
+that state until a provider can produce a current-scene qualified single-block
+route, execute it through the existing per-control-step controller stop path,
+and return measured placement/support evidence. The task's `play_once()` and
+`pick_and_place_block()` remain out of scope because they execute all three
+placements as benchmark-owned synchronous behavior rather than one
+Coordinator-settled relation Action. No task or motion Action was started in
+this recheck.
+
+Ownership remains: Coordinator owns task/revision/node settlement; AgentLoop
+owns workflow progression; CapabilityRuntime/Gateway owns Action invocation
+and cancellation; the RoboTwin Adapter owns scene geometry, route preparation,
+controller interaction and environment measurements. Provider substitution
+must leave the first three owners and public relation Tool contract unchanged.
+
+## 2026-11-08 Relation Provider Boundary Correction
+
+The earlier statement that RoboTwin lacked the `relation.establish` Runtime
+injection path was incorrect. `build_persistent_runtime_bundle` already accepts
+`relation_execution_provider` and `resolve_relation_context`, forwards both to
+the existing pick-place Runtime, and the host validates that the pair is
+provided together. The registered endpoint binds task/revision/node/intent and
+fresh relation-target evidence before it calls `provider.admit(...)`.
+
+Reusable implementations are present but do not by themselves implement one
+stack relation Action:
+
+- `PersistentRelationTargetProvider` returns current-scene support geometry;
+  it is Query evidence, not an execution route.
+- `PersistentPreparationProvider` consumes a manipulation intent, grasp
+  candidates, capability snapshot and complete route request, then emits an
+  assignment and prepared route. Those inputs are not present in the public
+  `relation.establish` request, which carries only the selected relation-target
+  candidate and trusted intent.
+- `PersistentManipulationProvider` and `RoboTwinPersistentEngine.execute`
+  implement a bounded acquire/place lifecycle. They do not expose a one-call
+  stack-relation operation that consumes a relation candidate and settles a
+  complete pick/transport/release/retreat route.
+- `RoboTwinPersistentEngine` rejects route readiness, contact qualification
+  and action preparation while `StackBlocksThreeTaskAdapter` declares
+  `motion_execution_supported = False`.
+
+The concrete missing mechanism is therefore the Adapter-side composition from
+one Coordinator-bound relation candidate to a current-scene grasp/assignment,
+qualified full route, runtime-monitored approval, bounded controller execution
+and measured support settlement. This cannot be filled by forwarding the
+existing provider injection arguments or by wrapping `play_once()`; the latter
+owns benchmark behavior for all three placements and is not interruptible at
+the PAOS relation Action boundary.
+
+The dedicated runtime's `artifacts` tree was checked for controller
+`qualification.json`, `plan.json`, `evidence.json` and `validation.json`; none
+were present. No provider code or motion authorization was added in this
+recheck. `motion_execution_supported` remains false, and no task, Action or
+simulator motion was started. Next implementation must expose a
+provider-private input/composition path for fresh grasp and route preparation,
+then prove per-control-step stop and placement/support measurements with the
+actual configured RoboTwin controller before enabling the stack Action.
+
+## 2026-11-08 Stack Relation Provider Implementation
+
+Added `StackRelationExecutionProvider` as the concrete RoboTwin Adapter
+composition for one `relation.establish` invocation. It consumes one current
+relation binding and an Adapter-private `prepare_route` result, checks task/entity,
+candidate, destination, approval reference and scene identity, then starts the
+existing persistent worker's `acquire` phase. Only a known acquire success with
+confirmed holding and a new scene revision advances the same invocation to
+`place`. Success requires finite non-negative placement errors, a scene revision
+different from acquire, at least one artifact evidence reference, confirmed
+release, completed retreat, clear target and empty possession. A narrow
+transition lock serializes cancellation against the
+acquire-to-place handoff, so cancellation either prevents place or reaches the
+place driver. Worker polling failure, cancellation while acquiring, uncertain
+place start, or incomplete placement evidence remains unknown and is not
+settled as success.
+
+The host can construct the Provider through its existing factory injection
+using the same persistent client and deployment; no new Runtime endpoint,
+Coordinator state, scheduler or AgentLoop route was added. Tests exercise the
+factory with the host-owned worker client and substitute no-motion Provider
+drivers for phase execution.
+
+This implements the single-relation Provider composition, but does not close
+the task execution gate. No stack-specific `prepare_route` factory is wired,
+and the isolated artifact root has no controller qualification evidence. The
+stack Adapter continues to report `motion_execution_supported = False`; no
+task, Action, simulation startup or robot/simulator motion was initiated.
+Acceptance evidence is contract/provider-only: 82 focused tests pass, but these
+do not establish real RoboTwin route/contact/stop behavior. The next required
+work is task-specific grasp/route preparation and a simulator-thread-affine
+control-tick driver, followed by no-motion route validation and explicitly
+authorized simulation qualification before enabling motion.

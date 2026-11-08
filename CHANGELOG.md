@@ -49,6 +49,62 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.14 (2026-11-08 18:15) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] 新增 RoboTwin `StackRelationExecutionProvider`，将一条 Coordinator relation Action 组合为受当前 scene/assignment/candidate/approval 约束的 acquire -> place 阶段；成功要求区别于 acquire 的 scene revision、artifact evidence、有效 placement measurement、release、retreat、clear-of-target 和空夹爪。 / Add RoboTwin `StackRelationExecutionProvider` to compose one Coordinator relation Action into scene/assignment/candidate/approval-bound acquire -> place phases; success requires a scene revision distinct from acquire, artifact evidence, valid placement measurement, release, retreat, target clearance and empty gripper.
+- [env] [fix] 取消后的 acquire、cancel/place handoff 竞态、worker poll exception、place start uncertain 与不完整/非有限 placement feedback 均保持 unknown，不伪报成功或遗漏取消；Host factory 使用同一个 persistent client/deployment 创建可替换 Provider。 / Keep cancelled acquire, cancellation/place-handoff races, worker-poll exceptions, uncertain place start and incomplete/non-finite placement feedback unknown; do not report success or lose cancellation. The Host factory constructs a replaceable Provider from the same persistent client/deployment.
+- [eval] [test] 增加 Provider 与 Host integration 回归；Coordinator/AgentLoop/CapabilityRuntime 所有权和公共 Tool contract 不变。 / Add Provider and Host integration regressions; Coordinator/AgentLoop/CapabilityRuntime ownership and public Tool contracts remain unchanged.
+
+### 文件变更详情 / File Changes
+- [新增] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_execution.py` L1-L287：route/assignment/approval/scene 校验和持久 worker acquire/place 生命周期组合。 / Validate route/assignment/approval/scene and compose persistent-worker acquire/place lifecycle.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L24, L393-L443, L931-L938；`examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L576-L598：接入 Host provider factory，并验证 factory 收到 host-owned client/deployment。 / Add the Host Provider factory and verify it receives the host-owned client/deployment.
+- [新增] `examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py` L1-L349：覆盖 route fail-closed、stale scene、acquire failure/cancel、cancel/place race、poll unknown、placement measurement/revision/evidence 和双阶段成功。 / Cover fail-closed routes, stale scenes, acquire failure/cancellation, cancel/place races, unknown polling, placement measurement/revision/evidence and successful two-phase composition.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L528-L559；`changelog/2026-11_part2.md` L3-L55：保存实施诊断、精确差异和验证结果。 / Preserve implementation diagnosis, exact changes and validation results.
+
+### 关键 Diff / Key Diff
+```diff
+before: no RoboTwin one-relation acquire/place Action composition
+after:  current relation + qualified Adapter route -> acquire -> confirmed holding
+        and fresh scene -> place -> measured placement/release/retreat/clearance
+cancel/unknown/partial result: never inferred as success
+still: no stack-specific route-preparation factory or controller qualification;
+       motion_execution_supported remains false and task is not executable
+```
+
+```diff
+- start place after an unlocked cancellation check
++ lock cancellation against acquire-to-place transition
+- accept numeric placement residuals without finiteness checks
++ require finite non-negative residuals and a new scene revision
+```
+
+### 架构与验证 / Architecture and Validation
+- 定向组合测试 `82 passed`；Ruff、compileall、scoped `git diff --check` 通过。 / Focused integration tests: `82 passed`; Ruff, compileall and scoped `git diff --check` pass.
+- 未创建 PAOS task、未调用 Gateway Action、未启动 RoboTwin 仿真或运动。当前只证明 contract/Provider 行为，不证明实际 controller route/contact/stop。 / No PAOS task or Gateway Action was created or invoked, and no RoboTwin simulation or motion was started. Evidence proves only contract/Provider behavior, not actual controller route/contact/stop behavior.
+
+### Git 提交 / Git Commit
+- Implementation/diagnosis commit: pending; branch: `feature/planning-loop`. / 实现与诊断提交待记录；分支 `feature/planning-loop`。
+
+## v17.3.13 (2026-11-08 15:45) - codex
+
+### 阶段结果 / Stage Result
+- [docs] [diag] 更正 RoboTwin Provider 定位：relation Runtime 注入链已存在；stack 缺少从目标 Query 候选到 grasp/assignment/qualified route 及单个可取消、可测量关系 Action 的 Adapter 组合。 / Correct the RoboTwin Provider diagnosis: relation Runtime injection exists; stack lacks Adapter composition from target Query candidate through grasp/assignment/qualified route to one cancellable, measured relation Action.
+- [policy] [diag] qualification artifacts 缺失，继续保持 `motion_execution_supported=False`；未添加代码或启动任务/Action/运动。 / Qualification artifacts are absent, so keep `motion_execution_supported=False`; no code or task/Action/motion was added or started.
+
+### 文件变更详情 / File Changes
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L484-L526；`changelog/2026-11_part2.md` L3-L25：更正注册链结论并保存本次 Provider 输入/输出边界诊断。 / Correct the registration-path finding and preserve this Provider input/output boundary diagnosis.
+
+### 关键 Diff / Key Diff
+```diff
+- missing: relation.establish Runtime injection
++ present: relation.establish injection and relation-target Query
++ missing: stack-specific qualified relation execution composition
+```
+
+### 验证 / Validation
+- `git diff --check` passed; no execution tests run because implementation files remain unchanged. / `git diff --check` 通过；实现文件未改，因此未运行执行测试。
+
 ## v17.3.12 (2026-11-08 14:35) - codex
 
 ### 阶段结果 / Stage Result

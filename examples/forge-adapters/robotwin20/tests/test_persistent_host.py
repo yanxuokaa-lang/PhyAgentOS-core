@@ -574,13 +574,18 @@ def test_host_composes_tools_around_one_persistent_worker_client(
     monkeypatch.setattr(host_module, "build_persistent_deployment", deployment_factory)
 
     relation_provider = SimpleNamespace(admit=lambda *_args, **_kwargs: None)
+    relation_factory_calls = []
+
+    def relation_provider_factory(selected_client, selected_deployment):
+        relation_factory_calls.append((selected_client, selected_deployment))
+        return relation_provider
 
     def resolve_relation_context(caller_id):
         return {"caller_id": caller_id}
 
     relation_ports = (
         {
-            "relation_execution_provider": relation_provider,
+            "relation_execution_provider_factory": relation_provider_factory,
             "resolve_relation_context": resolve_relation_context,
         }
         if relation_enabled
@@ -589,6 +594,8 @@ def test_host_composes_tools_around_one_persistent_worker_client(
     host = build_persistent_host(profile, environ=environ, **relation_ports)
 
     assert captured["client"] is client
+    if relation_enabled:
+        assert relation_factory_calls == [(client, deployment)]
     assert captured["preparation_timeout_s"] == 4.0
     assert captured["route_geometry_source"] == route_source
     assert captured["simulation_action_mode"] == action_mode

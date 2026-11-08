@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 import httpx
@@ -396,6 +396,7 @@ def build_persistent_host(
     resolve_subtask_context=None,
     assignment_store=None,
     relation_execution_provider: Any | None = None,
+    relation_execution_provider_factory: Callable[[Any, Any], Any] | None = None,
     resolve_relation_context=None,
 ) -> PersistentHost:
     """Construct the adapter Tool API around one worker client.
@@ -408,9 +409,22 @@ def build_persistent_host(
     variables = dict(os.environ if environ is None else environ)
     lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
     owned_runtime_resources: list[Any] = []
-    if (relation_execution_provider is None) != (resolve_relation_context is None):
+    if relation_execution_provider is not None and relation_execution_provider_factory is not None:
         raise PersistentHostConfigurationError(
-            "relation_execution_provider and resolve_relation_context must be supplied together"
+            "supply relation_execution_provider or its factory, not both"
+        )
+    if (
+        relation_execution_provider is None
+        and relation_execution_provider_factory is None
+    ) != (resolve_relation_context is None):
+        raise PersistentHostConfigurationError(
+            "relation execution provider/factory and resolve_relation_context must be supplied together"
+        )
+    if relation_execution_provider_factory is not None and not callable(
+        relation_execution_provider_factory
+    ):
+        raise PersistentHostConfigurationError(
+            "relation_execution_provider_factory must be callable"
         )
     if relation_execution_provider is not None:
         if not callable(getattr(relation_execution_provider, "admit", None)):
@@ -421,6 +435,12 @@ def build_persistent_host(
             raise PersistentHostConfigurationError(
                 "resolve_relation_context must be callable"
             )
+    elif relation_execution_provider_factory is not None and not callable(
+        resolve_relation_context
+    ):
+        raise PersistentHostConfigurationError(
+            "resolve_relation_context must be callable"
+        )
     perception_binding_adapter, resolve_subtask_context = build_coordinator_ports(
         profile,
         perception_binding_adapter=perception_binding_adapter,
@@ -908,6 +928,14 @@ def build_persistent_host(
             task_name=task_name,
             grasp_provider_id=selected_provider_id,
         )
+        if relation_execution_provider_factory is not None:
+            relation_execution_provider = relation_execution_provider_factory(
+                client, deployment
+            )
+            if not callable(getattr(relation_execution_provider, "admit", None)):
+                raise PersistentHostConfigurationError(
+                    "relation execution factory must return a Provider exposing admit"
+                )
         # Grasp proposals are observation-owned even when route geometry or
         # benchmark destinations come from the simulator.
         grasp = build_grasp_provider(
