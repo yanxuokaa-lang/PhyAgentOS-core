@@ -77,7 +77,7 @@ still:  no concrete stack Provider or motion qualification; stack remains disabl
 - 未创建 task、未调用 Action、未启动仿真或机器人运动；stack 仍不可执行。 / No task or Action was started, and no simulation or robot motion occurred; stack remains non-executable.
 
 ### Git 提交 / Git Commit
-- Implementation: `191478e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 15:28 Asia/Shanghai. / Implementation: `191478e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 15:28 Asia/Shanghai.
+- Implementation: `191478e8`; receipt: `24ae9691`; branch: `feature/planning-loop`; both pushes succeeded at 2026-11-08 15:28 Asia/Shanghai. / Implementation: `191478e8`; receipt: `24ae9691`; branch: `feature/planning-loop`; both pushes succeeded at 2026-11-08 15:28 Asia/Shanghai.
 
 ## v17.3.8 (2026-11-08 10:01) - codex
 
