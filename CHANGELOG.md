@@ -49,6 +49,41 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.8 (2026-11-08 10:01) - codex
+
+### 完成范围 / Completed Scope
+- [policy] [feat] 新增可选 provider-neutral `relation.establish` Action Tool，经现有 CapabilityRuntime `ActionAdmission` deferred start 接入；Action 使用 Coordinator 绑定身份和实际 `relation.target` Query 结果重建候选 binding，只将几何与 lineage 传给 Provider。Provider 负责 support geometry、route/contact qualification、运动与执行反馈；AgentLoop/Coordinator 生命周期不变。 / Add an optional provider-neutral `relation.establish` Action Tool through the existing CapabilityRuntime `ActionAdmission` deferred-start path; rebuild the candidate binding from Coordinator-bound identity and the actual `relation.target` Query result, then pass only geometry and lineage to the Provider. The Provider owns support geometry, route/contact qualification, motion and execution feedback; AgentLoop/Coordinator lifecycle is unchanged. (local)
+- [policy] [fix] relation plan node 写入校准引用；Action 静态 input binding keys 与 `PlanNode.input_bindings` 对齐，Query result 作为来源约束的动态前驱参数，当前 `on` relation 必须来自 `relation.target`。 / Include calibration reference in relation plan nodes; align static Action input-binding keys with `PlanNode.input_bindings`, keep the Query result as a source-constrained dynamic predecessor argument, and require `relation.target` provenance for current `on` relations. (local)
+- [eval] [test] 测试覆盖 ToolSpec 投影/Agent 候选路由、Coordinator/Query lineage 拒绝、Provider substitution、显式 unavailable 和 provider exception 转 unknown；stack motion-disabled regression 保持通过。 / Tests cover ToolSpec projection/Agent candidate routing, Coordinator/Query-lineage rejection, Provider substitution, explicit unavailable and provider-exception-to-unknown; the stack motion-disabled regression remains passing. (local)
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L302-L401：将 `calibration_ref` 加入 relation planning inputs/PlanNode，保持 current-scene identity 完整。 / Add `calibration_ref` to relation planning inputs/PlanNode, preserving complete current-scene identity.
+- [新增] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_execution.py` L1-L194：定义 relation Provider port、ToolSpec、Coordinator-bound Action endpoint、deferred Runtime registration。 / Define the relation Provider port, ToolSpec, Coordinator-bound Action endpoint and deferred Runtime registration.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L33-L34, L664-L666, L762-L763, L860-L866：增加 Provider/resolver 成对注入和可选 Action 注册。 / Add paired Provider/resolver injection and optional Action registration.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py` L102-L112, L180-L186：导出关系 Action public contract。 / Export the relation Action public contract.
+- [新增] `examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py` L1-L182：覆盖 contract、deferred admission、substitution、stale lineage 和 unknown result。 / Cover the contract, deferred admission, substitution, stale lineage and unknown result.
+- [修改] `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L1-L28, L294-L340：验证 `relation.establish` 被当前 relation PlanNode 选为 Tool candidate，且静态输入键完全匹配。 / Verify `relation.establish` is selected for the current relation PlanNode and its static input keys match exactly.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L205-L261：保存架构职责、具体失败场景、机制理由和 contract/provider/simulation evidence 分层。 / Preserve architecture ownership, the concrete failure scenario, mechanism rationale and separate contract/provider/simulation evidence.
+- [修改] `CHANGELOG.md` L52-L84：更新最近五版本摘要与完整变更详情。 / Update the latest-five summary and complete change details.
+- [修改] `changelog/2026-11_part2.md` L572-L604：记录双语变更、行号、关键 Diff、验证与提交回执。 / Record bilingual changes, line references, key diff, validation and commit receipt.
+
+### 关键 Diff / Key Diff
+```diff
+before: relation.establish had no Action endpoint; relation plan omitted calibration identity
+after:  Agent PlanNode -> existing CapabilityRuntime ActionAdmission -> replaceable Provider
+        relation Query result + selected candidate -> lineage-checked binding -> Provider
+unknown Provider start/result -> outcome_unknown; never inferred as relation success
+RoboTwin stack Provider/table geometry/route qualification remain absent; motion remains disabled
+```
+
+### 架构与验证 / Architecture and Validation
+- Generic layer owns relation identity, current-node and Query lineage checks, candidate projection and Action handoff. Provider owns environment geometry, routes, contact checks, execution and feedback. Runtime owns invocation; Coordinator owns task/revision/settlement; AgentLoop remains the workflow driver. / Generic layer owns relation identity, current-node and Query-lineage checks, candidate projection and Action handoff. Provider owns environment geometry, routes, contact checks, execution and feedback. Runtime owns invocation; Coordinator owns task/revision/settlement; AgentLoop remains the workflow driver.
+- 定向 pytest：`33 passed, 1 warning`；warning 为 pytest 环境不识别 `asyncio_mode`。Ruff 通过。邻接生命周期回归 `52 passed, 1 failed`，唯一失败是 `test_persistent_results_conform_to_published_live_schema[place-spec1]` 的 `returned_to_safe_pose` 输出字段与 schema 不一致，与本次 relation Action 修改无关。 / Focused pytest: `33 passed, 1 warning`; warning is the environment's unrecognized `asyncio_mode`. Ruff passes. Adjacent lifecycle regression: `52 passed, 1 failed`; the sole failure is `test_persistent_results_conform_to_published_live_schema[place-spec1]`, where the output's `returned_to_safe_pose` field does not match the schema; it is unrelated to this relation Action change.
+- 未注册真实 stack Provider、未创建 PAOS task、未调用 Gateway Action、未启动 RoboTwin Runtime/仿真或运动；`stack_blocks_three` 仍不可执行。 / No concrete stack Provider was registered, no PAOS task was created, no Gateway Action was called, and no RoboTwin Runtime/simulation/motion was started; `stack_blocks_three` remains non-executable.
+
+### Git 提交 / Git Commit
+- Commit and push receipt will be recorded after the scoped commit. / Scoped commit and push receipt will be recorded after commit.
+
 ## v17.3.7 (2026-11-07 18:02) - codex
 
 ### 完成范围 / Completed Scope
@@ -116,17 +151,6 @@ decision = no task record / no Gateway Action / no simulation / motion remains d
 ### 验证 / Validation
 - 定向 Adapter、persistent deployment、Action approval、relation-target 与 Agent planning 测试：`51 passed, 1 warning`；警告为 pytest 环境未启用 `asyncio_mode` 配置。`git diff --check` 通过。 / Focused Adapter, persistent-deployment, Action-approval, relation-target and Agent-planning tests: `51 passed, 1 warning`; the warning is that the pytest environment does not enable `asyncio_mode`. `git diff --check` passes.
 - 未启动 PAOS task、RoboTwin Runtime、Gateway Action、仿真或机器人运动。 / No PAOS task, RoboTwin Runtime, Gateway Action, simulation or robot motion was started.
-
-## v17.3.3 (2026-11-06 17:23) - codex
-
-### 回执补全 / Receipt Completion
-- [chore] [docs] 记录 stack_blocks_three 启动诊断提交 `498187ea28413f7bb21bf1f413aa5d7d295071a7`；`git push` 30 秒超时，未取得远端回执。 / Record the stack_blocks_three launch-diagnosis commit `498187ea28413f7bb21bf1f413aa5d7d295071a7`; `git push` timed out after 30 seconds and no remote receipt was obtained. (local)
-
-### 文件变更 / File Changes
-- `CHANGELOG.md` L52-L57、`changelog/2026-11_part2.md` L466-L497：补录本地提交与 push 结果。 / Record the local commit and push result.
-
-### Git 提交 / Git Commit
-- Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending. / Diagnosis commit: `498187ea28413f7bb21bf1f413aa5d7d295071a7`; branch: `feature/planning-loop`; push pending.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

@@ -7,6 +7,7 @@ from PhyAgentOS.planning import (
     ToolCallEnvelope,
     ToolSpecPolicy,
     derive_ready_nodes,
+    project_tool_spec,
     tool_input_binding_digest,
 )
 from pydantic import ValidationError
@@ -23,6 +24,7 @@ from pick_place_workflow.agent_planning import (
     compose_subtask_plan,
     select_planning_mode,
 )
+from pick_place_workflow.relation_execution import RELATION_ESTABLISH_TOOL_SPEC
 from pick_place_workflow.subtask_executor import PerceptionBinding, SubtaskSpec
 
 
@@ -299,6 +301,7 @@ def _relation_segment(goal_id, revision, available_evidence):
         scene_revision=revision,
         observation_ref=observation_ref,
         observation_frame_id="head_camera",
+        calibration_ref="artifact://scene/calibration",
         available_evidence=tuple((*available_evidence, observation_ref)),
         planner_decision_digest="1" * 64,
         policy_snapshot_digest="2" * 64,
@@ -317,6 +320,11 @@ def test_relation_planner_compiles_one_fresh_scene_segment_at_a_time():
     )
     with pytest.raises(ToolSelectionError, match="no Tool candidate"):
         DynamicToolPlanner(base, ()).candidate_tools("place_base")
+    relation_policy = project_tool_spec(RELATION_ESTABLISH_TOOL_SPEC)
+    assert DynamicToolPlanner(base, (relation_policy,)).candidate_tools("place_base") == (
+        "relation.establish",
+    )
+    assert set(relation_policy.input_binding_keys) == set(base.graph.nodes[0].input_bindings)
 
     middle = _relation_segment(
         "place_middle",
@@ -340,6 +348,7 @@ def test_relation_planner_requires_fresh_scene_and_settled_support_evidence():
         "scene_revision": "scene-1",
         "observation_ref": "observation://scene-1/head_camera",
         "observation_frame_id": "head_camera",
+        "calibration_ref": "artifact://scene/calibration",
         "planner_decision_digest": "1" * 64,
         "policy_snapshot_digest": "2" * 64,
     }
@@ -367,6 +376,7 @@ def test_relation_planner_rejects_predecessors_without_settlement_evidence():
             scene_revision="scene-1",
             observation_ref="observation://scene-1/head_camera",
             observation_frame_id="head_camera",
+            calibration_ref="artifact://scene/calibration",
             available_evidence=(
                 "observation://scene-1/head_camera",
                 "support-relation:entity://stack-block-1:surface://table",

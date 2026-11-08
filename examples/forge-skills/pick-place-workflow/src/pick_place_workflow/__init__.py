@@ -99,6 +99,12 @@ from .persistent_runtime import (
     SQLiteAssignmentArtifactStore,
     StoredAssignmentResolver,
 )
+from .relation_execution import (
+    RELATION_ESTABLISH_TOOL_SPEC,
+    RelationEstablishActionEndpoint,
+    RelationExecutionProvider,
+    register_relation_establish_tool,
+)
 from .relation_target import (
     RELATION_TARGET_TOOL_SPEC,
     RelationTargetProvider,
@@ -174,6 +180,10 @@ __all__ = [
     "RELATION_TARGET_TOOL_SPEC",
     "RelationTargetProvider",
     "RelationTargetQueryEndpoint",
+    "RELATION_ESTABLISH_TOOL_SPEC",
+    "RelationEstablishActionEndpoint",
+    "RelationExecutionProvider",
+    "register_relation_establish_tool",
     "QuerySemanticPlanBuilder",
     "AsyncQuerySemanticPlanBuilder",
     "SemanticPlanBuilder",

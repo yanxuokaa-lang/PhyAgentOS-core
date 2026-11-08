@@ -30,6 +30,7 @@ from .object_acquire import ACQUIRE_TOOL_SPEC
 from .object_acquire import validate_arguments as validate_acquire
 from .object_place import PLACE_TOOL_SPEC
 from .object_place import validate_arguments as validate_place
+from .relation_execution import register_relation_establish_tool
 from .relation_target import RELATION_TARGET_TOOL_SPEC, RelationTargetQueryEndpoint
 
 
@@ -660,7 +661,9 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                              assignment_store: AssignmentArtifactStore | None = None,
                              process_feature_provider=None,
                              grasp_task_affordance_provider=None,
-                             relation_target_provider=None) -> CapabilityRuntime:
+                             relation_target_provider=None,
+                             relation_execution_provider=None,
+                             resolve_relation_context=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -756,6 +759,8 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
             RELATION_TARGET_TOOL_SPEC,
             RelationTargetQueryEndpoint(relation_target_provider),
         ))
+    if (relation_execution_provider is None) != (resolve_relation_context is None):
+        raise ValueError("relation execution provider and Coordinator context resolver must be supplied together")
     if register_legacy_actions:
         registrations.extend([
             (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
@@ -851,5 +856,12 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
             tool_context_provider,
             resolve_subtask_context,
             assignment_store,
+        )
+    if relation_execution_provider is not None:
+        register_relation_establish_tool(
+            runtime,
+            relation_execution_provider,
+            resolve_relation_context,
+            tool_context_provider,
         )
     return runtime

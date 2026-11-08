@@ -308,6 +308,7 @@ def compose_relation_goal_plan(
     scene_revision: str,
     observation_ref: str,
     observation_frame_id: str,
+    calibration_ref: str,
     available_evidence: tuple[str, ...],
     planner_decision_digest: str,
     policy_snapshot_digest: str,
@@ -330,7 +331,7 @@ def compose_relation_goal_plan(
         not isinstance(value, str) or not value.strip()
         for value in (
             task_id, revision_id, subtask_id, scene_revision, observation_ref,
-            observation_frame_id,
+            observation_frame_id, calibration_ref,
         )
     ):
         raise AgentPlanningError("relation plan identities must be non-empty")
@@ -396,6 +397,7 @@ def compose_relation_goal_plan(
             "scene_revision": scene_revision,
             "observation_ref": observation_ref,
             "observation_frame_id": observation_frame_id,
+            "calibration_ref": calibration_ref,
         },
     )
     payload = {

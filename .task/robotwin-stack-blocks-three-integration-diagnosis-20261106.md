@@ -201,3 +201,61 @@ no task, Gateway Action, simulator, or robot motion was started. The next
 implementation boundary is provider consumption of this domain binding plus
 table geometry and route/contact qualification, using the existing Action
 admission and Coordinator settlement path.
+
+## 2026-11-08 Relation Action Contract Implementation
+
+The remaining software integration gap was that the provider-neutral candidate
+projection had no Agent-facing Action endpoint. Added an optional
+`relation.establish` Tool registration to the existing `CapabilityRuntime`.
+Registration requires both a Relation Execution Provider and a Coordinator
+context resolver; supplying only one is rejected. The endpoint accepts only a
+PAOS task caller, checks the current Coordinator node and persisted no-motion
+intent, then rebuilds its Action binding from the actual `relation.target`
+Query result plus the selected candidate reference. The Tool policy records
+that Query result as sourced from `relation.target`.
+
+The generic endpoint does not compute support geometry, plan a route, validate
+contact, or move the robot. Those remain Provider responsibilities. Provider
+admission is deferred until the Runtime supplies invocation and attempt IDs.
+An invalid/missing provider admission or exception is represented as
+`outcome_unknown`, never a successful relation settlement. Explicit
+`unavailable` remains Provider-owned. The Coordinator continues to own task
+revision and settlement; AgentLoop remains the workflow driver.
+
+The concrete RoboTwin stack Provider is still not implemented or registered.
+Table support geometry, route/contact qualification, Runtime installation, and
+simulation evidence remain absent. `motion_execution_supported` remains false;
+this contract alone does not make `stack_blocks_three` executable and does not
+authorize task launch, Gateway Action, simulation, or robot motion.
+
+Architecture review:
+
+- Generic domain: relation identity, selected Query candidate projection,
+  current-node/freshness validation, and Action lifecycle handoff.
+- Provider/Adapter: support geometry, route generation, collision/contact
+  checks, motion, and physical execution feedback.
+- Replaceability: a replay or RoboTwin Provider can implement the same `admit`
+  port without changing the endpoint, Agent plan, or AgentLoop route.
+- Evidence boundary: `relation.target` response must match current
+  entity/relation/support/scene/observation/frame/calibration; Action receives
+  only the selected, validated projection and its evidence refs.
+- Lifecycle and recovery: Runtime owns invocation; Coordinator owns settlement;
+  unknown execution remains blocked for reconciliation; no recovery scheduler
+  or blind retry was added.
+- Smallest leak test: a stale Query candidate must be rejected before Provider
+  admission; Provider substitution and exception tests prove the seam and
+  unknown-result boundary without simulator motion.
+
+Failure scenario and mechanism rationale: if an Agent can submit a fabricated
+target transform with matching object identity, task IDs and Coordinator node
+binding cannot prove that the geometry came from the current observation. The
+Action endpoint therefore consumes the source Query result and selected
+candidate together and runs the existing lineage-aware projection before
+Provider admission. No hashes, new settlement store, or extra execution gate
+were added. This still does not qualify the Provider's route or prove physical
+execution.
+
+Validation covers contract, lineage mismatch, Provider substitution, explicit
+unavailable propagation, and unknown Provider failure. Contract evidence is
+separate from RoboTwin Provider evidence and live simulation evidence; neither
+of the latter is claimed.
