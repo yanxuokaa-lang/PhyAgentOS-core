@@ -74,7 +74,7 @@ decision: no empty roots, guessed task handles, silent benchmark substitution or
 - Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed. / Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed.
 
 ### Git 提交 / Git Commit
-- 待本地提交并推送；本次仅触及诊断与日志。 / Pending local commit and push; this turn only touched diagnosis and logs.
+- Diagnosis commit: `3232614b`; receipt commit: pending; branch: `feature/planning-loop`. / Diagnosis commit: `3232614b`; receipt commit: pending; branch: `feature/planning-loop`.
 
 ## v17.3.10 (2026-11-08 11:16) - codex
 
