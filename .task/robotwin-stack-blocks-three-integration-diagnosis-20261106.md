@@ -86,6 +86,28 @@ evidence is a separate acceptance layer and is not claimed by unit/integration
 tests. No live RoboTwin simulation, Gateway Action, or physical robot motion
 has been run for this diagnosis. `stack_blocks_three` is not executable.
 
+## 2026-11-08 Persistent Action Provider Wiring
+
+The provider-neutral `relation.establish` Action endpoint was already
+implemented by the workflow Runtime, but the RoboTwin-specific
+`build_persistent_runtime_bundle` did not forward its Provider and Coordinator
+context-resolver arguments. A qualified Provider supplied at this deployment
+boundary therefore could not become visible in the RoboTwin Runtime Tool
+registry. This was an integration gap, not missing task lifecycle ownership.
+
+The bundle now forwards both optional ports to the existing generic Runtime.
+The generic Runtime remains responsible for validating that they are supplied
+together and registering the endpoint. A substitution integration test checks
+that the supplied Provider and resolver reach the registered endpoint without
+invoking Action admission.
+
+This only closes the Provider injection path. No concrete RoboTwin relation
+execution Provider is supplied; table support geometry, route/contact
+qualification, RoboTwin runtime installation, and simulation evidence remain
+missing. `StackBlocksThreeTaskAdapter.motion_execution_supported` remains
+false. No PAOS task, Action, simulator, or robot motion was started, and
+`stack_blocks_three` remains non-executable.
+
 ## 2026-11-06 Execution Initiation Check
 
 The requested `stack_blocks_three` task was not launched. Read-only checks found

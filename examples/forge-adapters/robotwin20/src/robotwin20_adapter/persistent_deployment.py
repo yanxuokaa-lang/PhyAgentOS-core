@@ -166,6 +166,8 @@ def build_persistent_runtime_bundle(
     perception_binding_adapter: Any | None = None,
     resolve_subtask_context: Callable[[str], Mapping[str, Any]] | None = None,
     assignment_store: AssignmentArtifactStore | None = None,
+    relation_execution_provider: Any | None = None,
+    resolve_relation_context: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> PersistentRuntimeBundle:
     """Compose the persistent providers behind one provider-neutral transport.
 
@@ -203,6 +205,8 @@ def build_persistent_runtime_bundle(
         held_preparation_provider=held_preparation_provider,
         resolve_held_preparation=resolve_held_preparation,
         assignment_store=assignment_store,
+        relation_execution_provider=relation_execution_provider,
+        resolve_relation_context=resolve_relation_context,
         query_decorator=(lambda tool_id, endpoint: RememberObservation(endpoint, deployment.grounding, tool_id)
                          if tool_id in {"scene.observe", "scene.understand"} else endpoint)
         if deployment.grounding is not None else None,

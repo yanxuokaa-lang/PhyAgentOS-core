@@ -49,6 +49,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.9 (2026-11-08 15:10) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] RoboTwin Persistent Runtime Bundle 现在将可选 `relation.establish` Provider 与 Coordinator context resolver 转发到通用 Runtime；未提供时维持原有工具集合，不注册 Action。 / Forward the optional `relation.establish` Provider and Coordinator context resolver to the generic Runtime; when omitted, preserve the existing tool set and do not register the Action.
+- [eval] [test] 增加 no-motion Provider substitution 集成测试，验证 Provider/resolver 到达 endpoint，且不执行 Action admission。 / Add a no-motion Provider-substitution integration test proving the Provider/resolver reach the endpoint without Action admission.
+- [docs] [diag] 记录 RoboTwin bundle 注入断层和本次边界；具体 stack Provider、table geometry、route/contact qualification 与 simulation evidence 仍缺失。 / Record the RoboTwin bundle injection gap and repair boundary; the concrete stack Provider, table geometry, route/contact qualification and simulation evidence remain absent.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L169-L170, L195-L210：增加并转发可选 Provider/resolver。 / Add and forward optional Provider/resolver ports.
+- [新增] `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L317-L348：验证注入替换能力并避免调用 Action。 / Verify injected Provider substitution without Action invocation.
+- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L89-L108：保存本次失败场景、归属与残余阻断。 / Record the failure scenario, ownership and remaining blockers.
+- [修改] `changelog/2026-11_part2.md` L605-L640：保存双语变更、精确行号、关键 Diff、测试与 Git 回执。 / Record bilingual changes, exact lines, key diff, tests and Git receipt.
+- [修改] `CHANGELOG.md` L52-L70：加入 v17.3.9 并滚动最近五版本。 / Add v17.3.9 and roll the latest-five index.
+
+### 关键 Diff / Key Diff
+```diff
+before: RoboTwin bundle -> generic Runtime without relation Action Provider/resolver
+after:  RoboTwin bundle -> generic Runtime(relation_execution_provider,
+        resolve_relation_context) -> registered relation.establish endpoint
+still:  no concrete stack Provider or motion qualification; stack remains disabled
+```
+
+### 架构与验证 / Architecture and Validation
+- 通用 Runtime/endpoint 保持 Provider-neutral，Coordinator/AgentLoop 生命周期不变；RoboTwin Adapter 仅传递可替换机制，不承担通用语义。 / Generic Runtime/endpoint remain Provider-neutral and Coordinator/AgentLoop lifecycle is unchanged; the RoboTwin Adapter only passes the replaceable mechanism, not generic semantics.
+- 定向 pytest `22 passed, 1 warning`；Ruff 和 scoped `git diff --check` 通过。 / Focused pytest: `22 passed, 1 warning`; Ruff and scoped `git diff --check` pass.
+- 未创建 task、未调用 Action、未启动仿真或机器人运动；stack 仍不可执行。 / No task or Action was started, and no simulation or robot motion occurred; stack remains non-executable.
+
+### Git 提交 / Git Commit
+- Implementation: pending; branch: `feature/planning-loop`. / Implementation: pending; branch: `feature/planning-loop`.
+
 ## v17.3.8 (2026-11-08 10:01) - codex
 
 ### 完成范围 / Completed Scope
@@ -130,27 +160,6 @@ still:  no relation.establish Action Provider; table support and stack route pre
 
 ### Git 提交 / Git Commit
 - v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; remote receipt unavailable. / v17.3.4 diagnosis commit: `7ad79d71`; branch: `feature/planning-loop`; push timed out; no remote receipt.
-
-## v17.3.4 (2026-11-07 17:37) - codex
-
-### 诊断更新 / Diagnosis Update
-- [docs] [docs] 保存 2026-11-07 RoboTwin `stack_blocks_three` readiness 复核：部署仍指向 blocks-ranking profile；Runtime/artifact root 和 `robotwin`/Curobo 缺失；`relation.establish` Action/settlement Provider、table support geometry 尚未实现，因此不创建 PAOS task 或启动仿真。 / Preserve the 2026-11-07 RoboTwin `stack_blocks_three` readiness recheck: deployment still selects the blocks-ranking profile; Runtime/artifact roots and `robotwin`/Curobo are missing; `relation.establish` Action/settlement Provider and table support geometry are not implemented, so no PAOS task or simulation is launched. (local)
-
-### 文件变更 / File Changes
-- `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L131-L181：记录当日环境复核、Query/Action 边界、具体失败场景、未启动决定与实施/验收顺序。 / Record today's environment recheck, Query/Action boundary, concrete failure scenario, no-launch decision and implementation/qualification sequence.
-- `changelog/2026-11_part2.md` L497-L523：记录中英文变更、文件行号、关键 diff、测试与无物理执行边界。 / Record bilingual changes, file line numbers, key diff, tests and the no-physical-execution boundary.
-
-### 关键 Diff / Key Diff
-```diff
-relation.target = fresh-scene geometry Query, not Action settlement
-stack_blocks_three first relation = block on table; table geometry unavailable
-Runtime root + robotwin + curobo = missing
-decision = no task record / no Gateway Action / no simulation / motion remains disabled
-```
-
-### 验证 / Validation
-- 定向 Adapter、persistent deployment、Action approval、relation-target 与 Agent planning 测试：`51 passed, 1 warning`；警告为 pytest 环境未启用 `asyncio_mode` 配置。`git diff --check` 通过。 / Focused Adapter, persistent-deployment, Action-approval, relation-target and Agent-planning tests: `51 passed, 1 warning`; the warning is that the pytest environment does not enable `asyncio_mode`. `git diff --check` passes.
-- 未启动 PAOS task、RoboTwin Runtime、Gateway Action、仿真或机器人运动。 / No PAOS task, RoboTwin Runtime, Gateway Action, simulation or robot motion was started.
 
 ## v17.3.1 (2026-11-06 17:13) - codex
 

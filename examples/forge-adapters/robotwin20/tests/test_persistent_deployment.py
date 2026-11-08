@@ -314,6 +314,40 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
         )
 
 
+def test_runtime_bundle_forwards_replaceable_relation_execution_provider(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()), encoding="utf-8")
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    client = object()
+    deployment = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda _request: None,
+        materializer_command=("python",), materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+        },
+        arm_profile_digest="a" * 64,
+    )
+    provider = object()
+
+    def resolve_context(caller_id):
+        return {"caller_id": caller_id}
+
+    bundle = build_persistent_runtime_bundle(
+        deployment=deployment,
+        client=client,
+        understanding_provider=object(),
+        grasp_provider=object(),
+        tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
+        relation_execution_provider=provider,
+        resolve_relation_context=resolve_context,
+    )
+
+    tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+    assert "relation.establish" in tools
+    assert bundle.runtime._registration("relation.establish").endpoint.provider is provider
+    assert bundle.runtime._registration("relation.establish").endpoint.resolve_context is resolve_context
+
+
 def test_runtime_bundle_registers_subtask_only_with_bound_perception_context_and_store(tmp_path):
     arm = tmp_path / "arms.yaml"
     arm.write_text(yaml.safe_dump(_profile()))
