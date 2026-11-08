@@ -80,7 +80,7 @@ still:  no stoppable, route/contact-qualified relation Action Provider
 - 未调用 `play_once`、机械臂动作或 motion Action。同步整轨迹调用无法满足 Action cancellation/unknown-result 语义，缺少 stack route/contact 与 runtime-monitored approval；不能据此启用执行。 / No `play_once`, robot action or motion Action was invoked. Synchronous full-trajectory calls do not satisfy Action cancellation/unknown-result semantics, and stack route/contact plus runtime-monitored approval are absent; execution cannot be enabled on this evidence.
 
 ### Git 提交 / Git Commit
-- Implementation: `0e469853`; branch: `feature/planning-loop`; push receipt pending. / Implementation: `0e469853`; branch: `feature/planning-loop`; push receipt pending.
+- Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`. / Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`.
 
 ## v17.3.11 (2026-11-08 12:49) - codex
 
