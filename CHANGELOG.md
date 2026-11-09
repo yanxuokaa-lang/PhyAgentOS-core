@@ -49,6 +49,26 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.5.2 (2026-11-09 12:10) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] persistent host 透传 `acquire_safe_recovery`（bool）与 `failure_injection`（object）到 worker runtime profile（默认缺省不写入）；profile 白名单扩展并做类型校验。 / The persistent host passes `acquire_safe_recovery` (bool) and `failure_injection` (object) into the worker runtime profile (omitted by default); the profile whitelist is extended with type validation.
+- [eval] [test] 透传与拒绝测试（默认 profile 不含评测字段；非法类型被拒）。 / Passthrough and rejection tests (default profiles carry no evaluation fields; invalid types are rejected).
+
+### Git 提交 / Git Commit
+- Implementation commit: `84a06986` 前序（含 v17.5.3）；branch: `feature/planning-loop`. / Implementation commits precede `84a06986` (with v17.5.3); branch: `feature/planning-loop`.
+
+## v17.5.3 (2026-11-09 12:15) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] 恢复评测部署接线：skill 3.0.30 + node 1.0.20（内嵌含安全恢复/注入的 adapter 源）、`robotwin-blocks-ranking-recovery-eval` profile（dataflow-recovery-eval.yaml → persistent-host-recovery-eval.yaml，字面量开启 acquire_safe_recovery 与 gripper_close_offset 注入）、bundle 构建安装、部署 env `deployments/robotwin-recovery-eval/runtime.env`（blocks-ranking + GraspNet + q5 qualification）。 / Recovery-evaluation deployment wiring: skill 3.0.30 with node 1.0.20 embedding the safe-recovery/injection adapter sources, the `robotwin-blocks-ranking-recovery-eval` profile, the built and installed bundle, and the deployment env for blocks-ranking plus GraspNet plus q5 qualification.
+
+### 架构与验证 / Architecture and Validation
+- live 进展：q5 controller qualification 全链完成（capability→plan→verify→人工批准→SAPIEN 运行 passed→独立验证 validated_pass→证据批准 approved_pass，七项测试证据）；oracle run2 发现并修复 v17.4.1 契约错配；run3 因远程模型 API 余额耗尽（¥0.04）失败——所有 LLM 驱动运行等待充值。 / Live progress: the q5 controller qualification chain completed with a passing SAPIEN run and independent validation; oracle run2 exposed and fixed the v17.4.1 contract mismatch; run3 failed on remote model API balance exhaustion (¥0.04 left) — every LLM-driven run awaits a top-up.
+
+### Git 提交 / Git Commit
+- Implementation commit: `84a06986`; branch: `feature/planning-loop`. / Implementation commit: `84a06986`; branch: `feature/planning-loop`.
+
 ## v17.4.1 (2026-11-09 11:55) - codex
 
 ### 完成范围 / Completed Scope
