@@ -72,7 +72,7 @@ after:  per-key measured geometry predicates with explicit tolerances;
 - 验证：`test_robotwin_task_adapters.py` 13 passed（10 既有 + 3 新）；未运行仿真或运动。 / `test_robotwin_task_adapters.py` 13 passed (ten pre-existing plus three new); no simulation or motion was run.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `c113b936`; branch: `feature/planning-loop`. / Implementation commit: `c113b936`; branch: `feature/planning-loop`.
 
 ## v17.5.0 (2026-11-09 12:50) - codex
 
