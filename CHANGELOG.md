@@ -58,7 +58,7 @@
 - 修复只在 Provider 机制层，gate 仍是唯一语义裁判；isaacsim 全量 `499 passed, 2 skipped`；未运行仿真。 / Provider-mechanism-only fix; the gate remains the sole judge. Full isaacsim suite `499 passed, 2 skipped`; no simulation ran.
 
 ### Git 提交 / Git Commit
-- Implementation commit: (pending); branch: `feature/planning-loop`. / Implementation commit: (pending); branch: `feature/planning-loop`.
+- Implementation commit: `94a7ca28`; branch: `feature/planning-loop`. / Implementation commit: `94a7ca28`; branch: `feature/planning-loop`.
 
 ## v17.6.0 (2026-11-09 19:10) - codex
 
