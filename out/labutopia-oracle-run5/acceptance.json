@@ -1,0 +1,2206 @@
+{
+  "instruction": "请按可见标签选择 REAGENT A（R01 试剂瓶），将其中的试剂一次性倒入 BEAKER，倾倒时保持瓶口对准 BEAKER 瓶口，完成后将试剂瓶放回原位。倾倒参数由你决定：倾倒角度请在 0.8-1.2 rad 内选择，保持时间 2.0 秒，不要向用户反问，直接执行到任务终态。",
+  "session_key": "cli:lab-2cd7d88229d5",
+  "simulated_motion_enabled": true,
+  "agent_response": "**任务已终止，状态为已取消，未完成倾倒。**\n\n- 已按可见 **R01** 标签绑定用户指定的 REAGENT A，并确认其瓶口与 **BEAKER** 开口特征。\n- 选定参数：倾倒角度 **1.0 rad**，保持 **2.0 秒**。\n- 抓取检查未通过：候选抓姿过于靠近瓶口或瓶底，且没有找到满足最终姿态和接近路径要求的合格抓取。重新观测的恢复方案也被当前任务工具范围拒绝。\n\n**未触发机械臂运动，试剂瓶未被移动。** 我没有绕过检查强行抓取，也未执行倾倒或放回动作。该环境不模拟液体，因此不存在可报告的实际试剂转移量。",
+  "controller_outcomes": [],
+  "tasks": [
+    {
+      "version": "agent_task_record_v2",
+      "task_id": "task_7996534232764084",
+      "task_description": "按可见标签选择用户指定的 REAGENT A（R01 试剂瓶），瓶口对准 BEAKER 开口，一次倾倒 1.0 rad 并保持 2.0 秒，然后将试剂瓶放回原位。",
+      "verification": {
+        "version": "task_verification_contract_v1",
+        "mode": "off",
+        "goal": "",
+        "success_criteria": [],
+        "constraints": [],
+        "evidence_policy": {
+          "profile": "semantic_default",
+          "required_kinds": [
+            "rgb_image"
+          ],
+          "required_sources": [],
+          "minimum_association": "best_effort"
+        }
+      },
+      "status": "cancelled",
+      "revisions": [
+        {
+          "version": "plan_revision_v4",
+          "revision_id": "revision_e9c78f1c73df45b4",
+          "number": 1,
+          "reason": "initial plan",
+          "counts_toward_replan_budget": true,
+          "skill_binding_id": null,
+          "runtime_binding_id": "runtime_binding_fd719754f897749e12cf14b7",
+          "skill_use_ids": [],
+          "plan_graph": {
+            "schema_version": "paos-plan-graph/v1",
+            "task_id": "task_7996534232764084",
+            "revision_id": "revision_e9c78f1c73df45b4",
+            "graph_digest": "625d8ad471df0f6accfe943fafce6fbb525f246851575b6063fae070e29c1c12",
+            "planner_decision_digest": "cd5f59b1212cc7ef3c019e6b81e8e15b5248769c2843cce3f8b29e1590d3fee3",
+            "policy_snapshot_digest": "96ea4a5a5804c70a7ad3043b9e672b5aac72919792411887720589cbf0ae8e53",
+            "nodes": [
+              {
+                "node_id": "pour_r01_once.process_features",
+                "obligation_id": "pour_r01_once-process-features",
+                "capability": "manipulation.process_features",
+                "dependencies": [],
+                "conditions": [],
+                "required_evidence": [
+                  "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                ],
+                "produced_evidence": [
+                  "process-features:pour_r01_once"
+                ],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000
+                },
+                "retry_of": null
+              },
+              {
+                "node_id": "pour_r01_once.prepare_process_features",
+                "obligation_id": "pour_r01_once-process-feature-preparation",
+                "capability": "manipulation.prepare_process_features",
+                "dependencies": [
+                  "pour_r01_once.process_features"
+                ],
+                "conditions": [],
+                "required_evidence": [
+                  "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                ],
+                "produced_evidence": [],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000
+                },
+                "retry_of": null
+              },
+              {
+                "node_id": "pour_r01_once.grasp_task_affordances",
+                "obligation_id": "pour_r01_once-task-affordance-candidates",
+                "capability": "manipulation.grasp_task_affordances",
+                "dependencies": [
+                  "pour_r01_once.prepare_process_features"
+                ],
+                "conditions": [],
+                "required_evidence": [
+                  "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                ],
+                "produced_evidence": [
+                  "grasp-task-affordances:pour_r01_once"
+                ],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "affordance_selection": "task_qualified",
+                  "process_feature_candidate_set_ref": "process-feature-set://pending",
+                  "selected_process_feature_refs": [],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000
+                },
+                "retry_of": null
+              },
+              {
+                "node_id": "pour_r01_once.prepare_grasp_task_affordance",
+                "obligation_id": "pour_r01_once-task-affordance-preparation",
+                "capability": "manipulation.prepare_grasp_task_affordance",
+                "dependencies": [
+                  "pour_r01_once.grasp_task_affordances"
+                ],
+                "conditions": [],
+                "required_evidence": [
+                  "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                ],
+                "produced_evidence": [],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000
+                },
+                "retry_of": null
+              },
+              {
+                "node_id": "pour_r01_once",
+                "obligation_id": "pour_r01_once",
+                "capability": "manipulation.execute_subtask",
+                "dependencies": [
+                  "pour_r01_once.prepare_grasp_task_affordance"
+                ],
+                "conditions": [],
+                "required_evidence": [
+                  "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                ],
+                "produced_evidence": [
+                  "subtask:pour_r01_once:completed"
+                ],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {
+                  "subtask_id": "pour_r01_once",
+                  "operation": "pour",
+                  "binding": {
+                    "entity_ref": "entity://simulator-truth-R01",
+                    "semantic_label": "R01",
+                    "category": "reagent_bottle",
+                    "destination_semantic_label": "BEAKER",
+                    "destination_category": "mixing_vessel",
+                    "measured_pose": {
+                      "frame_id": "tabletop_third_person",
+                      "unit": "m",
+                      "position_m": [
+                        0.4390195721968557,
+                        0.23633746792430707,
+                        1.704027975278019
+                      ],
+                      "orientation_xyzw": null,
+                      "source": "spatial_envelope_center"
+                    },
+                    "measured_geometry": {
+                      "frame_id": "tabletop_third_person",
+                      "unit": "m",
+                      "size_m": [
+                        0.0830772379198983,
+                        0.10850164618863428,
+                        0.10991840909273476
+                      ],
+                      "source": "spatial_envelope"
+                    },
+                    "grasp_candidate": {
+                      "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-0",
+                      "entity_ref": "entity://simulator-truth-R01",
+                      "grasp_frame": {
+                        "frame_id": "tabletop_third_person",
+                        "unit": "m",
+                        "position_m": [
+                          0.42721231092668216,
+                          0.21627997794858783,
+                          1.709304919846785
+                        ],
+                        "orientation_xyzw": [
+                          -0.3529962233601093,
+                          0.77276479617869,
+                          -0.47978644765070694,
+                          -0.2191647798600928
+                        ]
+                      },
+                      "approach_direction": {
+                        "frame_id": "tabletop_third_person",
+                        "unit": "unitless",
+                        "vector": [
+                          -0.6547209311247536,
+                          -0.33526152683499794,
+                          0.6774512609563886
+                        ]
+                      },
+                      "score": 1.0,
+                      "confidence": 1.0,
+                      "provenance": [
+                        "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                        "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                        "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                      ],
+                      "qualification": "proposed",
+                      "grasp_geometry": {
+                        "width_m": 0.08,
+                        "height_m": 0.06,
+                        "depth_m": 0.05
+                      }
+                    },
+                    "grasp_candidates": [
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-0",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.42721231092668216,
+                            0.21627997794858783,
+                            1.709304919846785
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-1",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.4272123111057495,
+                            0.21986264331525435,
+                            1.7110779329732362
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-2",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.4272123112848168,
+                            0.22344530868192092,
+                            1.7128509460996875
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-3",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.4272123114638841,
+                            0.22702797404858738,
+                            1.7146239592261385
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-4",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.42721231164295137,
+                            0.2306106394152539,
+                            1.7163969723525896
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-5",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.4272123118220187,
+                            0.23419330478192046,
+                            1.718169985479041
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-6",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.427212312001086,
+                            0.23777597014858698,
+                            1.7199429986054922
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      },
+                      {
+                        "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-7",
+                        "entity_ref": "entity://simulator-truth-R01",
+                        "grasp_frame": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "m",
+                          "position_m": [
+                            0.4272123121801533,
+                            0.24135863551525355,
+                            1.7217160117319434
+                          ],
+                          "orientation_xyzw": [
+                            -0.3529962233601093,
+                            0.77276479617869,
+                            -0.47978644765070694,
+                            -0.2191647798600928
+                          ]
+                        },
+                        "approach_direction": {
+                          "frame_id": "tabletop_third_person",
+                          "unit": "unitless",
+                          "vector": [
+                            -0.6547209311247536,
+                            -0.33526152683499794,
+                            0.6774512609563886
+                          ]
+                        },
+                        "score": 1.0,
+                        "confidence": 1.0,
+                        "provenance": [
+                          "artifact://labutopia/object-point-cloud/9fd6cf6519cc4eb9a1384dbde6f1ba81.npy",
+                          "artifact://labutopia/observed-geometry/55ad2996122f41b2b4a2498496f8952c.json",
+                          "artifact://labutopia/grasp-predictions/640004585e80404fb64eabdbfea1da6b.json"
+                        ],
+                        "qualification": "proposed",
+                        "grasp_geometry": {
+                          "width_m": 0.08,
+                          "height_m": 0.06,
+                          "depth_m": 0.05
+                        }
+                      }
+                    ],
+                    "grasp_candidate_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                    "candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                    "candidate_ref": "candidate://simulator-truth-R01/640004585e80404fb64eabdbfea1da6b-0",
+                    "capability_snapshot_ref": "artifact://labutopia/capabilities/030120cc01214e0f80365afb8002c388.json",
+                    "binding_ref": "artifact://labutopia/rgb/9a041b0f6602415ea6d0f4b07e750c3d.png",
+                    "destination_ref": "destination://simulator-truth-BEAKER",
+                    "destination_pose": {
+                      "frame_id": "tabletop_third_person",
+                      "unit": "m",
+                      "position_m": [
+                        -6.79663941412223e-08,
+                        0.0559691776438605,
+                        2.056811551362154
+                      ],
+                      "orientation_xyzw": null,
+                      "source": "spatial_envelope_center"
+                    },
+                    "process_frame": "tabletop_third_person",
+                    "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                    "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                    "frame_id": "tabletop_third_person",
+                    "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                    "freshness_ms": 682,
+                    "max_age_ms": 1000,
+                    "confidence": 1.0,
+                    "provenance": "query-chain:observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+                  },
+                  "depends_on": [],
+                  "parameters": {
+                    "tilt_rad": 1,
+                    "hold_s": 2
+                  },
+                  "semantic_intent": {
+                    "allowed_arms": [
+                      "franka"
+                    ],
+                    "coordination_mode": "single_arm",
+                    "goal": "按可见 R01 标签选择 REAGENT A，瓶口对准 BEAKER 开口执行一次倾倒并返回原位。",
+                    "constraints": [
+                      "不使用位置推断试剂身份",
+                      "倾倒过程中瓶口对准 BEAKER 开口",
+                      "仅无液体仿真"
+                    ],
+                    "success_criteria": [
+                      "Runtime 终态确认抓取、倾倒 1.0 rad 保持 2.0 秒、返回原位完成"
+                    ]
+                  },
+                  "tool_sequence": [
+                    {
+                      "tool_id": "manipulation.prepare",
+                      "phase": "prepare",
+                      "arguments": {}
+                    },
+                    {
+                      "tool_id": "object.acquire",
+                      "phase": "acquire",
+                      "arguments": {}
+                    },
+                    {
+                      "tool_id": "manipulation.prepare_held",
+                      "phase": "prepare",
+                      "arguments": {
+                        "operation": "pour"
+                      }
+                    },
+                    {
+                      "tool_id": "object.pour",
+                      "phase": "process",
+                      "arguments": {
+                        "operation": "pour"
+                      }
+                    },
+                    {
+                      "tool_id": "manipulation.prepare_held",
+                      "phase": "prepare",
+                      "arguments": {
+                        "operation": "place"
+                      }
+                    },
+                    {
+                      "tool_id": "object.place",
+                      "phase": "place",
+                      "arguments": {}
+                    }
+                  ],
+                  "affordance_selection": "task_qualified"
+                },
+                "retry_of": null
+              },
+              {
+                "node_id": "verify",
+                "obligation_id": "verify-task",
+                "capability": "task.verify",
+                "dependencies": [
+                  "pour_r01_once"
+                ],
+                "conditions": [],
+                "required_evidence": [],
+                "produced_evidence": [],
+                "resources": [],
+                "effects": [],
+                "input_bindings": {},
+                "retry_of": null
+              }
+            ]
+          },
+          "plan_graph_ref": "artifact://plans/task_7996534232764084/revision_e9c78f1c73df45b4",
+          "plan_graph_digest": "625d8ad471df0f6accfe943fafce6fbb525f246851575b6063fae070e29c1c12",
+          "planner_decision_digest": "cd5f59b1212cc7ef3c019e6b81e8e15b5248769c2843cce3f8b29e1590d3fee3",
+          "policy_snapshot_digest": "96ea4a5a5804c70a7ad3043b9e672b5aac72919792411887720589cbf0ae8e53",
+          "execution_records": [
+            {
+              "version": "tool_execution_record_v2",
+              "record_id": "tool_aa8cccceda6b472c",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "tool_id": "manipulation.process_features",
+              "semantics": "query",
+              "skill_binding_id": null,
+              "runtime_binding_id": "runtime_binding_fd719754f897749e12cf14b7",
+              "skill_use_ids": [],
+              "tool_spec_sha256": "90ecc39d60ee18ab0c9743c6682cad33d8d221056cfca68385659c92572e5492",
+              "caller_id": "paos:task_7996534232764084:revision_e9c78f1c73df45b4:tool_aa8cccceda6b472c",
+              "node_id": "pour_r01_once.process_features",
+              "node_digest": "1168d002f4fcbe70548b384d61b2f1d2acea4b3a0c60bdfb5d9409bf3e04fe5c",
+              "obligation_id": "pour_r01_once-process-features",
+              "input_binding_digest": "c7ed771056a9059b393620eed59cd845edb0c6677ce0b7f7490219b2af4f6310",
+              "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.process_features/f04c8fa2b8c64f9f",
+              "ownership": "task",
+              "arguments": {
+                "operation": "pour",
+                "entity_refs": [
+                  "entity://simulator-truth-R01",
+                  "entity://simulator-truth-BEAKER"
+                ],
+                "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                "frame_id": "tabletop_third_person",
+                "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                "freshness_ms": 682,
+                "max_age_ms": 1000
+              },
+              "status": "succeeded",
+              "invocation_id": null,
+              "attempt_id": null,
+              "response": {
+                "ok": true,
+                "data": {
+                  "status": "available",
+                  "candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "candidates": [
+                    {
+                      "feature_ref": "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                      "entity_ref": "entity://simulator-truth-R01",
+                      "feature_kind": "rim",
+                      "feature_role": "pour_lip"
+                    },
+                    {
+                      "feature_ref": "process-feature://5d0fa57e412544c79ddce278e87bd604",
+                      "entity_ref": "entity://simulator-truth-BEAKER",
+                      "feature_kind": "rim",
+                      "feature_role": "opening"
+                    }
+                  ],
+                  "motion_authorized": false
+                }
+              },
+              "error": null,
+              "evidence_refs": [
+                "tool:tool_aa8cccceda6b472c"
+              ],
+              "created_at": "2026-11-09T15:56:44.783775Z",
+              "updated_at": "2026-11-09T15:56:44.829306Z"
+            },
+            {
+              "version": "tool_execution_record_v2",
+              "record_id": "tool_2c20c7862c5a41c9",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "tool_id": "manipulation.prepare_process_features",
+              "semantics": "query",
+              "skill_binding_id": null,
+              "runtime_binding_id": "runtime_binding_fd719754f897749e12cf14b7",
+              "skill_use_ids": [],
+              "tool_spec_sha256": "f0b750822cc82f6dd0e002e6349efad03dda8c4fcd0059edfb5669cf967f650f",
+              "caller_id": "paos:task_7996534232764084:revision_e9c78f1c73df45b4:tool_2c20c7862c5a41c9",
+              "node_id": "pour_r01_once.prepare_process_features",
+              "node_digest": "93cb0b1363531cb269d7a0574d83f02f4597a499d87986e82e62eee4071938b2",
+              "obligation_id": "pour_r01_once-process-feature-preparation",
+              "input_binding_digest": "5ff0232e06ff2c51a7f28f42f429ca01386baa153d26da33f188a1530f1c1d05",
+              "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.prepare_process_features/1288c9e1128f419a",
+              "ownership": "task",
+              "arguments": {
+                "operation": "pour",
+                "entity_refs": [
+                  "entity://simulator-truth-R01",
+                  "entity://simulator-truth-BEAKER"
+                ],
+                "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                "frame_id": "tabletop_third_person",
+                "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                "freshness_ms": 682,
+                "max_age_ms": 1000,
+                "candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                "selected_feature_refs": [
+                  "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                  "process-feature://5d0fa57e412544c79ddce278e87bd604"
+                ]
+              },
+              "status": "succeeded",
+              "invocation_id": null,
+              "attempt_id": null,
+              "response": {
+                "ok": true,
+                "data": {
+                  "status": "available",
+                  "candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                  "selected_feature_refs": [
+                    "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                    "process-feature://5d0fa57e412544c79ddce278e87bd604"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "motion_authorized": false
+                }
+              },
+              "error": null,
+              "evidence_refs": [
+                "tool:tool_2c20c7862c5a41c9"
+              ],
+              "created_at": "2026-11-09T15:57:15.927973Z",
+              "updated_at": "2026-11-09T15:57:15.976974Z"
+            },
+            {
+              "version": "tool_execution_record_v2",
+              "record_id": "tool_aea16f91ae8a4691",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "tool_id": "manipulation.grasp_task_affordances",
+              "semantics": "query",
+              "skill_binding_id": null,
+              "runtime_binding_id": "runtime_binding_fd719754f897749e12cf14b7",
+              "skill_use_ids": [],
+              "tool_spec_sha256": "ab6747229848430d13fc742d17ec79c00a48eb8365dda60df8dd34700116788e",
+              "caller_id": "paos:task_7996534232764084:revision_e9c78f1c73df45b4:tool_aea16f91ae8a4691",
+              "node_id": "pour_r01_once.grasp_task_affordances",
+              "node_digest": "3bef124956ebb4b3638c9677b1aa820c7da6ed0dda5f3c9ef46c4041a79a6f78",
+              "obligation_id": "pour_r01_once-task-affordance-candidates",
+              "input_binding_digest": "bbe453cb7ef85f13d4a975b4f2d1e91e504619d244f40de3e92a639e8e400c66",
+              "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.grasp_task_affordances/1a55fab00f154615",
+              "ownership": "task",
+              "arguments": {
+                "operation": "pour",
+                "entity_refs": [
+                  "entity://simulator-truth-R01",
+                  "entity://simulator-truth-BEAKER"
+                ],
+                "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                "frame_id": "tabletop_third_person",
+                "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                "freshness_ms": 682,
+                "max_age_ms": 1000,
+                "process_feature_candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                "selected_process_feature_refs": [
+                  "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                  "process-feature://5d0fa57e412544c79ddce278e87bd604"
+                ]
+              },
+              "status": "succeeded",
+              "invocation_id": null,
+              "attempt_id": null,
+              "response": {
+                "ok": true,
+                "data": {
+                  "status": "unavailable",
+                  "candidate_set_ref": "grasp-affordance-set://997c0ba4fb934f279d6260ea6ee55df1",
+                  "process_feature_candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                  "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "candidates": [],
+                  "motion_authorized": false,
+                  "error": "bottle grasp is too close to the opening; bottle grasp is too close to the support end; no task-qualified grasp has a feasible final orientation and short approach; probe failures: grasp_approach_unavailable=2"
+                }
+              },
+              "error": null,
+              "evidence_refs": [
+                "tool:tool_aea16f91ae8a4691"
+              ],
+              "created_at": "2026-11-09T15:57:40.696619Z",
+              "updated_at": "2026-11-09T15:57:41.033372Z"
+            }
+          ],
+          "planning_selections": [
+            {
+              "schema_version": "paos-decision-trace/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.process_features",
+              "candidate_tool_ids": [
+                "manipulation.process_features"
+              ],
+              "selected_tool_id": "manipulation.process_features",
+              "input_binding_digest": "c7ed771056a9059b393620eed59cd845edb0c6677ce0b7f7490219b2af4f6310",
+              "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+              "context_digest": "6f98e50c7c9087a263a4bed95ce94323998b851b5045c328fec85df58a304c8e",
+              "decision_reason": "使用本节点已绑定的 R01、BEAKER 和同次观测身份查询倾倒特征。",
+              "result_status": null,
+              "evidence_refs": [
+                "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+              ],
+              "created_at": "2026-11-09T15:56:36.656594Z",
+              "resumable_selection": {
+                "tool_id": "manipulation.process_features",
+                "semantics": "query",
+                "planning_binding": {
+                  "revision_id": "revision_e9c78f1c73df45b4",
+                  "node_id": "pour_r01_once.process_features",
+                  "node_digest": "1168d002f4fcbe70548b384d61b2f1d2acea4b3a0c60bdfb5d9409bf3e04fe5c",
+                  "obligation_id": "pour_r01_once-process-features",
+                  "input_binding_digest": "c7ed771056a9059b393620eed59cd845edb0c6677ce0b7f7490219b2af4f6310",
+                  "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.process_features/f04c8fa2b8c64f9f"
+                },
+                "tool_arguments": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000
+                }
+              }
+            },
+            {
+              "schema_version": "paos-decision-trace/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.prepare_process_features",
+              "candidate_tool_ids": [
+                "manipulation.prepare_process_features"
+              ],
+              "selected_tool_id": "manipulation.prepare_process_features",
+              "input_binding_digest": "5ff0232e06ff2c51a7f28f42f429ca01386baa153d26da33f188a1530f1c1d05",
+              "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+              "context_digest": "47c73ad682d4051765a4dfe9db1518a31e67fab61cac5dd6c38eb773c1eb9052",
+              "decision_reason": "校验同次观测中 R01 pour_lip 与 BEAKER opening 的配对，候选引用直接取自前驱记录。",
+              "result_status": null,
+              "evidence_refs": [
+                "tool:tool_aa8cccceda6b472c",
+                "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+              ],
+              "created_at": "2026-11-09T15:57:09.241139Z",
+              "resumable_selection": {
+                "tool_id": "manipulation.prepare_process_features",
+                "semantics": "query",
+                "planning_binding": {
+                  "revision_id": "revision_e9c78f1c73df45b4",
+                  "node_id": "pour_r01_once.prepare_process_features",
+                  "node_digest": "93cb0b1363531cb269d7a0574d83f02f4597a499d87986e82e62eee4071938b2",
+                  "obligation_id": "pour_r01_once-process-feature-preparation",
+                  "input_binding_digest": "5ff0232e06ff2c51a7f28f42f429ca01386baa153d26da33f188a1530f1c1d05",
+                  "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.prepare_process_features/1288c9e1128f419a"
+                },
+                "tool_arguments": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000,
+                  "candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                  "selected_feature_refs": [
+                    "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                    "process-feature://5d0fa57e412544c79ddce278e87bd604"
+                  ]
+                }
+              }
+            },
+            {
+              "schema_version": "paos-decision-trace/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.grasp_task_affordances",
+              "candidate_tool_ids": [
+                "manipulation.grasp_task_affordances"
+              ],
+              "selected_tool_id": "manipulation.grasp_task_affordances",
+              "input_binding_digest": "bbe453cb7ef85f13d4a975b4f2d1e91e504619d244f40de3e92a639e8e400c66",
+              "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+              "context_digest": "824daab94341a61cc5325214a75ffaac7d0b826e38d5d2c0b734f932c5fd9257",
+              "decision_reason": "根据已校验的直接前驱特征生成倾倒任务抓取组合；特征引用由协调器原样复制。",
+              "result_status": null,
+              "evidence_refs": [
+                "tool:tool_aa8cccceda6b472c",
+                "tool:tool_2c20c7862c5a41c9",
+                "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+              ],
+              "created_at": "2026-11-09T15:57:35.264963Z",
+              "resumable_selection": {
+                "tool_id": "manipulation.grasp_task_affordances",
+                "semantics": "query",
+                "planning_binding": {
+                  "revision_id": "revision_e9c78f1c73df45b4",
+                  "node_id": "pour_r01_once.grasp_task_affordances",
+                  "node_digest": "3bef124956ebb4b3638c9677b1aa820c7da6ed0dda5f3c9ef46c4041a79a6f78",
+                  "obligation_id": "pour_r01_once-task-affordance-candidates",
+                  "input_binding_digest": "bbe453cb7ef85f13d4a975b4f2d1e91e504619d244f40de3e92a639e8e400c66",
+                  "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.grasp_task_affordances/1a55fab00f154615"
+                },
+                "tool_arguments": {
+                  "operation": "pour",
+                  "entity_refs": [
+                    "entity://simulator-truth-R01",
+                    "entity://simulator-truth-BEAKER"
+                  ],
+                  "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+                  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+                  "frame_id": "tabletop_third_person",
+                  "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+                  "freshness_ms": 682,
+                  "max_age_ms": 1000,
+                  "process_feature_candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+                  "selected_process_feature_refs": [
+                    "process-feature://e1d2665a83004915b287d8334d19f2e9",
+                    "process-feature://5d0fa57e412544c79ddce278e87bd604"
+                  ]
+                }
+              }
+            }
+          ],
+          "node_settlements": [
+            {
+              "schema_version": "paos-node-settlement/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.process_features",
+              "invocation_id": null,
+              "status": "completed",
+              "evidence_refs": [
+                "tool:tool_aa8cccceda6b472c"
+              ],
+              "scene_revision": null,
+              "failure_code": null,
+              "source_tool_id": "manipulation.process_features",
+              "world_change_started": false,
+              "outcome_known": true,
+              "retryable_in_revision": null,
+              "requires_replan": null,
+              "recommended_action": null
+            },
+            {
+              "schema_version": "paos-node-settlement/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.prepare_process_features",
+              "invocation_id": null,
+              "status": "completed",
+              "evidence_refs": [
+                "tool:tool_2c20c7862c5a41c9"
+              ],
+              "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+              "failure_code": null,
+              "source_tool_id": "manipulation.prepare_process_features",
+              "world_change_started": false,
+              "outcome_known": true,
+              "retryable_in_revision": null,
+              "requires_replan": null,
+              "recommended_action": null
+            },
+            {
+              "schema_version": "paos-node-settlement/v1",
+              "task_id": "task_7996534232764084",
+              "revision_id": "revision_e9c78f1c73df45b4",
+              "node_id": "pour_r01_once.grasp_task_affordances",
+              "invocation_id": null,
+              "status": "failed",
+              "evidence_refs": [
+                "tool:tool_aea16f91ae8a4691"
+              ],
+              "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+              "failure_code": "failed",
+              "source_tool_id": "manipulation.grasp_task_affordances",
+              "world_change_started": false,
+              "outcome_known": true,
+              "retryable_in_revision": null,
+              "requires_replan": null,
+              "recommended_action": null
+            }
+          ],
+          "counterevidence": [],
+          "preserved_node_ids": [],
+          "invalidated_node_ids": [],
+          "retry_parent_node_id": null,
+          "fresh_evidence_requirements": [],
+          "discovery_evidence_refs": [],
+          "replan_evidence_refs": [],
+          "verdict": null,
+          "verification_attempts": [],
+          "created_at": "2026-11-09T15:55:52.937562Z",
+          "closed_at": null
+        }
+      ],
+      "active_revision_id": "revision_e9c78f1c73df45b4",
+      "primary_skill_binding": null,
+      "primary_skill_instructions": null,
+      "active_skill_instructions": null,
+      "runtime_binding": {
+        "version": "runtime_binding_v1",
+        "binding_id": "runtime_binding_fd719754f897749e12cf14b7",
+        "runtime_profile": "labutopia-mixture",
+        "runtime_instance_id": "labutopia-7a67e3192bbd4266b47e57e46ddc6c41",
+        "gateway_url": "http://labutopia.local",
+        "gateway_identity": null
+      },
+      "tool_bindings": [
+        {
+          "tool_id": "manipulation.process_features",
+          "semantics": "query",
+          "spec_sha256": "90ecc39d60ee18ab0c9743c6682cad33d8d221056cfca68385659c92572e5492",
+          "ready_at_binding": true,
+          "default_timeout_ms": null,
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation",
+              "entity_refs",
+              "observation_ref",
+              "scene_revision",
+              "frame_id",
+              "calibration_ref",
+              "freshness_ms",
+              "max_age_ms"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "pour",
+                  "stir"
+                ]
+              },
+              "entity_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^entity://[^/]+$"
+                }
+              },
+              "observation_ref": {
+                "type": "string",
+                "pattern": "^observation://[^/]+/[^/]+$"
+              },
+              "scene_revision": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frame_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "calibration_ref": {
+                "type": "string",
+                "pattern": "^artifact://\\S+$"
+              },
+              "freshness_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_age_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "planning_policy": {
+            "schema_version": "paos-tool-spec-policy/v1",
+            "tool_id": "manipulation.process_features",
+            "semantics": "query",
+            "spec_digest": "90ecc39d60ee18ab0c9743c6682cad33d8d221056cfca68385659c92572e5492",
+            "capabilities": [
+              "manipulation.process_features"
+            ],
+            "preconditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "expected_effects": [],
+            "resource_claims": [],
+            "scene_write_behavior": "none",
+            "failure_classes": [],
+            "idempotency": "unknown",
+            "refreshes_scene": false,
+            "input_binding_keys": [],
+            "predecessor_argument_keys": [],
+            "argument_source_requirements": [],
+            "requires_before_plan": false,
+            "trusted_argument_builder": null,
+            "argument_projection": null,
+            "argument_projection_plan": null
+          }
+        },
+        {
+          "tool_id": "manipulation.prepare_process_features",
+          "semantics": "query",
+          "spec_sha256": "f0b750822cc82f6dd0e002e6349efad03dda8c4fcd0059edfb5669cf967f650f",
+          "ready_at_binding": true,
+          "default_timeout_ms": null,
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation",
+              "entity_refs",
+              "candidate_set_ref",
+              "selected_feature_refs",
+              "observation_ref",
+              "scene_revision",
+              "frame_id",
+              "calibration_ref",
+              "freshness_ms",
+              "max_age_ms"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "pour",
+                  "stir"
+                ]
+              },
+              "entity_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^entity://[^/]+$"
+                }
+              },
+              "candidate_set_ref": {
+                "type": "string",
+                "pattern": "^process-feature-set://\\S+$"
+              },
+              "selected_feature_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^process-feature://\\S+$"
+                }
+              },
+              "observation_ref": {
+                "type": "string",
+                "pattern": "^observation://[^/]+/[^/]+$"
+              },
+              "scene_revision": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frame_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "calibration_ref": {
+                "type": "string",
+                "pattern": "^artifact://\\S+$"
+              },
+              "freshness_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_age_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "planning_policy": {
+            "schema_version": "paos-tool-spec-policy/v1",
+            "tool_id": "manipulation.prepare_process_features",
+            "semantics": "query",
+            "spec_digest": "f0b750822cc82f6dd0e002e6349efad03dda8c4fcd0059edfb5669cf967f650f",
+            "capabilities": [
+              "manipulation.prepare_process_features"
+            ],
+            "preconditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "expected_effects": [],
+            "resource_claims": [],
+            "scene_write_behavior": "none",
+            "failure_classes": [],
+            "idempotency": "unknown",
+            "refreshes_scene": false,
+            "input_binding_keys": [],
+            "predecessor_argument_keys": [],
+            "argument_source_requirements": [],
+            "requires_before_plan": false,
+            "trusted_argument_builder": null,
+            "argument_projection": null,
+            "argument_projection_plan": null
+          }
+        },
+        {
+          "tool_id": "manipulation.grasp_task_affordances",
+          "semantics": "query",
+          "spec_sha256": "ab6747229848430d13fc742d17ec79c00a48eb8365dda60df8dd34700116788e",
+          "ready_at_binding": true,
+          "default_timeout_ms": null,
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation",
+              "entity_refs",
+              "grasp_candidate_set_ref",
+              "process_feature_candidate_set_ref",
+              "selected_process_feature_refs",
+              "observation_ref",
+              "scene_revision",
+              "frame_id",
+              "calibration_ref",
+              "freshness_ms",
+              "max_age_ms"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "pour",
+                  "stir"
+                ]
+              },
+              "entity_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^entity://[^/]+$"
+                }
+              },
+              "grasp_candidate_set_ref": {
+                "type": "string",
+                "pattern": "^candidate-set://\\S+$"
+              },
+              "process_feature_candidate_set_ref": {
+                "type": "string",
+                "pattern": "^process-feature-set://\\S+$"
+              },
+              "selected_process_feature_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^process-feature://\\S+$"
+                }
+              },
+              "observation_ref": {
+                "type": "string",
+                "pattern": "^observation://[^/]+/[^/]+$"
+              },
+              "scene_revision": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frame_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "calibration_ref": {
+                "type": "string",
+                "pattern": "^artifact://\\S+$"
+              },
+              "freshness_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_age_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "planning_policy": {
+            "schema_version": "paos-tool-spec-policy/v1",
+            "tool_id": "manipulation.grasp_task_affordances",
+            "semantics": "query",
+            "spec_digest": "ab6747229848430d13fc742d17ec79c00a48eb8365dda60df8dd34700116788e",
+            "capabilities": [
+              "manipulation.grasp_task_affordances"
+            ],
+            "preconditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "expected_effects": [],
+            "resource_claims": [],
+            "scene_write_behavior": "none",
+            "failure_classes": [],
+            "idempotency": "unknown",
+            "refreshes_scene": false,
+            "input_binding_keys": [],
+            "predecessor_argument_keys": [],
+            "argument_source_requirements": [
+              {
+                "when": {
+                  "operation": "pour"
+                },
+                "keys": [
+                  "process_feature_candidate_set_ref",
+                  "selected_process_feature_refs"
+                ],
+                "source_tool_id": "manipulation.prepare_process_features",
+                "source_paths": {
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "selected_process_feature_refs": [
+                    "response",
+                    "data",
+                    "selected_feature_refs"
+                  ]
+                }
+              },
+              {
+                "when": {
+                  "operation": "stir"
+                },
+                "keys": [
+                  "process_feature_candidate_set_ref",
+                  "selected_process_feature_refs"
+                ],
+                "source_tool_id": "manipulation.prepare_process_features",
+                "source_paths": {
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "selected_process_feature_refs": [
+                    "response",
+                    "data",
+                    "selected_feature_refs"
+                  ]
+                }
+              }
+            ],
+            "requires_before_plan": false,
+            "trusted_argument_builder": null,
+            "argument_projection": null,
+            "argument_projection_plan": null
+          }
+        },
+        {
+          "tool_id": "manipulation.prepare_grasp_task_affordance",
+          "semantics": "query",
+          "spec_sha256": "cf9fb568304697ebbfb080b0a60fe8286d6acbcaf336675ef1076cd3059b7670",
+          "ready_at_binding": true,
+          "default_timeout_ms": null,
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation",
+              "entity_refs",
+              "candidate_set_ref",
+              "selected_combination_ref",
+              "process_feature_candidate_set_ref",
+              "observation_ref",
+              "scene_revision",
+              "frame_id",
+              "calibration_ref",
+              "freshness_ms",
+              "max_age_ms"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "pour",
+                  "stir"
+                ]
+              },
+              "entity_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^entity://[^/]+$"
+                }
+              },
+              "candidate_set_ref": {
+                "type": "string",
+                "pattern": "^grasp-affordance-set://\\S+$"
+              },
+              "selected_combination_ref": {
+                "type": "string",
+                "pattern": "^grasp-affordance://\\S+$"
+              },
+              "process_feature_candidate_set_ref": {
+                "type": "string",
+                "pattern": "^process-feature-set://\\S+$"
+              },
+              "observation_ref": {
+                "type": "string",
+                "pattern": "^observation://[^/]+/[^/]+$"
+              },
+              "scene_revision": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frame_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "calibration_ref": {
+                "type": "string",
+                "pattern": "^artifact://\\S+$"
+              },
+              "freshness_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_age_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "planning_policy": {
+            "schema_version": "paos-tool-spec-policy/v1",
+            "tool_id": "manipulation.prepare_grasp_task_affordance",
+            "semantics": "query",
+            "spec_digest": "cf9fb568304697ebbfb080b0a60fe8286d6acbcaf336675ef1076cd3059b7670",
+            "capabilities": [
+              "manipulation.prepare_grasp_task_affordance"
+            ],
+            "preconditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "expected_effects": [],
+            "resource_claims": [],
+            "scene_write_behavior": "none",
+            "failure_classes": [],
+            "idempotency": "unknown",
+            "refreshes_scene": false,
+            "input_binding_keys": [],
+            "predecessor_argument_keys": [],
+            "argument_source_requirements": [
+              {
+                "when": {
+                  "operation": "pour"
+                },
+                "keys": [
+                  "candidate_set_ref",
+                  "selected_combination_ref",
+                  "process_feature_candidate_set_ref"
+                ],
+                "source_tool_id": "manipulation.grasp_task_affordances",
+                "source_paths": {
+                  "candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "process_feature_candidate_set_ref"
+                  ]
+                }
+              },
+              {
+                "when": {
+                  "operation": "stir"
+                },
+                "keys": [
+                  "candidate_set_ref",
+                  "selected_combination_ref",
+                  "process_feature_candidate_set_ref"
+                ],
+                "source_tool_id": "manipulation.grasp_task_affordances",
+                "source_paths": {
+                  "candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "process_feature_candidate_set_ref"
+                  ]
+                }
+              }
+            ],
+            "requires_before_plan": false,
+            "trusted_argument_builder": null,
+            "argument_projection": null,
+            "argument_projection_plan": null
+          }
+        },
+        {
+          "tool_id": "manipulation.execute_subtask",
+          "semantics": "action",
+          "spec_sha256": "59c9daec1fe7c4134f8ad4870628b93b14a9e3304da3224c59f5d45de976c5ce",
+          "ready_at_binding": true,
+          "default_timeout_ms": null,
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "subtask_id",
+              "operation",
+              "binding",
+              "parameters",
+              "tool_sequence",
+              "intent"
+            ],
+            "properties": {
+              "subtask_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "operation": {
+                "enum": [
+                  "relocate",
+                  "pour",
+                  "stir"
+                ]
+              },
+              "depends_on": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "binding": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "entity_ref",
+                  "semantic_label",
+                  "category",
+                  "destination_semantic_label",
+                  "destination_category",
+                  "measured_pose",
+                  "measured_geometry",
+                  "grasp_candidate",
+                  "grasp_candidate_ref",
+                  "candidate_set_ref",
+                  "candidate_ref",
+                  "capability_snapshot_ref",
+                  "binding_ref",
+                  "destination_ref",
+                  "destination_pose",
+                  "process_frame",
+                  "observation_ref",
+                  "scene_revision",
+                  "frame_id",
+                  "calibration_ref",
+                  "freshness_ms",
+                  "max_age_ms",
+                  "confidence",
+                  "provenance"
+                ],
+                "properties": {
+                  "entity_ref": {
+                    "type": "string",
+                    "pattern": "^entity://[^/]+$"
+                  },
+                  "semantic_label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "category": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "destination_semantic_label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "destination_category": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "measured_pose": {
+                    "type": "object"
+                  },
+                  "measured_geometry": {
+                    "type": "object"
+                  },
+                  "grasp_candidate": {
+                    "type": "object"
+                  },
+                  "grasp_candidates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "grasp_candidate_ref": {
+                    "type": "string",
+                    "pattern": "^candidate-set://\\S+$"
+                  },
+                  "candidate_set_ref": {
+                    "type": "string",
+                    "pattern": "^candidate-set://\\S+$"
+                  },
+                  "candidate_ref": {
+                    "type": "string",
+                    "pattern": "^candidate://\\S+$"
+                  },
+                  "capability_snapshot_ref": {
+                    "type": "string",
+                    "pattern": "^artifact://\\S+$"
+                  },
+                  "binding_ref": {
+                    "type": "string",
+                    "pattern": "^artifact://\\S+$"
+                  },
+                  "destination_ref": {
+                    "type": "string",
+                    "pattern": "^(?:destination|container)://\\S+$"
+                  },
+                  "destination_pose": {
+                    "type": "object"
+                  },
+                  "process_frame": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "observation_ref": {
+                    "type": "string",
+                    "pattern": "^observation://\\S+$"
+                  },
+                  "scene_revision": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "calibration_ref": {
+                    "type": "string",
+                    "pattern": "^artifact://\\S+$"
+                  },
+                  "freshness_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max_age_ms": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "provenance": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "parameters": {
+                "type": "object"
+              },
+              "process_feature_refs": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^process-feature://\\S+$"
+                }
+              },
+              "process_feature_candidate_set_ref": {
+                "type": "string",
+                "pattern": "^process-feature-set://\\S+$"
+              },
+              "grasp_task_affordance_candidate_set_ref": {
+                "type": "string",
+                "pattern": "^grasp-affordance-set://\\S+$"
+              },
+              "grasp_task_affordance_ref": {
+                "type": "string",
+                "pattern": "^grasp-affordance://\\S+$"
+              },
+              "selected_grasp_candidate_ref": {
+                "type": "string",
+                "pattern": "^candidate://\\S+$"
+              },
+              "qualified_grasp_candidate_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^candidate://\\S+$"
+                }
+              },
+              "affordance_selection": {
+                "enum": [
+                  "task_qualified"
+                ]
+              },
+              "tool_sequence": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object"
+                }
+              },
+              "intent": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "version",
+                  "task_id",
+                  "revision_id",
+                  "node_id",
+                  "node_digest",
+                  "entity_ref",
+                  "goal",
+                  "success_criteria",
+                  "allowed_arms",
+                  "coordination_mode",
+                  "observation_ref",
+                  "scene_revision",
+                  "observation_frame_id",
+                  "calibration_ref",
+                  "candidate_set_ref",
+                  "motion_authorized"
+                ],
+                "properties": {
+                  "version": {
+                    "const": "manipulation_intent_v2"
+                  },
+                  "task_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "revision_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "node_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "node_digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "entity_ref": {
+                    "type": "string",
+                    "pattern": "^entity://\\S+$"
+                  },
+                  "goal": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "success_criteria": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowed_arms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "coordination_mode": {
+                    "enum": [
+                      "single_arm",
+                      "alternative_arm",
+                      "bimanual"
+                    ]
+                  },
+                  "observation_ref": {
+                    "type": "string",
+                    "pattern": "^observation://\\S+$"
+                  },
+                  "scene_revision": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "observation_frame_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "calibration_ref": {
+                    "type": "string",
+                    "pattern": "^artifact://\\S+$"
+                  },
+                  "candidate_set_ref": {
+                    "type": "string",
+                    "pattern": "^candidate-set://\\S+$"
+                  },
+                  "constraints": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "motion_authorized": {
+                    "const": false
+                  }
+                }
+              },
+              "return_destination_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "pour"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "tilt_rad": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 3.141592653589793
+                        },
+                        "hold_s": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "required": [
+                        "tilt_rad",
+                        "hold_s"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "stir"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "radius_m": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "depth_m": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "turns": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "duration_s": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "direction": {
+                          "enum": [
+                            "cw",
+                            "ccw"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "radius_m",
+                        "depth_m",
+                        "turns",
+                        "duration_s",
+                        "direction"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "affordance_selection"
+                  ],
+                  "properties": {
+                    "affordance_selection": {
+                      "const": "task_qualified"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "process_feature_refs",
+                    "process_feature_candidate_set_ref",
+                    "grasp_task_affordance_candidate_set_ref",
+                    "grasp_task_affordance_ref",
+                    "selected_grasp_candidate_ref",
+                    "qualified_grasp_candidate_refs"
+                  ],
+                  "properties": {
+                    "qualified_grasp_candidate_refs": {
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "planning_policy": {
+            "schema_version": "paos-tool-spec-policy/v1",
+            "tool_id": "manipulation.execute_subtask",
+            "semantics": "action",
+            "spec_digest": "59c9daec1fe7c4134f8ad4870628b93b14a9e3304da3224c59f5d45de976c5ce",
+            "capabilities": [
+              "manipulation.execute_subtask"
+            ],
+            "preconditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "expected_effects": [],
+            "resource_claims": [],
+            "scene_write_behavior": "new_revision",
+            "failure_classes": [],
+            "idempotency": "at_most_once",
+            "refreshes_scene": false,
+            "input_binding_keys": [
+              "subtask_id",
+              "operation",
+              "binding",
+              "parameters",
+              "tool_sequence"
+            ],
+            "predecessor_argument_keys": [],
+            "argument_source_requirements": [
+              {
+                "when": {
+                  "operation": "pour",
+                  "affordance_selection": "task_qualified"
+                },
+                "keys": [
+                  "process_feature_refs",
+                  "process_feature_candidate_set_ref",
+                  "grasp_task_affordance_candidate_set_ref",
+                  "grasp_task_affordance_ref",
+                  "selected_grasp_candidate_ref",
+                  "qualified_grasp_candidate_refs"
+                ],
+                "source_tool_id": "manipulation.prepare_grasp_task_affordance",
+                "source_paths": {
+                  "process_feature_refs": [
+                    "response",
+                    "data",
+                    "selected",
+                    "process_feature_refs"
+                  ],
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "process_feature_candidate_set_ref"
+                  ],
+                  "grasp_task_affordance_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "grasp_task_affordance_ref": [
+                    "response",
+                    "data",
+                    "selected",
+                    "combination_ref"
+                  ],
+                  "selected_grasp_candidate_ref": [
+                    "response",
+                    "data",
+                    "selected",
+                    "grasp_candidate_ref"
+                  ],
+                  "qualified_grasp_candidate_refs": [
+                    "response",
+                    "data",
+                    "qualified_grasp_candidate_refs"
+                  ]
+                }
+              },
+              {
+                "when": {
+                  "operation": "stir",
+                  "affordance_selection": "task_qualified"
+                },
+                "keys": [
+                  "process_feature_refs",
+                  "process_feature_candidate_set_ref",
+                  "grasp_task_affordance_candidate_set_ref",
+                  "grasp_task_affordance_ref",
+                  "selected_grasp_candidate_ref",
+                  "qualified_grasp_candidate_refs"
+                ],
+                "source_tool_id": "manipulation.prepare_grasp_task_affordance",
+                "source_paths": {
+                  "process_feature_refs": [
+                    "response",
+                    "data",
+                    "selected",
+                    "process_feature_refs"
+                  ],
+                  "process_feature_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "process_feature_candidate_set_ref"
+                  ],
+                  "grasp_task_affordance_candidate_set_ref": [
+                    "response",
+                    "data",
+                    "candidate_set_ref"
+                  ],
+                  "grasp_task_affordance_ref": [
+                    "response",
+                    "data",
+                    "selected",
+                    "combination_ref"
+                  ],
+                  "selected_grasp_candidate_ref": [
+                    "response",
+                    "data",
+                    "selected",
+                    "grasp_candidate_ref"
+                  ],
+                  "qualified_grasp_candidate_refs": [
+                    "response",
+                    "data",
+                    "qualified_grasp_candidate_refs"
+                  ]
+                }
+              }
+            ],
+            "requires_before_plan": false,
+            "trusted_argument_builder": "manipulation_intent_v2",
+            "argument_projection": null,
+            "argument_projection_plan": null
+          }
+        }
+      ],
+      "skill_uses": [],
+      "supporting_skill_bindings": [],
+      "runtime_snapshot_ref": "runtime:labutopia-7a67e3192bbd4266b47e57e46ddc6c41",
+      "verdict": null,
+      "verification_attempts": [],
+      "before_snapshot_ref": null,
+      "after_snapshot_ref": null,
+      "evidence_bundle_ref": null,
+      "evidence_bundle_id": null,
+      "evidence_errors": [
+        "planning Query failure requires recovery: pour_r01_once.grasp_task_affordances",
+        "task cancellation requested: Task-qualified grasp Query returned status=unavailable: grasps too close to bottle opening/support end and no feasible final orientation plus short approach (grasp_approach_unavailable=2). No world change or Action started. Recovery scene.observe revision was rejected because capability is outside frozen task binding. Cannot execute requested pour without substituting excluded/unqualified grasps; cancel to terminal blocked outcome."
+      ],
+      "cancellation_requested": true,
+      "pause_requested": false,
+      "clarification_id": null,
+      "clarification_question": null,
+      "clarification_node_id": null,
+      "clarification_answer": null,
+      "replan_deadline": "2026-11-09T15:59:41.203815Z",
+      "replan_extension_used": false,
+      "origin_session_key": "cli:lab-2cd7d88229d5",
+      "origin_dedup_key": null,
+      "origin_approval": null,
+      "parent_task_id": null,
+      "retry_limit": 0,
+      "created_at": "2026-11-09T15:55:52.938265Z",
+      "updated_at": "2026-11-09T15:58:34.597702Z",
+      "terminal_at": "2026-11-09T15:58:34.597702Z"
+    }
+  ]
+}

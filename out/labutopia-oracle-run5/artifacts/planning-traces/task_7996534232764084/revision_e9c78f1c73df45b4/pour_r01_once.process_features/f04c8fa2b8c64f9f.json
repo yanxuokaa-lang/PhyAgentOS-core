@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "6f98e50c7c9087a263a4bed95ce94323998b851b5045c328fec85df58a304c8e",
+  "created_at": "2026-11-09T15:56:36.656594Z",
+  "decision_reason": "使用本节点已绑定的 R01、BEAKER 和同次观测身份查询倾倒特征。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "c7ed771056a9059b393620eed59cd845edb0c6677ce0b7f7490219b2af4f6310",
+  "node_id": "pour_r01_once.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.process_features/f04c8fa2b8c64f9f",
+      "input_binding_digest": "c7ed771056a9059b393620eed59cd845edb0c6677ce0b7f7490219b2af4f6310",
+      "node_digest": "1168d002f4fcbe70548b384d61b2f1d2acea4b3a0c60bdfb5d9409bf3e04fe5c",
+      "node_id": "pour_r01_once.process_features",
+      "obligation_id": "pour_r01_once-process-features",
+      "revision_id": "revision_e9c78f1c73df45b4"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 682,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_e9c78f1c73df45b4",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_7996534232764084"
+}

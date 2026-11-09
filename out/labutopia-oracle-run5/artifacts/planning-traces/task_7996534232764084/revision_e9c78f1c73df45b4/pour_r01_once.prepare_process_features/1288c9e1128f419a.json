@@ -1,0 +1,50 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.prepare_process_features"
+  ],
+  "context_digest": "47c73ad682d4051765a4dfe9db1518a31e67fab61cac5dd6c38eb773c1eb9052",
+  "created_at": "2026-11-09T15:57:09.241139Z",
+  "decision_reason": "校验同次观测中 R01 pour_lip 与 BEAKER opening 的配对，候选引用直接取自前驱记录。",
+  "evidence_refs": [
+    "tool:tool_aa8cccceda6b472c",
+    "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "5ff0232e06ff2c51a7f28f42f429ca01386baa153d26da33f188a1530f1c1d05",
+  "node_id": "pour_r01_once.prepare_process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7996534232764084/revision_e9c78f1c73df45b4/pour_r01_once.prepare_process_features/1288c9e1128f419a",
+      "input_binding_digest": "5ff0232e06ff2c51a7f28f42f429ca01386baa153d26da33f188a1530f1c1d05",
+      "node_digest": "93cb0b1363531cb269d7a0574d83f02f4597a499d87986e82e62eee4071938b2",
+      "node_id": "pour_r01_once.prepare_process_features",
+      "obligation_id": "pour_r01_once-process-feature-preparation",
+      "revision_id": "revision_e9c78f1c73df45b4"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/afbcb0bee0d143f8af98cde80e7e864f.json",
+      "candidate_set_ref": "process-feature-set://93e796ecfbfe44c6895f0989ade12522",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 682,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+      "selected_feature_refs": [
+        "process-feature://e1d2665a83004915b287d8334d19f2e9",
+        "process-feature://5d0fa57e412544c79ddce278e87bd604"
+      ]
+    },
+    "tool_id": "manipulation.prepare_process_features"
+  },
+  "revision_id": "revision_e9c78f1c73df45b4",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:7b7c29f19d3c4ff2b703ebf7232c08bc:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.prepare_process_features",
+  "task_id": "task_7996534232764084"
+}
