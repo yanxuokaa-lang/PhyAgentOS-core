@@ -59,7 +59,7 @@
 - marker 复用既有 artifact 约定（防逃逸/防符号链接/独占幂等），引擎与探针边界不变；未运行仿真或运动。live 回执：Isaac oracle run4 在抓取资格 gate 取消——oracle 契约生效，但 R01 矮瓶合法窗口仅 8.8mm，固定深度分数 0.35/0.50/0.65 全落窗外（详见 changelog/2026-11_part2.md v17.6.0）。 / The marker reuses existing artifact conventions with the engine/probe boundary unchanged; no simulation or motion ran. Live receipt: Isaac oracle run4 cancelled at the grasp gate — the oracle contract works, but the squat R01 leaves an 8.8 mm legal window and the fixed depth fractions all fall outside (details in changelog/2026-11_part2.md v17.6.0).
 
 ### Git 提交 / Git Commit
-- Implementation commit: (pending); branch: `feature/planning-loop`. / Implementation commit: (pending); branch: `feature/planning-loop`.
+- Implementation commit: `72970a03`; branch: `feature/planning-loop`. / Implementation commit: `72970a03`; branch: `feature/planning-loop`.
 
 ## v17.5.2 (2026-11-09 12:10) - codex
 
