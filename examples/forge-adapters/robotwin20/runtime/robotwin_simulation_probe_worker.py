@@ -135,6 +135,45 @@ class AcquisitionPostconditionError(SimulationProbeError):
         self.acquisition_measurement = dict(measurement)
 
 
+class AcquireSafeRecoveryError(SimulationProbeError):
+    """A known acquire failure was measured, safely recovered and receipted.
+
+    The receipt carries the exact Runtime-owned facts the generic recovery
+    contract requires for a fresh-observation replan: the gripper is empty,
+    the object remains on its support, the arm reversed the measured command
+    log back to the pre-route observation state, and the scene revision
+    advanced.  Anything the driver could not prove stays unknown instead.
+    """
+
+    outcome_known = True
+    failure_code = "physical_grasp_lost"
+    failure_owner = "execution"
+    retryable_in_revision = False
+    requires_replan = True
+    recommended_action = "refresh_perception_before_motion"
+    possession_state = "empty"
+    object_support_state = "on_support"
+    returned_to_safe_pose = True
+    observation_ready = True
+
+    def __init__(self, message: str, *, measurement: Mapping[str, float]) -> None:
+        super().__init__(message)
+        self.acquisition_measurement = dict(measurement)
+
+
+class AcquireRecoveryFailedError(SimulationProbeError):
+    """Safe acquire recovery could not prove the observation-ready state.
+
+    The outcome deliberately stays unknown: an unproven retreat must not be
+    receipted as a safe recovery, so the boundary remains fail-closed.
+    """
+
+    failure_code = "acquire_recovery_postcondition_failed"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 @dataclass(frozen=True)
 class ArrivalPolicy:
     position_tolerance_m: float = 0.005
@@ -1304,6 +1343,10 @@ def _execute_segment(
         )
         _guard_controller_source_digest(execution_state["_controller_source_sha256"])
         controller.command(positions[index], velocities[index])
+        execution_state.setdefault("_executed_arm_commands", []).append({
+            "arm": arm, "phase": phase,
+            "position": np.asarray(positions[index], dtype=np.float64).tolist(),
+        })
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
         _step_bounded_controller(task, controller, execution_state)
@@ -1362,6 +1405,10 @@ def _set_gripper(
         )
         _guard_controller_source_digest(execution_state["_controller_source_sha256"])
         controller.command(hold_position, [0.0] * len(hold_position))
+        execution_state.setdefault("_executed_arm_commands", []).append({
+            "arm": arm, "phase": phase,
+            "position": list(hold_position),
+        })
         task.robot.set_gripper(normalized_value, arm)
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
@@ -1376,6 +1423,111 @@ def _set_gripper(
                 attached=bool(execution_state["planner_object_attached"]),
             )
         )
+
+
+def _gripper_holds_target(task: Any, arm: str, target_name: str, records: list[dict[str, Any]]) -> bool:
+    """Return whether the target actor still has an active gripper contact."""
+    grippers = {
+        f"{arm_id}:{name}"
+        for arm_id, entity in (("left", task.robot.left_entity), ("right", task.robot.right_entity))
+        for name in task.robot.gripper_name
+    }
+    return any(
+        record["active_contact"] and target_name in record["pair"] and grippers & set(record["pair"])
+        for record in records
+    )
+
+
+def recover_acquire_to_observation(
+    task: Any,
+    arm: str,
+    entity_ref: str,
+    execution_state: dict[str, Any],
+    *,
+    deadline: float,
+    stop_file: Path | None,
+    half_extents: list[float],
+) -> float:
+    """Reverse the measured command log back to the pre-route observation state.
+
+    The driver only runs for known acquisition-postcondition failures (object
+    proved still on its support). It opens the gripper, replays the recorded
+    arm commands in reverse with the same per-step guards as forward
+    execution, and verifies support clearance, an empty gripper and arrival at
+    the first recorded command. Any unproven condition raises without the
+    safe-recovery receipt so the outer boundary stays fail-closed. Returns the
+    final support clearance in metres.
+    """
+    import numpy as np
+
+    log = execution_state.get("_executed_arm_commands")
+    if not isinstance(log, list) or not log:
+        raise AcquireRecoveryFailedError("safe acquire recovery requires the executed command log")
+    if any(entry.get("arm") != arm for entry in log):
+        raise AcquireRecoveryFailedError("safe acquire recovery requires a single-arm command log")
+    controller = execution_state["_controllers"][arm]
+    actor = _actor_for_entity(task, entity_ref)
+    target_name = str(actor.get_name())
+
+    def step_recovery(phase: str, position: list[float]) -> list[dict[str, Any]]:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("simulation probe exceeded max duration")
+        if stop_file is not None and stop_file.exists():
+            for item in execution_state["_controllers"].values():
+                item.stop()
+            raise InterruptedError("simulation probe stop requested")
+        _guard_execution_inputs(
+            execution_state["_artifact_root"],
+            execution_state["_execution_input_digests"],
+        )
+        _guard_controller_source_digest(execution_state["_controller_source_sha256"])
+        controller.command(np.asarray(position, dtype=np.float64), np.zeros(len(position)))
+        execution_state["world_change_started"] = True
+        execution_state["phase"] = phase
+        _step_bounded_controller(task, controller, execution_state)
+        execution_state["simulator_steps"] += 1
+        _capture_probe_video(task, execution_state)
+        return _contact_state(
+            task, phase=phase, step=execution_state["simulator_steps"], attached=False,
+        )
+
+    # Open the gripper while holding the arm at the failure position.
+    execution_state["phase"] = "recovery_open"
+    _set_gripper(
+        task, arm, _GRIPPER_VALUES["open"], phase="recovery_open",
+        deadline=deadline, stop_file=stop_file,
+        contacts=execution_state.setdefault("contact_trace", []), execution_state=execution_state,
+    )
+
+    # Reverse the measured command log; skip consecutive duplicate commands.
+    execution_state["phase"] = "recovery_retreat"
+    final_contacts: list[dict[str, Any]] = []
+    previous = None
+    for entry in reversed(log):
+        position = entry["position"]
+        if previous is not None and position == previous:
+            continue
+        final_contacts = step_recovery("recovery_retreat", position)
+        previous = position
+    # Hold briefly at the observation state and measure the final scene.
+    for _ in range(10):
+        final_contacts = step_recovery("recovery_retreat", log[0]["position"])
+
+    table_top_z = float(_table_top_z(task))
+    pose = actor.get_pose()
+    bottom_z = float(pose.p[2]) - float(half_extents[2])
+    support_clearance = bottom_z - table_top_z
+    home_command = log[0]["position"]
+    execution_state.setdefault("_arm_hold_targets", {})[arm] = list(home_command)
+    if (
+        not math.isfinite(support_clearance)
+        or abs(support_clearance) > 0.01
+        or _gripper_holds_target(task, arm, target_name, final_contacts)
+    ):
+        raise AcquireRecoveryFailedError(
+            "safe acquire recovery did not establish an empty supported observation state",
+        )
+    return support_clearance
 
 
 def _run_candidate(
@@ -1591,10 +1743,18 @@ def execute_candidate_phases(
             )
             previous_target = waypoint
         gripper_start_step = execution_state["simulator_steps"]
+        gripper_value = _GRIPPER_VALUES[phase["gripper_state"]]
+        injection = execution_state.get("_failure_injection")
+        if (phase["gripper_state"] == "closed"
+                and isinstance(injection, Mapping)
+                and injection.get("mode") == "gripper_close_offset"):
+            # Evaluation-only injected marginal closure, decided and recorded
+            # by the engine; the route contract itself is unchanged.
+            gripper_value = float(injection["close_value"])
         _set_gripper(
             task,
             arm,
-            _GRIPPER_VALUES[phase["gripper_state"]],
+            gripper_value,
             phase=phase_name,
             deadline=deadline,
             stop_file=stop_file,

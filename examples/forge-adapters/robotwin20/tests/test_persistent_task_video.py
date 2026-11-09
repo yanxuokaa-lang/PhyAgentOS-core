@@ -38,6 +38,7 @@ def test_engine_records_intermediate_execution_frames(tmp_path):
     from robotwin_simulation_probe_worker import _capture_probe_video
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root, engine.epoch, engine.duration = tmp_path, "test", 30
     engine.stop = _StopSignal(tmp_path / "stop")
     engine.backend = SimpleNamespace(_task=_task(), snapshot=lambda: {"scene_revision": "scene-2"})
@@ -165,6 +166,7 @@ def test_engine_persists_goal_and_independent_benchmark_results(tmp_path):
             }
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root, engine.epoch = tmp_path, "epoch"
     engine.runtime_profile = {"seed": 3}
     engine.task_adapter = Adapter()

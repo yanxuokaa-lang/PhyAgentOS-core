@@ -49,6 +49,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.5.0 (2026-11-09 12:50) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] RoboTwin persistent 执行链新增 config 门控的 acquire 安全恢复：`_execute_segment`/`_set_gripper` 逐步记录已下发关节命令；已知 lift 后置失败（`AcquisitionPostconditionError`：物体仍在支撑、夹爪为空）且 profile 开启 `acquire_safe_recovery` 时，引擎在控制器存活期内执行 `recover_acquire_to_observation`（开爪保持→逆序重放命令日志→回起点保持），验证支撑净空与无夹持接触后以 `AcquireSafeRecoveryError` 回执——字段精确匹配通用恢复契约（empty/on_support/returned_to_safe_pose/observation_ready/requires_replan/refresh_perception_before_motion + 新 scene revision）；任何条件无法证明则以 `acquire_recovery_postcondition_failed` 保持 unknown。 / Add config-gated safe acquire recovery to the RoboTwin persistent chain: `_execute_segment`/`_set_gripper` log every commanded joint step; on a known lift postcondition failure (`AcquisitionPostconditionError`: object still supported, gripper empty) with `acquire_safe_recovery` enabled, the engine runs `recover_acquire_to_observation` while controllers are still alive (open while holding -> reverse-replay the command log -> hold at the start), verifies support clearance and no gripper contact, and receipts via `AcquireSafeRecoveryError` with fields exactly matching the generic recovery contract; any unproven condition stays unknown as `acquire_recovery_postcondition_failed`.
+- [env] [feat] 新增评测专用失败注入：profile `failure_injection`（默认关闭）支持 `gripper_close_offset`，由引擎按 scene revision+invocation 确定性决定并写入 action artifact，探针仅在本 Action 的 close 值上应用偏移，路线契约不变。 / Add evaluation-only failure injection: profile `failure_injection` (default off) supports `gripper_close_offset`, decided deterministically by the engine from scene revision plus invocation identity and recorded in the action artifact; the probe applies the offset only to this Action's close value without changing the route contract.
+- [eval] [test] 8 项新测试：命令日志记录、逆序重放与保持、支撑未证/残余夹持接触 fail-closed、回执字段契约镜像、注入解析门控与确定性。 / Eight new tests: command-log recording, reverse replay and hold, fail-closed unproven support or residual gripper contact, receipt-field contract mirror, and injection-resolution gating with determinism.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`：`AcquireSafeRecoveryError`/`AcquireRecoveryFailedError`、命令日志、`_gripper_holds_target`、`recover_acquire_to_observation`、注入应用点。 / New error classes, the command log, `_gripper_holds_target`, `recover_acquire_to_observation` and the injection application point.
+- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`：AcquisitionPostconditionError 定向捕获与恢复编排、回执布尔字段透传、`_resolve_failure_injection` 与 artifact 记录。 / Targeted AcquisitionPostconditionError catch with recovery orchestration, receipt flag passthrough, `_resolve_failure_injection` and artifact recording.
+- [新增] `examples/forge-adapters/robotwin20/tests/test_acquire_safe_recovery.py`（8 测试）。 / Eight new tests.
+- [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py`、`tests/test_persistent_task_video.py`：部分构造的引擎补 `engine.profile = {}`（真实 `__init__` 总会设置）。 / Partially constructed test engines now set `engine.profile = {}` as the real `__init__` always does.
+
+### 关键 Diff / Key Diff
+```diff
+before: known acquire-postcondition failure -> known failed + measured replan,
+        arm left where the failure happened, no observation-ready receipt
+after:  config-gated reverse-replay recovery -> empty/supported/safe-pose
+        receipt -> fresh-observation replan; unproven retreat stays unknown
+added:  evaluation-only gripper_close_offset injection, engine-decided and
+        recorded per action; route contract and safety checks unchanged
+```
+
+### 架构与验证 / Architecture and Validation
+- 恢复驱动全部位于 RoboTwin 执行探针（Adapter 私有），引擎只做定向捕获与回执透传；Coordinator/AgentLoop/通用恢复契约零改动。逆序重放复用与正向执行相同的逐步守卫（deadline/stop/输入摘要/控制器源摘要/有界步进）。 / The recovery driver lives entirely in the RoboTwin execution probe (Adapter-private); the engine only catches, orchestrates and passes through the receipt. Coordinator, AgentLoop and the generic recovery contract are unchanged. Reverse replay reuses the identical per-step guards as forward execution.
+- 验证：robotwin20 全套与 HEAD 基线失败集完全一致（12 grounding + 1 video，均为既有、与本次无关），新增 8 项全部通过；ruff、compileall 通过。未运行 RoboTwin 仿真、Action admission 或运动。 / The full robotwin20 suite matches the HEAD baseline failure set exactly (twelve grounding plus one video, all pre-existing and unrelated), all eight new tests pass, and ruff/compileall pass. No RoboTwin simulation, Action admission or motion was run.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v17.4.0 (2026-11-09 11:40) - codex
 
 ### 完成范围 / Completed Scope
@@ -168,39 +198,6 @@ still: no stack-specific route-preparation factory or controller qualification;
 
 ### 验证 / Validation
 - `git diff --check` passed; no execution tests run because implementation files remain unchanged. / `git diff --check` 通过；实现文件未改，因此未运行执行测试。
-
-## v17.3.12 (2026-11-08 14:35) - codex
-
-### 阶段结果 / Stage Result
-- [env] [fix] 更正 Runtime inventory 误判，部署配置指向真实 `/home/data/yanxu_migrated/RoboTwin` checkout 与 `stack_blocks_three` 专用 profile；在 `/home/yanxu/robotwin20-runtime/stack-blocks-three/` 使用独立 artifact/assets 根，外置资产只通过明确链接接入。 / Correct the Runtime inventory error and point deployment at the real `/home/data/yanxu_migrated/RoboTwin` checkout and the task-specific `stack_blocks_three` profile; use isolated artifact/assets roots under `/home/yanxu/robotwin20-runtime/stack-blocks-three/` and explicitly link external assets.
-- [env] [fix] preflight 现在计数受控资产 symlink 的实际文件；embodiment 路径接受 Runtime 根或明确的 `assets/embodiments` 资产根，仍拒绝任意逃逸；RTX 5060 Ti CuRobo extension 按 `sm_120` 重建。 / Count real files behind controlled asset symlinks; permit embodiment paths only under Runtime or the designated `assets/embodiments` root while rejecting arbitrary escapes; rebuild CuRobo extensions for RTX 5060 Ti `sm_120`.
-- [env] [fix] 从真实 SAPIEN Entity 修复 table/block collision component 读取：优先 `get_components()`，保留 wrapper fallback。当前 no-motion Query 返回 tabletop 顶面 `z=0.7400000 m`、block target center `z=0.7650010 m`。 / Fix table/block collision-component access for real SAPIEN Entities by preferring `get_components()` while retaining the wrapper fallback. The live no-motion Query returns a tabletop height of `z=0.7400000 m` and block target center of `z=0.7650010 m`.
-- [eval] [test] 增加贴合 SAPIEN Entity API 的 Adapter 回归；stack 的真实 no-motion setup/capture 和 preflight 通过。关系执行 Provider、route/contact qualification、stop behavior 尚未完成，故保持 `motion_execution_supported=False`，不创建 task 或调用 Action。 / Add Adapter regressions matching the SAPIEN Entity API; real stack no-motion setup/capture and preflight pass. Relation execution Provider, route/contact qualification and stop behavior remain unfinished, so `motion_execution_supported=False` and no task or Action is started.
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_backend.py` L77-L86、L320-L324：受控解析 Runtime 与外置 embodiment assets。 / Resolve Runtime and external embodiment assets through explicit allowed roots.
-- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/preflight.py` L157-L163、`tests/test_preflight.py`：跟随受控资产 symlink 统计实际资源。 / Count actual assets by following controlled asset symlinks.
-- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py` L585-L625、L628-L644：SAPIEN `get_components()` 兼容及 current table collision geometry Query。 / Support SAPIEN `get_components()` and current-table collision-geometry Query.
-- [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L22-L62、L147-L160：使用实体 API fixture，断言 block 尺寸和目标高度。 / Use Entity-API fixtures and assert block dimensions and target height.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L401-L449：更正 artifact 根路径并记录实际 preflight/setup/Query 及 Provider 阻断。 / Correct the artifact-root path and record live preflight/setup/Query evidence and Provider blockers.
-- [修改] `changelog/2026-11_part2.md` L644-L695：更新双语阶段结果、Diff、行号、验证和明确未完成的 Provider 项。 / Record bilingual stage results, diff, line references, validation and the explicitly unfinished Provider work.
-
-### 关键 Diff / Key Diff
-```diff
-before: table.actor.components -> unavailable on real SAPIEN Entity
-after:  Entity.get_components() -> inspect collision geometry -> available target
-before: deployed Runtime/artifact paths did not resolve the intended task
-after:  real task/profile + isolated artifact/assets roots + preflight ready
-still:  no stoppable, route/contact-qualified relation Action Provider
-```
-
-### 架构与验证 / Architecture and Validation
-- Coordinator 继续拥有 task/revision/settlement，AgentLoop 继续驱动工作流，CapabilityRuntime 拥有 Action invocation；Adapter 只拥有 RoboTwin geometry 与 future execution mechanism。未增加生命周期或 settlement store。 / Coordinator retains task/revision/settlement ownership, AgentLoop drives the workflow, CapabilityRuntime owns Action invocation, and the Adapter owns RoboTwin geometry and future execution mechanisms. No lifecycle or settlement store was added.
-- 专用 preflight `ready=true`；no-motion `demo_clean` setup 与 RGB/depth/state capture 成功，实际 table Query 可用；`test_robotwin_task_adapters.py` `10 passed`，Ruff 与 `git diff --check` 通过。SAPIEN/OIDN 发出 CUDA-device warning 但 capture 返回 `sensor_available=true`。 / Dedicated preflight is `ready=true`; no-motion `demo_clean` setup and RGB/depth/state capture succeed, and the live table Query is available; `test_robotwin_task_adapters.py` reports `10 passed`, Ruff and `git diff --check` pass. SAPIEN/OIDN reports CUDA-device warnings, but capture returns `sensor_available=true`.
-- 未调用 `play_once`、机械臂动作或 motion Action。同步整轨迹调用无法满足 Action cancellation/unknown-result 语义，缺少 stack route/contact 与 runtime-monitored approval；不能据此启用执行。 / No `play_once`, robot action or motion Action was invoked. Synchronous full-trajectory calls do not satisfy Action cancellation/unknown-result semantics, and stack route/contact plus runtime-monitored approval are absent; execution cannot be enabled on this evidence.
-
-### Git 提交 / Git Commit
-- Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`. / Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`.
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 

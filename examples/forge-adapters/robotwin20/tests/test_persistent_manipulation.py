@@ -619,6 +619,7 @@ def _effect_engine(actors, trace=()):
     from robotwin_persistent_engine import RoboTwinPersistentEngine
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.backend = SimpleNamespace(_task=SimpleNamespace(_paos_observed_entities=actors))
     engine._state = {"contact_trace": list(trace)}
     return engine
@@ -685,6 +686,7 @@ def test_place_engine_projects_verified_postconditions_without_video_encoder(
             return ()
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root = Path(tmp_path)
     engine.epoch = "postconditions"
     engine.duration = 30
@@ -738,6 +740,7 @@ def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
             return ()
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root = tmp_path
     engine.epoch = "incomplete-route"
     engine.duration = 30
@@ -786,6 +789,7 @@ def test_place_engine_classifies_measured_postcondition_failure(tmp_path):
             return ()
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root = tmp_path
     engine.epoch = "unknown-place"
     engine.duration = 30
@@ -844,6 +848,7 @@ def test_place_engine_keeps_unclassified_post_release_exception_unknown(tmp_path
     from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root, engine.epoch, engine.duration = tmp_path, "unknown-place", 30
     engine.stop = _StopSignal(tmp_path / "stop")
     engine.backend = SimpleNamespace(
@@ -887,6 +892,7 @@ def test_action_attempt_clears_stale_placement_measurement(tmp_path):
     from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
 
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine.profile = {}
     engine.root, engine.epoch, engine.duration = tmp_path, "stale-measurement", 30
     engine.stop = _StopSignal(tmp_path / "stop")
     engine.backend = SimpleNamespace(

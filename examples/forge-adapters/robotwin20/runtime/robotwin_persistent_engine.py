@@ -649,6 +649,36 @@ class RoboTwinPersistentEngine:
             require_prepared_plan=True,
         )
 
+    def _resolve_failure_injection(self, phase: str, invocation_id: str) -> dict[str, Any] | None:
+        """Resolve the config-gated evaluation injection for one Action.
+
+        Injection exists only for reproducible recovery evaluation in explicit
+        simulation profiles. It is disabled by default, decided deterministically
+        from the scene revision and invocation identity, and recorded in the
+        action artifact so injected failures stay distinguishable in evidence.
+        """
+        config = self.profile.get("failure_injection")
+        if (not isinstance(config, Mapping) or not config.get("enabled", False)
+                or phase != "acquire"):
+            return None
+        mode = config.get("mode")
+        close_value = config.get("close_value")
+        probability = config.get("probability", 1.0)
+        if (mode != "gripper_close_offset"
+                or isinstance(close_value, bool) or not isinstance(close_value, (int, float))
+                or not math.isfinite(float(close_value)) or not 0. < float(close_value) < 1.
+                or isinstance(probability, bool) or not isinstance(probability, (int, float))
+                or not math.isfinite(float(probability)) or not 0. <= float(probability) <= 1.):
+            raise ValueError("failure_injection requires mode gripper_close_offset, "
+                             "close_value strictly between 0 and 1, and probability within [0, 1]")
+        import random
+
+        scene_revision = self.backend.snapshot().get("scene_revision", "")
+        rng = random.Random(f"{scene_revision}:{invocation_id}")
+        if rng.random() >= float(probability):
+            return None
+        return {"mode": mode, "close_value": float(close_value)}
+
     def execute(
         self,
         phase: str,
@@ -687,6 +717,9 @@ class RoboTwinPersistentEngine:
             elif arguments.get("assignment_ref") != self._state["assignment_ref"]:
                 raise ValueError("place must continue the acquisition assignment")
             self._state["action_deadline"] = time.monotonic() + self.duration
+            failure_injection = self._resolve_failure_injection(phase, invocation_id)
+            if failure_injection is not None:
+                self._state["_failure_injection"] = failure_injection
             self.video.start_action(
                 self.backend._task,
                 owner=owner,
@@ -702,6 +735,28 @@ class RoboTwinPersistentEngine:
                     phases.append(settled)
                     if phase == "acquire" and settled["phase"] == "lift":
                         break
+                except probe.AcquisitionPostconditionError as acquisition_failure:
+                    if phase != "acquire" or not self.profile.get("acquire_safe_recovery", False):
+                        raise
+                    # Known failed acquisition with the object still on its
+                    # support: reverse the measured command log back to the
+                    # observation state and receipt the Runtime-owned facts.
+                    probe.recover_acquire_to_observation(
+                        self.backend._task,
+                        self._state["_assigned_arm"],
+                        self._candidate["entity_ref"],
+                        self._state,
+                        deadline=self._state["action_deadline"],
+                        stop_file=self.stop,
+                        half_extents=[
+                            float(value)
+                            for value in self._candidate["attached_object"]["half_extents_m"]
+                        ],
+                    )
+                    raise probe.AcquireSafeRecoveryError(
+                        "acquire failed and the arm safely returned to the observation state",
+                        measurement=dict(acquisition_failure.acquisition_measurement),
+                    ) from acquisition_failure
                 except StopIteration as terminal:
                     if phase == "acquire":
                         raise ValueError("route ended before lift")
@@ -799,6 +854,10 @@ class RoboTwinPersistentEngine:
                     result["object_support_state"] = support_state
                 if isinstance(measurement, Mapping):
                     result["acquisition_measurement"] = dict(measurement)
+                for flag in ("returned_to_safe_pose", "observation_ready"):
+                    value = getattr(exc, flag, None)
+                    if value is True:
+                        result[flag] = True
             if not evidence_failure:
                 try:
                     video_refs = self.video.finish_action(
@@ -822,6 +881,8 @@ class RoboTwinPersistentEngine:
                 self._state["placement_tolerance"]
             )
         self._state.pop("video_recorder", None)
+        if isinstance(self._state.get("_failure_injection"), dict):
+            result["failure_injection"] = dict(self._state["_failure_injection"])
         reference = f"artifact://persistent/{self.epoch}/action-{uuid4().hex}"
         result["scene_effects"] = self._scene_effects(
             arguments,
