@@ -293,10 +293,13 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
     )
     assert bundle.client_transport() is bundle.transport
     tools = {item["tool_id"]: item for item in bundle.runtime.list_tools()["tools"]}
+    # No task_name: the deployment serves no stack_blocks_three task, so the
+    # relation.target Tool must stay unregistered instead of advertising an
+    # invoke that the engine-side Provider would always reject.
     assert set(tools) == {
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
-        "scene.bind", "task.goal", "relation.target", "manipulation.staging",
+        "scene.bind", "task.goal", "manipulation.staging",
         "manipulation.target",
     }
     assert tools["scene.observe"]["input_schema"]["properties"]["sensor_ref"]["default"] == "camera/head"
@@ -443,3 +446,38 @@ def test_goal_source_controls_autonomous_goal_tool_planning(
         else:
             assert capabilities == expected_capabilities
             assert tools[tool_id]["planning"]["requires_before_plan"] is False
+
+
+def _relation_registration_bundle(tmp_path, task_name):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    client = object()
+    deployment = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda _request: None,
+        materializer_command=("python",), materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+        },
+        arm_profile_digest="a" * 64,
+        task_name=task_name,
+    )
+    bundle = build_persistent_runtime_bundle(
+        deployment=deployment,
+        client=client,
+        understanding_provider=object(),
+        grasp_provider=object(),
+        tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
+    )
+    return {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+
+
+@pytest.mark.parametrize("task_name", [None, "blocks_ranking_rgb"])
+def test_runtime_bundle_omits_relation_target_for_non_stack_tasks(tmp_path, task_name):
+    # The engine-side Provider rejects every task except stack_blocks_three, so
+    # a non-stack deployment must not advertise the requires_before_plan Tool.
+    assert "relation.target" not in _relation_registration_bundle(tmp_path, task_name)
+
+
+def test_runtime_bundle_registers_relation_target_for_stack_task(tmp_path):
+    assert "relation.target" in _relation_registration_bundle(tmp_path, "stack_blocks_three")

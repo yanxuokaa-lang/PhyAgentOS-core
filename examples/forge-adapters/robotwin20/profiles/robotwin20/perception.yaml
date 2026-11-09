@@ -9,8 +9,10 @@ proposal_worker:
   script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/locateanything_worker.py
   cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
   startup_timeout_s: 300
-  request_timeout_s: 120
-  shutdown_timeout_s: 15
+  request_timeout_s: 240
+  # Hibernate offloads model weights GPU->CPU; under memory pressure this
+  # exceeds a 15s budget (r4: LA sleep timed out at 15s and failed understand).
+  shutdown_timeout_s: 90
   hibernate_on_release: true
   environment:
     PYTHONUNBUFFERED: "1"
@@ -37,9 +39,11 @@ segmentation_worker:
   python: ${SAM2_PYTHON}
   script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/sam2_worker.py
   cwd: ${SAM2_REPO_ROOT}
-  startup_timeout_s: 240
-  request_timeout_s: 60
-  shutdown_timeout_s: 15
+  startup_timeout_s: 420
+  request_timeout_s: 180
+  # Hibernate offloads model weights GPU->CPU; under memory pressure this
+  # exceeds a 15s budget (r4: LA sleep timed out at 15s and failed understand).
+  shutdown_timeout_s: 90
   hibernate_on_release: true
   environment:
     PYTHONUNBUFFERED: "1"

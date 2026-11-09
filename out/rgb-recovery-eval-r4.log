@@ -1,0 +1,41 @@
+Using config: /home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json
+  ↳ Model request started: phase=task_creation, prompt≈14168 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=11.168s, first_token=11.171s, 
+complete=15.416s.
+  ↳ 我会先读取任务权威状态、当前 Runtime 和 Tool context，并激活匹配的 
+Skill；随后创建新任务，不复用历史任务证据。感知 Query 
+将严格串行并等待终态，物理动作只在规划与 readiness 门禁通过后执行。
+  ↳ Model request started: phase=discovery, prompt≈22579 tokens, iteration=2.
+  ↳ Model request timing: headers=9.569s, first_token=9.830s, complete=9.929s.
+  ↳ 
+新任务已创建：`task_11f5f5759b314f6d`。另一次缺少必填参数的创建调用被拒绝，未返
+回任务 ID；现在只推进已创建的任务，核对其权威状态和观察工具要求。
+  ↳ Model request started: phase=discovery, prompt≈16636 tokens, iteration=3.
+  ↳ Model request timing: headers=6.489s, first_token=6.490s, complete=6.801s.
+  ↳ 任务处于执行中，当前没有已落盘的感知证据；`scene.observe` 
+已就绪。先获取双视角观察，等待返回后再执行下一项 Query。
+  ↳ Model request started: phase=discovery, prompt≈17472 tokens, iteration=4.
+  ↳ Model request timing: headers=8.372s, first_token=8.373s, complete=8.474s.
+  ↳ `scene.observe` 已成功落盘，当前 scene revision 为 
+`9d3676b239a044a696189ff07c7ec381-1`。下一步读取 `manipulation.capabilities` 
+的实时契约与就绪状态，再继续串行查询。
+  ↳ Model request started: phase=discovery, prompt≈17470 tokens, iteration=5.
+  ↳ Model request timing: headers=9.957s, first_token=9.961s, complete=10.644s.
+  ↳ 
+能力查询已就绪。我将引用本任务已落盘的观察记录，查询当前场景的操作能力，不重复观
+察。
+  ↳ Model request started: phase=discovery, prompt≈18350 tokens, iteration=6.
+  ↳ Model request timing: headers=9.091s, first_token=9.092s, complete=9.409s.
+  ↳ 能力查询成功，尚未获得运动许可。下一步读取 `scene.understand` 
+的实时契约，然后基于本任务已有观察串行执行场景理解。
+  ↳ Model request started: phase=discovery, prompt≈20646 tokens, iteration=7.
+  ↳ Model request timing: headers=14.613s, first_token=16.987s, 
+complete=18.012s.
+  ↳ `scene.understand` 当前 ready。现在提交本任务的场景理解 
+Query，沿用已落盘的双视角观察与标定，并等待终态，不并行启动其他感知。
+
+🍞 PhyAgentOS
+The Query is blocked by a non-retryable provider failure; returning control to  
+the persisted provider recovery lifecycle.                                      
+

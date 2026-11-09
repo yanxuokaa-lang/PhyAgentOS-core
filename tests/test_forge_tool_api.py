@@ -58,9 +58,9 @@ def test_unregistered_local_lifecycle_context_fails_closed_without_gateway_call(
 
 
 def test_scene_understand_timeout_has_provider_safe_floor():
-    assert _effective_query_timeout_ms("scene.understand", None) == 180_000
-    assert _effective_query_timeout_ms("scene.understand", 30_000) == 180_000
-    assert _effective_query_timeout_ms("scene.understand", 240_000) == 240_000
+    assert _effective_query_timeout_ms("scene.understand", None) == 480_000
+    assert _effective_query_timeout_ms("scene.understand", 30_000) == 480_000
+    assert _effective_query_timeout_ms("scene.understand", 600_000) == 600_000
 
 
 def test_other_query_timeouts_are_not_changed():

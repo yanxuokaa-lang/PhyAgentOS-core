@@ -15,21 +15,19 @@ from PhyAgentOS.skill_runtime.manifest import load_manifest
 from PhyAgentOS.skill_runtime.state import RuntimeState, RuntimeStateStore
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
+# Mirrors skill.yaml required_tools: the eleven dora-flow Tools the robotwin
+# persistent host registers (the four isaacsim-only process-feature/affordance
+# Tools never pass this skill's health check; relation.target is stack-only).
 EXPECTED_TOOLS = {
     "scene.observe",
     "manipulation.capabilities",
     "scene.understand",
     "scene.bind",
     "task.goal",
-    "relation.target",
     "manipulation.target",
     "manipulation.staging",
     "grasp.propose",
     "manipulation.prepare",
-    "manipulation.process_features",
-    "manipulation.prepare_process_features",
-    "manipulation.grasp_task_affordances",
-    "manipulation.prepare_grasp_task_affordance",
     "object.acquire",
     "object.place",
 }

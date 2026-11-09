@@ -1,0 +1,157 @@
+Using config: /home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json
+  ↳ Model request started: phase=task_creation, prompt≈14168 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=14.673s, first_token=17.537s, 
+complete=17.849s.
+  ↳ 我会先读取任务权威状态、激活抓放 Skill，并检查当前 Runtime 
+与观察工具；随后创建全新的任务，按串行感知、受控规划、动作和最终验证的流程推进，
+不复用历史任务证据。
+  ↳ Model request started: phase=task_creation, prompt≈19406 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=10.529s, first_token=10.529s, 
+complete=17.975s.
+  ↳ Model request started: phase=discovery, prompt≈19044 tokens, iteration=3.
+  ↳ Model request timing: headers=9.201s, first_token=9.201s, complete=10.772s.
+  ↳ 新任务 `task_5196fab805c747e5` 已创建。我先读取其权威状态、冻结的 Skill 
+约束和当前观察工具 context，再按顺序推进本任务的实时感知，不复用历史证据。
+  ↳ Model request started: phase=discovery, prompt≈32352 tokens, iteration=4.
+  ↳ Model request timing: headers=7.524s, first_token=7.724s, complete=7.729s.
+  ↳ 任务仍处于 discovery 阶段，尚无观察记录。我将读取 `scene.observe` 
+的实时契约，确认传感器集合和采集参数。
+  ↳ Model request started: phase=discovery, prompt≈27258 tokens, iteration=5.
+  ↳ Model request timing: headers=13.784s, first_token=13.785s, 
+complete=14.155s.
+  ↳ `scene.observe` 已就绪，要求至少两个传感器。我先核对本次新任务的权威状态与 
+Runtime 绑定，避免重复建任务或复用历史证据。
+  ↳ Model request started: phase=discovery, prompt≈26561 tokens, iteration=6.
+  ↳ Model request timing: headers=11.648s, first_token=11.836s, 
+complete=11.896s.
+  ↳ 当前任务为新建的 `task_5196fab805c747e5`，状态为 
+`executing`，尚无感知记录。我将读取观察工具的实时 context，然后发起双视角观察。
+  ↳ Model request started: phase=discovery, prompt≈27272 tokens, iteration=7.
+  ↳ Model request timing: headers=9.122s, first_token=9.123s, complete=9.434s.
+  ↳ 观察工具已就绪。现在请求 head/front 同步 RGB-D 观察，并等待终态。
+  ↳ Model request started: phase=discovery, prompt≈27089 tokens, iteration=8.
+  ↳ Model request timing: headers=11.767s, first_token=11.768s, 
+complete=12.114s.
+  ↳ 当前新任务 `task_5196fab805c747e5` 
+已有成功的同步观察记录；接下来沿用该记录，不重复观察。先读取能力查询的实时契约与
+readiness。
+  ↳ Model request started: phase=discovery, prompt≈27297 tokens, iteration=9.
+  ↳ Model request timing: headers=8.104s, first_token=8.106s, complete=8.864s.
+  ↳ 能力工具就绪。现在用本任务观察记录中的原始标识执行能力查询，并等待结果。
+  ↳ Model request started: phase=discovery, prompt≈27760 tokens, iteration=10.
+  ↳ Model request timing: headers=9.138s, first_token=9.138s, complete=9.141s.
+  ↳ 能力查询已成功返回。下一步读取 `scene.understand` 
+的输入契约与就绪状态，沿用本任务已有的多视角观察，不重复采集。
+  ↳ Model request started: phase=discovery, prompt≈32572 tokens, iteration=11.
+  ↳ Model request timing: headers=7.063s, first_token=7.329s, complete=7.400s.
+  ↳ `scene.understand` 
+已就绪。我将提交本任务的理解查询，沿用已落盘的同步观察证据，并等待终态。
+  ↳ Model request started: phase=discovery, prompt≈33283 tokens, iteration=12.
+  ↳ Model request timing: headers=8.149s, first_token=8.156s, complete=8.557s.
+  ↳ 
+理解结果已落盘：红、蓝、绿三个方块可明确选择，歧义仅涉及外围灰色表面。下一步读取
+`scene.bind` 的实时契约，只绑定这三个方块，不重复感知。
+  ↳ Model request started: phase=discovery, prompt≈33634 tokens, iteration=13.
+  ↳ Model request timing: headers=11.703s, first_token=11.704s, 
+complete=11.936s.
+  ↳ `scene.bind` 
+当前就绪。我将提交当前任务理解结果中的三个方块实体；观察身份与标定字段由 PAOS 
+从当前观察记录复制。
+  ↳ Model request started: phase=discovery, prompt≈34525 tokens, iteration=14.
+  ↳ Model request timing: headers=9.109s, first_token=9.109s, complete=9.416s.
+  ↳ 三个方块已绑定到当前任务，接下来读取 `task.goal` 的实时契约，获取 Runtime 
+提供的目标定义；不重复感知。
+  ↳ Model request started: phase=discovery, prompt≈34915 tokens, iteration=15.
+  ↳ Model request timing: headers=8.341s, first_token=8.341s, complete=8.345s.
+  ↳ `task.goal` 
+已就绪。我将派发当前任务内的只读目标查询，等待返回后再选择操作顺序。
+  ↳ Model request started: phase=discovery, prompt≈36704 tokens, iteration=16.
+  ↳ Model request timing: headers=16.110s, first_token=20.513s, 
+complete=26.836s.
+  ↳ 
+本任务的观察、理解、绑定和目标证据已持久化，当前尚无世界变化；我不重复感知。下一
+步提交红方块的原子搬运及放置后感知检查点，由 Coordinator 
+注入目标引用，不手写目标位姿。
+
+🍞 PhyAgentOS
+forge_task_materialize_plan succeeded; continuing through the persisted         
+long-horizon planning loop.                                                     
+
+  ↳ Model request started: phase=planning_execution, prompt≈26329 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=6.591s, first_token=6.592s, complete=7.512s.
+  ↳ 我将只执行当前 `red_grasp` 
+节点：核对就绪状态与授权来源，使用当前场景理解记录生成红块抓取候选，不启动物理动
+作。
+  ↳ Model request started: phase=planning_execution, prompt≈28463 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=4.910s, first_token=4.911s, complete=7.299s.
+  ↳ Model request started: phase=planning_execution, prompt≈27828 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=10.718s, first_token=12.455s, 
+complete=12.458s.
+  ↳ 我将只执行当前 `red_prepare` 
+节点：核对获准的抓取候选与能力来源，然后提交完整路径的只读准备评估，不启动物理动
+作。
+  ↳ Model request started: phase=planning_execution, prompt≈30815 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=10.064s, first_token=10.065s, 
+complete=10.235s.
+  ↳ Model request started: phase=planning_execution, prompt≈33210 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=6.362s, first_token=6.365s, complete=7.772s.
+  ↳ 我将只执行当前红方块抓取节点：先核对 ready gate 与准备结果的授权来源，再通过
+Gateway 提交获准的 Action；不会重跑感知或执行后续放置。
+  ↳ Model request started: phase=planning_execution, prompt≈34682 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=4.779s, first_token=4.779s, complete=6.958s.
+  ↳ Model request started: phase=planning_execution, prompt≈26289 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=4.630s, first_token=4.631s, complete=6.166s.
+  ↳ 我将仅处理当前红块放置节点：沿用已成功抓取的结果和 Coordinator 
+注入的目标，先检查就绪状态与授权来源，不重放抓取动作。
+  ↳ Model request started: phase=planning_execution, prompt≈27661 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=9.134s, first_token=9.134s, complete=11.388s.
+  ↳ Model request started: phase=planning_execution, prompt≈23343 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=4.287s, first_token=4.599s, complete=6.036s.
+  ↳ 
+我将只执行当前能力刷新节点，使用放置后的最新观察记录获取能力快照，不重放已完成动
+作。
+  ↳ Model request started: phase=planning_execution, prompt≈24112 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=5.552s, first_token=5.552s, complete=8.905s.
+  ↳ Model request started: phase=planning_execution, prompt≈23579 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=6.469s, first_token=6.701s, complete=7.633s.
+  ↳ 
+我将仅执行当前的场景理解节点，使用放置后的最新多视角观察，不重复已完成的抓取或放
+置动作。
+  ↳ Model request started: phase=planning_execution, prompt≈24958 tokens, 
+iteration=2.
+  ↳ Model request timing: headers=9.975s, first_token=9.976s, complete=10.284s.
+  ↳ Model request started: phase=planning_execution, prompt≈26282 tokens, 
+iteration=3.
+  ↳ Model request timing: headers=13.731s, first_token=13.732s, 
+complete=13.830s.
+  ↳ 当前节点已就绪。我将提交场景理解选择，由 Coordinator 
+从任务的最新观察记录绑定输入，避免手工重建感知数据。
+  ↳ Model request started: phase=planning_execution, prompt≈26516 tokens, 
+iteration=4.
+  ↳ Model request timing: headers=9.756s, first_token=9.757s, complete=10.001s.
+  ↳ 选择被拒绝，原因是该契约不自动补齐观察参数；没有执行场景理解 
+Query。我将核查缺失参数的可信来源，不填造 freshness、frame 或 artifacts。
+  ↳ Model request started: phase=planning_execution, prompt≈29400 tokens, 
+iteration=5.
+  ↳ Model request timing: headers=7.875s, first_token=7.938s, complete=9.794s.
+Long-horizon task task_5196fab805c747e5: status=blocked, 
+revision=revision_f3394f5112d043ab, 
+reason=node_turn_incomplete:checkpoint_understand:selection rejected without 
+execution: tool_input_schema_invalid: selected Tool arguments violate the frozen
+input schema: $: 'artifacts' is a required property; $: 'calibration_ref' is a 
+required property; $: 'frame_id' is a required property; $: 'freshness_ms' is a 
+required property; $: 'max_age_ms' is a required property; $: 'observation_ref' 
+is a required property; $: 'scene_revision' is a required property

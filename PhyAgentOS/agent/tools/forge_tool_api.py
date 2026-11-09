@@ -30,7 +30,11 @@ from PhyAgentOS.forge.tool_client import (
 # ``unknown`` transport result.  Keep this policy at the Agent Tool boundary
 # so PAOS planning remains provider-neutral and Action/Session deadlines are
 # unchanged.
-_SCENE_UNDERSTAND_TIMEOUT_MS = 180_000
+# Cold-start floor: since v12.3.1 perception workers hibernate on release, the
+# first scene.understand may pay LA wake (~120s) + SAM2 cold start (~240s) +
+# vLLM wake before any semantic output, so the client budget must cover the
+# provider-side worst case instead of abandoning the query mid-wake.
+_SCENE_UNDERSTAND_TIMEOUT_MS = 480_000
 
 # These are scene identity, provenance, and freshness-budget inputs owned by
 # the current scene observation receipt. Resolve them from that receipt instead

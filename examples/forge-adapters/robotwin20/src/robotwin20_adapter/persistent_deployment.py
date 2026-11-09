@@ -120,6 +120,7 @@ class PersistentDeployment:
     grounding: Grounding | None = None
     task_goal_provider: Any | None = None
     relation_target_provider: Any | None = None
+    task_name: str | None = None
 
     def runtime_arguments(self):
         return {"preparation_provider": self.preparation_provider,
@@ -253,7 +254,14 @@ def build_persistent_runtime_bundle(
             TaskGoalEndpoint(deployment.task_goal_provider),
             context_provider=lambda: tool_context_provider("task.goal"),
         )
-    if deployment.relation_target_provider is not None:
+    # The engine-side relation-target Provider only serves stack_blocks_three
+    # (robotwin_persistent_engine rejects every other task at invoke time).
+    # Registering the Tool for any other task would advertise a
+    # requires_before_plan capability the active task can never fulfill.
+    if (
+        deployment.relation_target_provider is not None
+        and deployment.task_name == "stack_blocks_three"
+    ):
         runtime.register_tool(
             deepcopy(RELATION_TARGET_TOOL_SPEC),
             RelationTargetEndpoint(deployment.relation_target_provider),
@@ -382,4 +390,5 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         grounding,
         PersistentTaskGoalProvider(client, goal_source=goal_source),
         PersistentRelationTargetProvider(client),
+        task_name=task_name,
     )

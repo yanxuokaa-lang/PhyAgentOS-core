@@ -1,0 +1,45 @@
+Using config: /home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json
+  ↳ Model request started: phase=replan, prompt≈34092 tokens, iteration=1.
+  ↳ Model request timing: headers=5.371s, first_token=5.374s, complete=6.527s.
+  ↳ 我先直接读取当前任务的 Coordinator 
+权威状态，核对检查点和最新观察记录，不创建新任务，也不重复已完成的动作。
+  ↳ Model request started: phase=replan, prompt≈47644 tokens, iteration=2.
+  ↳ Model request timing: headers=12.384s, first_token=21.704s, 
+complete=23.341s.
+  ↳ Coordinator 确认任务仍为 `awaiting_replan`，阻塞原因是 
+`checkpoint_understand` 选参校验失败，理解 Query 
+未执行。任务投影中已有红块放置后的同步观察，因此不重复采集；我先核查 
+`scene.understand` 的当前契约与 readiness。
+  ↳ Model request started: phase=replan, prompt≈45921 tokens, iteration=3.
+  ↳ Model request timing: headers=14.163s, first_token=14.537s, 
+complete=14.541s.
+  ↳ 接下来直接调用本地 `forge_task_get` 核对权威状态，并恢复该任务冻结的 Skill 
+约束；不经 Gateway，也不创建新任务。
+  ↳ Model request started: phase=replan, prompt≈50150 tokens, iteration=4.
+  ↳ Model request timing: headers=12.213s, first_token=18.766s, 
+complete=22.146s.
+
+🍞 PhyAgentOS
+已直接调用本地 forge_task_get，确认继续的是同一个任务 task_5196fab805c747e5：   
+
+ • 状态：awaiting_replan                                                        
+ • 当前 revision：revision_f3394f5112d043ab                                     
+ • 阻塞：checkpoint_understand 上次因缺少必填参数被拒，未执行。                 
+
+当前持久化投影已记录红块 acquire/place 成功终态，以及放置后的双相机同步观察     
+tool_1ac0e42e750a455f（scene revision 后缀 -3）和                               
+capabilities。因此不应无理由重复观察；下一步应合法恢复检查点，从该观察记录完整复
+制 understanding 输入。                                                         
+
+但本会话实际注册的工具中没有                                                    
+forge_plan_activate、forge_plan_ready、forge_plan_select，也没有 Action         
+启动、终态对账及 finalize 工具。 这不是 Gateway                                 
+404，而是当前可调用工具集缺少必要控制面能力。我不能伪造                         
+planning_binding，或绕过门禁直接执行 Query/Action。                             
+
+本轮仅完成权威状态核查：未创建、取消或替换任务，未追加                          
+revision，未发起感知或物理动作。需恢复这些工具的会话注册后，才能按原任务继续绿、
+蓝搬运与最终验证；目前不能报告完成。                                            
+
+Long-horizon task task_5196fab805c747e5: status=awaiting_replan, 
+revision=revision_f3394f5112d043ab

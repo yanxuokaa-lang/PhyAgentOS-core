@@ -1,0 +1,20 @@
+23:28:58 - LiteLLM:WARNING: get_model_cost_map.py:454 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: The read operation timed out. Falling back to local backup.
+Using config: /home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json
+  ↳ Model request started: phase=task_creation, prompt≈13985 tokens, 
+iteration=1.
+  ↳ Model request timing: headers=18.790s, first_token=18.799s, 
+complete=19.138s.
+
+🍞 PhyAgentOS
+我当前实际可调用的工具列表中没有                                                
+forge_task_get，因此无法按你要求，第一步直接读取 task_5196fab805c747e5          
+的权威状态。你的说明与本轮暴露的工具列表不一致；这不代表 Coordinator            
+本身缺少该工具。                                                                
+
+我没有通过 forge_tool_query 或 forge_tool_context                               
+绕查，也没有创建任务、调用感知或执行物理动作。                                  
+
+请将本地 Coordinator 工具重新注册／暴露到当前会话。恢复后，我会首先直接调用     
+forge_task_get，仅依据该任务最新记录推进                                        
+checkpoint_understand，不复用历史任务，也不盲目重试 Action。                    
+
