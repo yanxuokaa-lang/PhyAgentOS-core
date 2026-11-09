@@ -20,6 +20,15 @@ Get USER_ID and CHANNEL from the current session (e.g., `8281248569` and `telegr
 
 When the user asks for a recurring/periodic task, update `HEARTBEAT.md` instead of creating a one-time cron reminder.
 
+## 模型分工 / Model Division
+
+任务先分类再动手，由主会话自动分辨，无需用户点名。额度分开计费（主会话走 coding plan，执行走 start plan）：
+
+- **判断类 → 主会话（GLM-5.3）直接做**：写方案、写规划、反思、审核验收、code review、架构决策、疑难诊断、答问。不派发。
+- **实现类 → 默认派发 `flash-executor`（GLM-5.3-Flash max，定义见 `.zcode/agents/flash-executor.md`）**：写代码、按已定方案实现、bug 修复的编码部分、批量文件修改、重复性/清单式任务。派发 prompt 必须附带明确方案/规格（改哪些文件、预期行为、验收标准）；子代理遇歧义回报 Ambiguous/Blocked，主会话裁决后重派。**仅当同时满足：单文件、预计 ≤10 行、无连锁修改，才允许主会话 inline 改。**
+- **大批量并行 → workflow**，`subagent_model` 指向 `account:bigmodel-start-plan/GLM-5.3-Flash`。
+- **混合任务（如 bug 修复）**：诊断、定位、定改法在主会话；改法确定后的编码执行派发。派发完成后主会话必须 review 子代理的改动摘要再交付，不得只转述。
+
 ## 通用架构与编码原则 / General Architecture and Coding Principles
 
 These principles apply to every new integration, not only robotics or
