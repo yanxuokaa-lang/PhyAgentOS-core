@@ -1,0 +1,1019 @@
+{
+  "model": {
+    "checkpoint": "runs/synth-calibrated",
+    "config": {
+      "format": "minojev-checkpoint",
+      "version": 1,
+      "backbone": {
+        "type": "tiny",
+        "vocab_size": 259,
+        "hidden_size": 96,
+        "num_layers": 3,
+        "num_heads": 4,
+        "intermediate_size": 384,
+        "dropout": 0.0
+      },
+      "head": {
+        "hidden_size": 96,
+        "attention_dim": 128,
+        "num_heads": 4
+      },
+      "objective": "teacher_ce",
+      "metrics": {
+        "questions": 321,
+        "labelled": 321,
+        "accuracy": 0.719626168224299,
+        "accuracy_by_type": {
+          "boolean": 0.803922,
+          "choice": 0.736364,
+          "score": 0.623853
+        },
+        "accuracy_by_family": {
+          "boolean-match": 0.803922,
+          "choice-lookup": 0.736364,
+          "score-support": 0.623853
+        },
+        "gold_nll": 0.7707828903075947,
+        "teacher_scored": 321,
+        "teacher_ce": 0.9736059754961592,
+        "distribution_error": 0.2041439754674587,
+        "brier": 0.2041439754674587,
+        "decode_steps": 0
+      },
+      "calibration": {
+        "temperatures": {
+          "choice": 0.5463,
+          "boolean": 0.9812,
+          "score": 0.2019
+        }
+      }
+    },
+    "parameters": 547586
+  },
+  "summary": {
+    "questions": 25,
+    "labelled": 25,
+    "accuracy": 0.68,
+    "accuracy_by_type": {
+      "boolean": 0.8,
+      "choice": 0.777778,
+      "score": 0.333333
+    },
+    "accuracy_by_family": {
+      "boolean-match": 0.8,
+      "choice-lookup": 0.777778,
+      "score-support": 0.333333
+    },
+    "gold_nll": 0.6018213668603484,
+    "mean_confidence": 0.7434339884000001,
+    "expected_calibration_error": 0.23903732040000003,
+    "teacher_scored": 25,
+    "teacher_ce": 1.1065570706992136,
+    "distribution_error": 0.26045904327608116,
+    "brier": 0.26045904327608116,
+    "teacher_argmax_accuracy": 0.68,
+    "teacher_topset_accuracy": 0.68,
+    "teacher_argmax_by_family": {
+      "boolean-match": 0.8,
+      "choice-lookup": 0.777778,
+      "score-support": 0.333333
+    },
+    "teacher_topset_by_family": {
+      "boolean-match": 0.8,
+      "choice-lookup": 0.777778,
+      "score-support": 0.333333
+    },
+    "decode_steps": 0
+  },
+  "records": [
+    {
+      "id": "test-000000",
+      "qid": "q0",
+      "type": "boolean",
+      "state": {
+        "size": "tiny",
+        "mood": "calm",
+        "shape": "star"
+      },
+      "instructions": "Is shape equal to star?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.30654076,
+        0.69345933
+      ],
+      "logits": [
+        -0.06566322,
+        0.75067866
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": true,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    },
+    {
+      "id": "test-000000",
+      "qid": "q1",
+      "type": "choice",
+      "state": {
+        "size": "tiny",
+        "mood": "calm",
+        "shape": "star"
+      },
+      "instructions": "Which value belongs to the attribute 'size'?",
+      "candidate_ids": [
+        "blue",
+        "large",
+        "tiny"
+      ],
+      "probabilities": [
+        0.31419712,
+        0.01602136,
+        0.66978157
+      ],
+      "logits": [
+        -1.61457515,
+        -4.59067297,
+        -0.85764408
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "tiny",
+      "correct": true,
+      "teacher": {
+        "blue": 0.07500000000000001,
+        "large": 0.07500000000000001,
+        "tiny": 0.85
+      }
+    },
+    {
+      "id": "test-000001",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "mood": "tired",
+        "shape": "square",
+        "color": "red"
+      },
+      "instructions": "Which value belongs to the attribute 'shape'?",
+      "candidate_ids": [
+        "star",
+        "square",
+        "huge"
+      ],
+      "probabilities": [
+        0.15504654,
+        0.80416662,
+        0.04078684
+      ],
+      "logits": [
+        -1.74421656,
+        -0.09813534,
+        -3.07958221
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "square",
+      "correct": true,
+      "teacher": {
+        "star": 0.07500000000000001,
+        "square": 0.85,
+        "huge": 0.07500000000000001
+      }
+    },
+    {
+      "id": "test-000001",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "mood": "tired",
+        "shape": "square",
+        "color": "red"
+      },
+      "instructions": "Is mood equal to tired?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.49754968,
+        0.50245029
+      ],
+      "logits": [
+        0.67357987,
+        0.68338114
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": true,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    },
+    {
+      "id": "test-000002",
+      "qid": "q0",
+      "type": "boolean",
+      "state": {
+        "color": "blue",
+        "mood": "eager",
+        "size": "huge"
+      },
+      "instructions": "Is mood equal to eager?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.81001049,
+        0.18998948
+      ],
+      "logits": [
+        -0.39252418,
+        -1.84260261
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": false,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    },
+    {
+      "id": "test-000002",
+      "qid": "q1",
+      "type": "score",
+      "state": {
+        "color": "blue",
+        "mood": "eager",
+        "size": "huge"
+      },
+      "instructions": "How strongly does the state support the claim that size is huge?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.79638171,
+        0.00267461,
+        0.00017815,
+        0.00154812,
+        0.19921738
+      ],
+      "logits": [
+        8.2552042,
+        2.55892801,
+        -0.14999908,
+        2.01216865,
+        6.86952209
+      ],
+      "expected": 0.80454481,
+      "level": 0,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 4,
+      "correct": false,
+      "teacher": {
+        "0": 0.01,
+        "1": 0.03,
+        "2": 0.08,
+        "3": 0.28,
+        "4": 0.6
+      }
+    },
+    {
+      "id": "test-000003",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "shape": "square",
+        "mood": "eager",
+        "size": "tiny"
+      },
+      "instructions": "Which value belongs to the attribute 'shape'?",
+      "candidate_ids": [
+        "round",
+        "square",
+        "eager"
+      ],
+      "probabilities": [
+        0.03602371,
+        0.95229471,
+        0.01168154
+      ],
+      "logits": [
+        -3.16011906,
+        0.11457807,
+        -4.28628683
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "square",
+      "correct": true,
+      "teacher": {
+        "round": 0.07500000000000001,
+        "square": 0.85,
+        "eager": 0.07500000000000001
+      }
+    },
+    {
+      "id": "test-000003",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "shape": "square",
+        "mood": "eager",
+        "size": "tiny"
+      },
+      "instructions": "Is size equal to tiny?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.57880419,
+        0.42119581
+      ],
+      "logits": [
+        0.54438466,
+        0.22651827
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": false,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    },
+    {
+      "id": "test-000004",
+      "qid": "q0",
+      "type": "score",
+      "state": {
+        "size": "huge",
+        "shape": "star",
+        "mood": "calm"
+      },
+      "instructions": "How strongly does the state support the claim that size is large?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.68163204,
+        0.02708251,
+        0.00045434,
+        0.00270955,
+        0.28812161
+      ],
+      "logits": [
+        4.64346123,
+        1.41785944,
+        -2.66993046,
+        -0.88424641,
+        3.78235388
+      ],
+      "expected": 1.18860638,
+      "level": 0,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 0,
+      "correct": true,
+      "teacher": {
+        "0": 0.6,
+        "1": 0.28,
+        "2": 0.08,
+        "3": 0.03,
+        "4": 0.01
+      }
+    },
+    {
+      "id": "test-000004",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "size": "huge",
+        "shape": "star",
+        "mood": "calm"
+      },
+      "instructions": "Is mood equal to calm?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.05432921,
+        0.94567084
+      ],
+      "logits": [
+        -1.75838923,
+        1.09844315
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": true,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    },
+    {
+      "id": "test-000005",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "size": "large",
+        "shape": "star",
+        "color": "red"
+      },
+      "instructions": "Which value belongs to the attribute 'size'?",
+      "candidate_ids": [
+        "large",
+        "tired"
+      ],
+      "probabilities": [
+        0.17428364,
+        0.82571638
+      ],
+      "logits": [
+        -2.04506922,
+        -0.48950198
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "large",
+      "correct": false,
+      "teacher": {
+        "large": 0.85,
+        "tired": 0.15000000000000002
+      }
+    },
+    {
+      "id": "test-000005",
+      "qid": "q1",
+      "type": "score",
+      "state": {
+        "size": "large",
+        "shape": "star",
+        "color": "red"
+      },
+      "instructions": "How strongly does the state support the claim that shape is square?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.41132456,
+        0.04148832,
+        0.00079976,
+        0.03736689,
+        0.50902051
+      ],
+      "logits": [
+        5.95908689,
+        3.66511607,
+        -0.28373614,
+        3.56048942,
+        6.17219257
+      ],
+      "expected": 2.19127059,
+      "level": 4,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 0,
+      "correct": false,
+      "teacher": {
+        "0": 0.6,
+        "1": 0.28,
+        "2": 0.08,
+        "3": 0.03,
+        "4": 0.01
+      }
+    },
+    {
+      "id": "test-000006",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "size": "tiny",
+        "mood": "tired",
+        "color": "blue"
+      },
+      "instructions": "Which value belongs to the attribute 'size'?",
+      "candidate_ids": [
+        "tiny",
+        "large"
+      ],
+      "probabilities": [
+        0.9721424,
+        0.02785765
+      ],
+      "logits": [
+        -1.12435496,
+        -4.67674971
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "tiny",
+      "correct": true,
+      "teacher": {
+        "tiny": 0.85,
+        "large": 0.15000000000000002
+      }
+    },
+    {
+      "id": "test-000006",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "size": "tiny",
+        "mood": "tired",
+        "color": "blue"
+      },
+      "instructions": "Is color equal to red?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.69637841,
+        0.30362159
+      ],
+      "logits": [
+        -0.03632219,
+        -0.86643326
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": false,
+      "correct": true,
+      "teacher": {
+        "true": 0.1,
+        "false": 0.9
+      }
+    },
+    {
+      "id": "test-000007",
+      "qid": "q0",
+      "type": "boolean",
+      "state": {
+        "mood": "eager",
+        "color": "blue",
+        "size": "large"
+      },
+      "instructions": "Is color equal to red?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.78918558,
+        0.21081439
+      ],
+      "logits": [
+        -0.20118578,
+        -1.52120924
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": false,
+      "correct": true,
+      "teacher": {
+        "true": 0.1,
+        "false": 0.9
+      }
+    },
+    {
+      "id": "test-000007",
+      "qid": "q1",
+      "type": "score",
+      "state": {
+        "mood": "eager",
+        "color": "blue",
+        "size": "large"
+      },
+      "instructions": "How strongly does the state support the claim that size is large?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.3114894,
+        0.02725872,
+        0.00022935,
+        0.02647864,
+        0.6345439
+      ],
+      "logits": [
+        2.1395154,
+        -0.29647633,
+        -5.07436562,
+        -0.32551154,
+        2.85105658
+      ],
+      "expected": 2.64532876,
+      "level": 4,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 4,
+      "correct": true,
+      "teacher": {
+        "0": 0.01,
+        "1": 0.03,
+        "2": 0.08,
+        "3": 0.28,
+        "4": 0.6
+      }
+    },
+    {
+      "id": "test-000008",
+      "qid": "q0",
+      "type": "score",
+      "state": {
+        "mood": "eager",
+        "shape": "square",
+        "color": "blue"
+      },
+      "instructions": "How strongly does the state support the claim that shape is star?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.4164249,
+        0.03251614,
+        0.00412423,
+        0.0375031,
+        0.50943166
+      ],
+      "logits": [
+        7.1623354,
+        4.61236572,
+        2.547508,
+        4.75505304,
+        7.36392498
+      ],
+      "expected": 2.1910007,
+      "level": 4,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 0,
+      "correct": false,
+      "teacher": {
+        "0": 0.6,
+        "1": 0.28,
+        "2": 0.08,
+        "3": 0.03,
+        "4": 0.01
+      }
+    },
+    {
+      "id": "test-000008",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "mood": "eager",
+        "shape": "square",
+        "color": "blue"
+      },
+      "instructions": "Is shape equal to round?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.86971408,
+        0.13028592
+      ],
+      "logits": [
+        1.42412102,
+        -0.4743121
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": false,
+      "correct": true,
+      "teacher": {
+        "true": 0.1,
+        "false": 0.9
+      }
+    },
+    {
+      "id": "test-000008",
+      "qid": "q2",
+      "type": "choice",
+      "state": {
+        "mood": "eager",
+        "shape": "square",
+        "color": "blue"
+      },
+      "instructions": "Which value belongs to the attribute 'color'?",
+      "candidate_ids": [
+        "blue",
+        "star"
+      ],
+      "probabilities": [
+        0.98932767,
+        0.01067231
+      ],
+      "logits": [
+        0.36462,
+        -4.16475248
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "blue",
+      "correct": true,
+      "teacher": {
+        "blue": 0.85,
+        "star": 0.15000000000000002
+      }
+    },
+    {
+      "id": "test-000009",
+      "qid": "q0",
+      "type": "score",
+      "state": {
+        "color": "red",
+        "mood": "calm",
+        "shape": "star"
+      },
+      "instructions": "How strongly does the state support the claim that mood is eager?",
+      "candidate_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "probabilities": [
+        0.13435628,
+        0.01713874,
+        7.497e-05,
+        0.00760068,
+        0.84082937
+      ],
+      "logits": [
+        3.6402936,
+        1.58114016,
+        -3.85092902,
+        0.76803684,
+        5.47418737
+      ],
+      "expected": 3.40340829,
+      "level": 4,
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "score-support",
+      "gold": 0,
+      "correct": false,
+      "teacher": {
+        "0": 0.6,
+        "1": 0.28,
+        "2": 0.08,
+        "3": 0.03,
+        "4": 0.01
+      }
+    },
+    {
+      "id": "test-000009",
+      "qid": "q1",
+      "type": "choice",
+      "state": {
+        "color": "red",
+        "mood": "calm",
+        "shape": "star"
+      },
+      "instructions": "Which value belongs to the attribute 'shape'?",
+      "candidate_ids": [
+        "tiny",
+        "star"
+      ],
+      "probabilities": [
+        0.16296723,
+        0.83703274
+      ],
+      "logits": [
+        -3.47901583,
+        -1.84270179
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "star",
+      "correct": true,
+      "teacher": {
+        "tiny": 0.15000000000000002,
+        "star": 0.85
+      }
+    },
+    {
+      "id": "test-000010",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "color": "green",
+        "size": "huge",
+        "mood": "tired"
+      },
+      "instructions": "Which value belongs to the attribute 'size'?",
+      "candidate_ids": [
+        "huge",
+        "green"
+      ],
+      "probabilities": [
+        0.46938071,
+        0.53061926
+      ],
+      "logits": [
+        -3.73018861,
+        -3.60755801
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "huge",
+      "correct": false,
+      "teacher": {
+        "huge": 0.85,
+        "green": 0.15000000000000002
+      }
+    },
+    {
+      "id": "test-000010",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "color": "green",
+        "size": "huge",
+        "mood": "tired"
+      },
+      "instructions": "Is color equal to blue?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.91328853,
+        0.08671151
+      ],
+      "logits": [
+        0.39539006,
+        -1.95907521
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": false,
+      "correct": true,
+      "teacher": {
+        "true": 0.1,
+        "false": 0.9
+      }
+    },
+    {
+      "id": "test-000011",
+      "qid": "q0",
+      "type": "choice",
+      "state": {
+        "mood": "eager",
+        "color": "red",
+        "shape": "star"
+      },
+      "instructions": "Which value belongs to the attribute 'mood'?",
+      "candidate_ids": [
+        "eager",
+        "huge",
+        "green",
+        "round"
+      ],
+      "probabilities": [
+        0.57752848,
+        0.01189419,
+        0.33484963,
+        0.07572771
+      ],
+      "logits": [
+        -0.32152501,
+        -4.20423317,
+        -0.86660111,
+        -2.35313869
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "choice-lookup",
+      "gold": "eager",
+      "correct": true,
+      "teacher": {
+        "eager": 0.85,
+        "huge": 0.05000000000000001,
+        "green": 0.05000000000000001,
+        "round": 0.05000000000000001
+      }
+    },
+    {
+      "id": "test-000011",
+      "qid": "q1",
+      "type": "boolean",
+      "state": {
+        "mood": "eager",
+        "color": "red",
+        "shape": "star"
+      },
+      "instructions": "Is mood equal to eager?",
+      "candidate_ids": [
+        "false",
+        "true"
+      ],
+      "probabilities": [
+        0.34356102,
+        0.65643895
+      ],
+      "logits": [
+        -0.45708096,
+        0.19038397
+      ],
+      "decode_steps": 0,
+      "mode": "fresh",
+      "forward_seconds": 0.11997025,
+      "family": "boolean-match",
+      "gold": true,
+      "correct": true,
+      "teacher": {
+        "true": 0.9,
+        "false": 0.1
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+Predicted
+True Direct answer Tool call Follow-up question Unable to answer
+Direct answer 0 0 0 0
+Tool call 11 1116 167 1
+Follow-up question 12 365 684 1
+Unable to answer 162 478 599 56
+Table 15: Confusion matrix on When2Call for Qwen 2.5 72B Instruct
+Predicted
+True Direct answer Tool call Follow-up question Unable to answer
+Direct answer 0 0 0 0
+Tool call 133 756 393 13
+Follow-up question 63 332 640 27
+Unable to answer 249 314 568 164
+Table 16: Confusion matrix on When2Call for xLAM 7B FC-R
+Predicted
+True Direct answer Tool call Follow-up question Unable to answer
+Direct answer 0 0 0 0
+Tool call 7 1261 20 7
+Follow-up question 18 738 288 18
+Unable to answer 181 537 359 218
+Table 17: Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B SFT (baseline)
+Predicted
+True Direct answer Tool call Follow-up question Unable to answer
+Direct answer 0 0 0 0
+Tool call 11 1143 132 9
+Follow-up question 12 284 752 14
+Unable to answer 121 282 372 520
+Table 18: Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B SFT with When2Call
+Predicted
+True Direct answer Tool call Follow-up question Unable to answer
+Direct answer 0 0 0 0
+Tool call 17 992 148 138
+Follow-up question 15 259 681 107
+Unable to answer 90 106 249 850
+Table 19: Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B RPO with When2Call
+3409

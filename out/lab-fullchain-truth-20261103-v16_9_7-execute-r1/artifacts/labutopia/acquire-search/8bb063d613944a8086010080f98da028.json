@@ -1,0 +1,1 @@
+{"status": "started", "scene_revision": "labutopia-tabletop-rod-rack-v1:4625a5fcf13e40e48db5681686a79e14:0", "candidate_ref": "candidate://simulator-truth-R05/57c6b3444dc3456ab3bf9fabe8ba88a5-178", "policy": "first_feasible", "route_strategies": ["direct", "staged"], "variant_count": 104, "motion_authorized": false, "world_change_started": false}

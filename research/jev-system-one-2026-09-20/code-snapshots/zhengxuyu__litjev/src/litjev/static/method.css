@@ -1,0 +1,20 @@
+.methodology { margin-top: 24px; }
+.methodology h2 { font-size: 22px; line-height: 1.5; }
+.methodology > p { line-height: 1.8; }
+.methodology code { font-size: 13px; overflow-wrap: anywhere; }
+.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding: 24px 0; list-style: none; counter-reset: step; border-block: 1px solid var(--line); }
+.pipeline li { counter-increment: step; }
+.pipeline li::before { content: "0" counter(step); display: block; color: var(--blue); font: 20px ui-monospace, monospace; margin-bottom: 14px; }
+.pipeline strong { display: block; font-size: 16px; margin-bottom: 10px; }
+.pipeline span { font-size: 14px; line-height: 1.8; color: #536177; }
+.method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.method-grid > div { min-width: 0; }
+.method-grid h3 { font-size: 16px; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.7; }
+th, td { border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; padding: 12px 8px; }
+th { background: #f7f9fc; }
+td:first-child { width: 35%; }
+.answer details { margin-bottom: 16px; }
+@media(max-width: 1000px) { .pipeline { grid-template-columns: 1fr 1fr; } .method-grid { grid-template-columns: 1fr; } }
+@media(max-width: 500px) { .pipeline { grid-template-columns: 1fr; } }

@@ -1,0 +1,1 @@
+# HireSignal\n\nResume first-pass scoring with TypeSafe Jev.\n

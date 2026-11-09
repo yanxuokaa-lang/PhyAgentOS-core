@@ -1,0 +1,79 @@
+[project]
+name = "jev-reranker"
+version = "0.1.0"
+description = "Multilingual Jev reranking with listwise, pointwise, and pairwise scoring"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28,<1",
+    "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+tokenizer = ["huggingface-hub>=0.30,<2", "tokenizers>=0.21,<1"]
+sentence-transformers = [
+    "sentence-transformers>=5,<6",
+]
+all = [
+    "huggingface-hub>=0.30,<2",
+    "pyarrow>=20,<24",
+    "sentence-transformers>=5,<6",
+    "tokenizers>=0.21,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/hotchpotch/jev-reranker"
+Repository = "https://github.com/hotchpotch/jev-reranker"
+Issues = "https://github.com/hotchpotch/jev-reranker/issues"
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "huggingface-hub>=0.30,<2",
+    "tokenizers>=0.21,<1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+    "tox>=4.61.4",
+    "tox-uv>=1.36.0",
+    "twine>=7.0.0",
+    "ty>=0.0.80",
+]
+examples = [
+    "pyarrow>=20,<24",
+]
+
+[tool.uv]
+exclude-newer = "1 week"
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+requires = tox-uv>=1.29.0
+parallel = auto
+parallel_show_output = true
+env_list = py311, lint, type
+
+[testenv]
+extras = tokenizer
+deps = pytest
+commands = pytest tests examples/eval.py {posargs}
+
+[testenv:lint]
+deps = ruff
+commands = ruff check .
+
+[testenv:type]
+deps =
+    ty
+    pytest
+commands = ty check
+"""
+
+[tool.uv.build-backend]
+source-include = ["examples/*.py", "examples/*.md", "docs/**", "tests/**", "scripts/*.py", ".env.sample", ".gitignore"]
+source-exclude = [".env", ".live-results/**", "tests/__pycache__/**"]

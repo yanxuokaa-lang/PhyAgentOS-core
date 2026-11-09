@@ -1,0 +1,130 @@
+<!doctype html>
+<!-- Film/replay port inspired by jevlike (MIT, Copyright 2026 Minimal Labs).
+     Modified for LitJev: measured logits/probabilities, no trained-head heatmaps. -->
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LitJev · Visual decisions</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#10141b;color:#eef2f8}
+*{box-sizing:border-box}body{margin:0 auto;max-width:1500px;padding:28px}header{display:flex;justify-content:space-between;align-items:center;gap:20px}h1{font-size:28px;margin:0}a{color:#80d1ff}.muted{color:#a6b5c9;font-size:14px}input,button,select{font:inherit}button,select{background:#253348;color:inherit;border:1px solid #52647e;border-radius:6px;padding:8px;cursor:pointer}button:disabled{opacity:.4;cursor:default}.pipeline{display:flex;gap:12px;flex-wrap:wrap;margin:26px 0}.pipeline span{background:#1b2636;padding:12px;border-radius:8px}.layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr);gap:28px}.screen{background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:300px}.screen img{width:100%;object-fit:contain;max-height:620px}.panel{background:#19212f;border:1px solid #334057;padding:20px;border-radius:12px}.metrics{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:24px}.metrics strong{display:block;font-size:23px;color:#ffd079}.prob{display:grid;grid-template-columns:150px 1fr 65px;gap:10px;align-items:center;margin:16px 0}.prob.selected{color:#ffd079}progress{width:100%;accent-color:#64bfff}.controls{display:flex;align-items:center;gap:14px;margin:24px 0}.controls input{flex:1;min-width:30px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:240px;overflow:auto}#error{color:#ff8c90}.capture header,.capture .controls,.capture #upload{display:none}.capture body{max-width:none}.capture .layout{height:68vh}@media(max-width:800px){.layout{grid-template-columns:1fr}.pipeline{font-size:12px}body{padding:16px}.prob{grid-template-columns:125px 1fr 60px}header{flex-wrap:wrap}}
+</style>
+<style>
+#live-history{margin-top:24px}#latency-chart{width:100%;height:100px}#timeline{display:flex;gap:3px;height:24px;margin:12px 0}#timeline span{flex:1;min-width:2px;border-radius:3px;background:#64bfff}#recording-note{overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<header><h1>LitJev <span class="muted">/ Visual decisions</span></h1><a href="/">Schema playground</a></header>
+<p id="description" class="muted">Unmodified Qwen weights · screenshot-only policy · measured replay, not a competence claim</p>
+<label id="upload">Open a trace JSON <input id="file" type="file" accept=".json,application/json"></label>
+<p id="error" role="alert"></p>
+<div id="pipeline" class="pipeline"><span>RGB screenshot</span><span>→ Qwen vision + shared prefill</span><span>→ cached answer suffix</span><span>→ lm_head logits → action</span></div>
+<div class="layout">
+ <div class="screen"><img id="frame" alt="The exact pre-action screenshot supplied to the policy" hidden></div>
+ <section class="panel"><h2 id="environment">Load a recorded episode</h2>
+  <div class="metrics"><div><span class="muted">Decision</span><strong id="step">—</strong></div><div><span id="latency-label" class="muted">Inference / round trip</span><strong id="latency">—</strong></div><div><span class="muted">Reward so far</span><strong id="reward">—</strong></div></div>
+  <h3 id="action">—</h3><div id="probabilities"></div>
+  <p id="status" class="muted">No training or upstream policy weights are used.</p>
+  <details><summary id="readout-label">Actual readout and logits</summary><pre id="provenance"></pre></details>
+  <p class="muted">No attention heatmaps: LitJev does not expose the upstream trained option-attention head. Only recorded values are shown.</p>
+  <div id="live-history" hidden><p class="muted">Environment step latency · last 90 decisions</p><canvas id="latency-chart" aria-label="Environment step latency history"></canvas><p id="latency-mean" class="muted"></p><p class="muted">Action timeline · last 48 decisions (hover for details)</p><div id="timeline"></div><p id="recording-note" class="muted"></p></div>
+ </section>
+</div>
+<div class="controls"><button id="play" disabled>Play</button><button id="reset" hidden>Restart episode</button><input id="seek" aria-label="Decision index" type="range" min="0" max="0" value="0"><span id="counter">0 / 0</span><select id="speed" aria-label="Playback speed"><option value="1">1× wall time</option><option value="2">2×</option><option value="4">4×</option></select></div>
+<p id="frame-note" class="muted">Frame = before action; reward and termination = after action. Local timings cover preprocessing + inference; HTTP timings also cover transport and cold loading. Replay preserves decision order without cherry-picking.</p>
+<script id="trace-data" type="application/json">"__LITJEV_TRACE__"</script>
+<script id="live-config" type="application/json">"__LITJEV_LIVE__"</script>
+<script>
+"use strict";
+const el=id=>document.getElementById(id);
+const live=JSON.parse(el("live-config").textContent)===true;
+let trace=null,index=0,playing=false,last=0,clock=0,ends=[];
+let resolveReady; window.ready=new Promise(resolve=>{resolveReady=resolve});
+function loadTrace(value){
+ if(value?.schema_version!=="litjev.trace.v1"||!Array.isArray(value.decisions)||!value.decisions.length||!Array.isArray(value.actions))throw Error("Expected a non-empty litjev.trace.v1 trace");
+ let previousEpisode=null,previousTime=0,total=0;
+ for(const d of value.decisions){
+  if(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(d.frame))throw Error("Invalid trace image");
+  if(!Number.isInteger(d.action_index)||d.action_index<0||d.action_index>=value.actions.length)throw Error("Invalid action index");
+  if(!Array.isArray(d.probabilities)||d.probabilities.length!==value.actions.length||d.probabilities.some(p=>!Number.isFinite(p)||p<0||p>1))throw Error("Invalid probabilities");
+  if(!Number.isFinite(d.timestamp)||d.timestamp<0)throw Error("Invalid timestamp");
+ }
+ trace=value;ends=[];
+ for(const d of trace.decisions){
+  if(previousEpisode!==d.episode)previousTime=0;
+  total+=Math.max(.001,d.timestamp-previousTime);ends.push(total);
+  previousTime=d.timestamp;previousEpisode=d.episode;
+ }
+ window.filmDuration=total;playing=false;clock=0;el("play").textContent="Play";
+ el("seek").max=trace.decisions.length-1;el("play").disabled=false;
+ el("environment").textContent=trace.environment;show(0);resolveReady();
+}
+function show(i){
+ index=i;renderDecision(trace.decisions[i],trace.actions);
+ el("seek").value=i;el("counter").textContent=`${i+1} / ${trace.decisions.length}`;
+}
+function renderDecision(d,actions){
+ el("frame").src=d.frame;el("frame").hidden=false;
+ el("step").textContent=`${d.episode} / ${d.step}`;
+ el("latency").textContent=`${Number(d.latency_ms).toFixed(1)} ms`;
+ el("reward").textContent=Number(d.running_reward).toFixed(2);el("action").textContent=d.action;
+ el("status").textContent=d.policy==="uniform_random"?`Uniform random · 0 model forwards · ${d.done?"episode ended; next step restarts":"live"}`:`${d.forward_calls} forwards · ${d.output_tokens} generated tokens · ${d.calibration_fitted?"temperature fitted":"uncalibrated"} · ${d.terminated?"terminated":d.truncated?"truncated":"running"}`;
+ el("provenance").textContent=JSON.stringify({logits:d.logits,provenance:d.provenance,info:d.info},null,2);
+ el("probabilities").replaceChildren();
+ actions.forEach((name,j)=>{const row=document.createElement("div");row.className="prob"+(j===d.action_index?" selected":"");const label=document.createElement("span");label.textContent=name;const bar=document.createElement("progress");bar.max=1;bar.value=d.probabilities[j];const number=document.createElement("span");number.textContent=(d.probabilities[j]*100).toFixed(1)+"%";row.append(label,bar,number);el("probabilities").append(row)});
+}
+window.setFrame=async t=>{if(!trace)return;const i=ends.findIndex(end=>t<end);show(i<0?trace.decisions.length-1:i);await el("frame").decode()};
+el("file").addEventListener("change",async()=>{try{el("error").textContent="";const file=el("file").files[0];if(!file)return;if(file.size>100_000_000)throw Error("Trace exceeds 100 MB");loadTrace(JSON.parse(await file.text()))}catch(e){el("error").textContent=e.message}});
+el("seek").addEventListener("input",()=>{show(Number(el("seek").value));clock=index?ends[index-1]:0});
+el("play").addEventListener("click",()=>{if(live)return;if(clock>=window.filmDuration)clock=0;playing=!playing;el("play").textContent=playing?"Pause":"Play"});
+function tick(now){if(playing&&trace){clock+=Math.min(.1,(now-last)/1000)*Number(el("speed").value);const i=ends.findIndex(end=>clock<end);show(i<0?trace.decisions.length-1:i);if(clock>=window.filmDuration){playing=false;el("play").textContent="Play"}}last=now;requestAnimationFrame(tick)}
+if(new URLSearchParams(location.search).has("capture"))document.documentElement.classList.add("capture");
+try{const embedded=JSON.parse(el("trace-data").textContent);if(typeof embedded==="object")loadTrace(embedded)}catch(e){el("error").textContent=e.message}
+if(live)startLive();else requestAnimationFrame(tick);
+function startLive(){
+ document.title="LitJev · Doom live / random policy";
+ document.querySelector("header a").hidden=true;
+ el("description").textContent="Live ViZDoom · uniform random policy · no model loaded · same film visualization as replay";
+ el("upload").hidden=true;el("seek").hidden=true;el("reset").hidden=false;
+ el("environment").textContent="Doom / deadly_corridor";
+ el("frame").alt="Current real Doom screenshot after the latest action";
+ el("latency-label").textContent="Environment step";
+ el("readout-label").textContent="Random policy data (no model logits)";
+ el("frame-note").textContent="Live frame = after action (last available frame at termination). One background worker advances 4 game tics per decision; multiple SSE viewers do not accelerate it. Pause controls the shared session. Slow viewers receive the latest snapshot, not every frame. Probabilities are fixed at 1/7, not model confidence.";
+ el("pipeline").replaceChildren();
+ for(const text of ["Real Doom RGB frame","→ uniform random over 7 buttons","→ Gymnasium step","→ frame + reward"]){const span=document.createElement("span");span.textContent=text;el("pipeline").append(span)}
+ el("speed").replaceChildren();for(const n of [4,9,18]){const option=document.createElement("option");option.value=n;option.textContent=`${n} actions / sec`;option.selected=n===9;el("speed").append(option)}
+ el("speed").setAttribute("aria-label","Action frequency");
+ el("live-history").hidden=false;
+ let busy=false,lastVersion=-1,history=[];
+ function drawHistory(){
+  const canvas=el("latency-chart"),ratio=window.devicePixelRatio||1,w=canvas.clientWidth,h=100;
+  canvas.width=Math.round(w*ratio);canvas.height=h*ratio;const ctx=canvas.getContext("2d");ctx.scale(ratio,ratio);ctx.clearRect(0,0,w,h);
+  if(!history.length)return;const ceiling=Math.max(1,...history.map(d=>d.step_ms))*1.2;
+  ctx.strokeStyle="#64bfff";ctx.lineWidth=2;ctx.beginPath();history.forEach((d,i)=>{const x=i*w/Math.max(1,history.length-1),y=h-8-d.step_ms/ceiling*(h-16);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke();
+  el("latency-mean").textContent=`Mean ${(history.reduce((sum,d)=>sum+d.step_ms,0)/history.length).toFixed(2)} ms · ${history.length} decisions`;
+ }
+ function showSnapshot(s){
+  if(s.version<lastVersion)return;lastVersion=s.version;playing=s.running;
+  renderDecision({...s,action:s.action??"Waiting for action",action_index:s.actions.indexOf(s.action),running_reward:s.total_reward,latency_ms:s.step_ms,logits:null,provenance:{policy:s.policy,distribution:"uniform",model:null},info:{reward:s.reward,done:s.done}},s.actions);
+  el("play").textContent=s.running?"Pause":"Play";el("play").disabled=busy;el("speed").value=s.fps;
+  el("counter").textContent=`Episode ${s.episode} · step ${s.step}`;
+  if(!s.running)el("status").textContent+=" · paused";
+  el("error").textContent=s.error??"";history=(s.history??[]).slice(-90);drawHistory();
+  el("timeline").replaceChildren();for(const d of history.slice(-48)){const block=document.createElement("span");block.style.background=`hsl(${s.actions.indexOf(d.action)*51} 65% 62%)`;block.title=`Episode ${d.episode} / step ${d.step} · ${d.action} · ${d.step_ms.toFixed(2)} ms`;el("timeline").append(block)}
+  el("recording-note").textContent=s.recording?`Native demo: ${s.recording}`:"Native recording disabled (use --record DIR)";resolveReady();
+ }
+ async function request(path,body){
+  if(busy)return;busy=true;el("play").disabled=true;el("reset").disabled=true;el("speed").disabled=true;
+  try{const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body??{})});if(!response.ok)throw Error(`HTTP ${response.status}`);showSnapshot(await response.json())}
+  catch(e){el("error").textContent=e.message}finally{busy=false;el("play").disabled=false;el("reset").disabled=false;el("speed").disabled=false}
+ }
+ el("play").addEventListener("click",()=>request("/control",{running:!playing}));
+ el("reset").addEventListener("click",()=>request("/reset"));
+ el("speed").addEventListener("change",()=>request("/control",{fps:Number(el("speed").value)}));
+ const source=new EventSource("/events");source.onmessage=event=>{try{showSnapshot(JSON.parse(event.data))}catch(e){el("error").textContent=e.message}};
+ source.onerror=()=>{el("error").textContent="Stream disconnected; reconnecting…"};
+ window.addEventListener("resize",drawHistory);window.addEventListener("pagehide",()=>source.close());
+}
+</script>
+</body></html>

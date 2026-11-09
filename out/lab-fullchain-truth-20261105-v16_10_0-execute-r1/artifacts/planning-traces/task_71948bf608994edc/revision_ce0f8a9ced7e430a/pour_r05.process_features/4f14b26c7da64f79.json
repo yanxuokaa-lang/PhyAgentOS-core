@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "eab31ce91a6f175ee2e0bfa63594c3fb99d183fb0d3026240594677afd625d94",
+  "created_at": "2026-11-05T05:28:31.790985Z",
+  "decision_reason": "显式复制当前就绪节点冻结的同次观测绑定，查询 R05 到 BEAKER 工艺特征，不授权运动。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:60da032226444a10b72bd4fa803d5379:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "5f158cf2de402fe9d8ecc8bc66e4f694f891c73ed0f923228814c99486f665ca",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_71948bf608994edc/revision_ce0f8a9ced7e430a/pour_r05.process_features/4f14b26c7da64f79",
+      "input_binding_digest": "5f158cf2de402fe9d8ecc8bc66e4f694f891c73ed0f923228814c99486f665ca",
+      "node_digest": "a110e3b1daea848502f59f50723c338d76f30fc174fe6afa9e56cf2dcd064b0c",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_ce0f8a9ced7e430a"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/2376f2996f46430cb2c0dcc6f713622b.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 498,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:60da032226444a10b72bd4fa803d5379:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:60da032226444a10b72bd4fa803d5379:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_ce0f8a9ced7e430a",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:60da032226444a10b72bd4fa803d5379:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_71948bf608994edc"
+}

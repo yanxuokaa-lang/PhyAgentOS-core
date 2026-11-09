@@ -1,0 +1,46 @@
+{
+  "name": "von-sdk",
+  "version": "1.0.1",
+  "description": "Official TypeScript/JavaScript SDK for Von - The Open-Source System One Decision Model",
+  "author": "Victor Hugo <victor.panisa@gmail.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wfzyx/von.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/wfzyx/von#readme",
+  "keywords": [
+    "decision-model",
+    "typesafe",
+    "jev",
+    "system-one",
+    "classification",
+    "routing",
+    "guardrails",
+    "agentic"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node && tsc --emitDeclarationOnly",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2"
+  }
+}

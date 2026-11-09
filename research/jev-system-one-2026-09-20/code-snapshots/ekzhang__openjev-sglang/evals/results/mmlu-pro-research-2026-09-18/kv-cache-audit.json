@@ -1,0 +1,15 @@
+{
+  "kv_cache_scheme": null,
+  "kv_cache_quant_algo": null,
+  "kv_scale_tensor_keys": [],
+  "self_attention_scale_examples": [
+    "model.language_model.layers.3.self_attn.k_proj.input_scale",
+    "model.language_model.layers.3.self_attn.k_proj.weight_scale",
+    "model.language_model.layers.3.self_attn.o_proj.input_scale",
+    "model.language_model.layers.3.self_attn.o_proj.weight_scale",
+    "model.language_model.layers.3.self_attn.q_proj.input_scale",
+    "model.language_model.layers.3.self_attn.q_proj.weight_scale",
+    "model.language_model.layers.3.self_attn.v_proj.input_scale",
+    "model.language_model.layers.3.self_attn.v_proj.weight_scale"
+  ]
+}

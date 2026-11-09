@@ -1,0 +1,14 @@
+{
+  "name": "building-with-jev",
+  "description": "Skills for building programs with Jev, TypeSafe's System One model.",
+  "owner": {
+    "name": "Drew Breunig"
+  },
+  "plugins": [
+    {
+      "name": "jev",
+      "source": "./",
+      "description": "A skill for writing and improving programs that call Jev, TypeSafe's System One model."
+    }
+  ]
+}

@@ -1,0 +1,521 @@
+{
+  "complete": true,
+  "expected": 8574,
+  "completed": 8574,
+  "valid": 8574,
+  "actual_models": {
+    "typesafe/jev-1.13-20260917": 8574
+  },
+  "providers": {
+    "TypeSafe": 8574
+  },
+  "conditions": [
+    {
+      "condition": "s1:k0:single:all",
+      "subtask": 1,
+      "shots": 0,
+      "policy": "single",
+      "scenario": null,
+      "n": 995,
+      "correct": 774,
+      "csr_percent": 77.78894472361809,
+      "bootstrap_95_ci_percent": [
+        75.17587939698493,
+        80.40201005025126
+      ],
+      "valid": 995,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 77.78894472361809,
+      "one_of_two_percent": 0.0,
+      "abstentions": 75
+    },
+    {
+      "condition": "s1:k5:single:all",
+      "subtask": 1,
+      "shots": 5,
+      "policy": "single",
+      "scenario": null,
+      "n": 995,
+      "correct": 774,
+      "csr_percent": 77.78894472361809,
+      "bootstrap_95_ci_percent": [
+        75.07537688442211,
+        80.40201005025126
+      ],
+      "valid": 995,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 77.78894472361809,
+      "one_of_two_percent": 0.0,
+      "abstentions": 74
+    },
+    {
+      "condition": "s2:k0:single:Finance Staff",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "Finance Staff",
+      "n": 200,
+      "correct": 154,
+      "csr_percent": 77.0,
+      "bootstrap_95_ci_percent": [
+        71.0,
+        83.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 77.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 30
+    },
+    {
+      "condition": "s2:k0:single:Housewife",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "Housewife",
+      "n": 200,
+      "correct": 173,
+      "csr_percent": 86.5,
+      "bootstrap_95_ci_percent": [
+        81.5,
+        91.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 86.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 11
+    },
+    {
+      "condition": "s2:k0:single:Software Engineer",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "Software Engineer",
+      "n": 200,
+      "correct": 161,
+      "csr_percent": 80.5,
+      "bootstrap_95_ci_percent": [
+        75.0,
+        86.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 80.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 25
+    },
+    {
+      "condition": "s2:k0:single:Students",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "Students",
+      "n": 200,
+      "correct": 153,
+      "csr_percent": 76.5,
+      "bootstrap_95_ci_percent": [
+        70.5,
+        82.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 76.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 5
+    },
+    {
+      "condition": "s2:k0:single:TopTool_top10",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "TopTool_top10",
+      "n": 200,
+      "correct": 170,
+      "csr_percent": 85.0,
+      "bootstrap_95_ci_percent": [
+        80.0,
+        90.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 85.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 4
+    },
+    {
+      "condition": "s2:k0:single:TopTool_top15",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "TopTool_top15",
+      "n": 300,
+      "correct": 250,
+      "csr_percent": 83.33333333333334,
+      "bootstrap_95_ci_percent": [
+        79.0,
+        87.66666666666667
+      ],
+      "valid": 300,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 83.33333333333333,
+      "one_of_two_percent": 0.0,
+      "abstentions": 7
+    },
+    {
+      "condition": "s2:k0:single:TopTool_top5",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "TopTool_top5",
+      "n": 100,
+      "correct": 92,
+      "csr_percent": 92.0,
+      "bootstrap_95_ci_percent": [
+        86.0,
+        97.0
+      ],
+      "valid": 100,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 92.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 2
+    },
+    {
+      "condition": "s2:k0:single:artists&designers",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "artists&designers",
+      "n": 200,
+      "correct": 185,
+      "csr_percent": 92.5,
+      "bootstrap_95_ci_percent": [
+        88.5,
+        96.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 92.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 10
+    },
+    {
+      "condition": "s2:k0:single:elders",
+      "subtask": 2,
+      "shots": 0,
+      "policy": "single",
+      "scenario": "elders",
+      "n": 200,
+      "correct": 179,
+      "csr_percent": 89.5,
+      "bootstrap_95_ci_percent": [
+        85.0,
+        93.5
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 89.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 10
+    },
+    {
+      "condition": "s2:k5:single:Finance Staff",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "Finance Staff",
+      "n": 200,
+      "correct": 158,
+      "csr_percent": 79.0,
+      "bootstrap_95_ci_percent": [
+        73.0,
+        84.5
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 79.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 25
+    },
+    {
+      "condition": "s2:k5:single:Housewife",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "Housewife",
+      "n": 200,
+      "correct": 175,
+      "csr_percent": 87.5,
+      "bootstrap_95_ci_percent": [
+        82.5,
+        92.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 87.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 11
+    },
+    {
+      "condition": "s2:k5:single:Software Engineer",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "Software Engineer",
+      "n": 200,
+      "correct": 165,
+      "csr_percent": 82.5,
+      "bootstrap_95_ci_percent": [
+        77.0,
+        87.5
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 82.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 21
+    },
+    {
+      "condition": "s2:k5:single:Students",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "Students",
+      "n": 200,
+      "correct": 159,
+      "csr_percent": 79.5,
+      "bootstrap_95_ci_percent": [
+        74.0,
+        85.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 79.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 7
+    },
+    {
+      "condition": "s2:k5:single:TopTool_top10",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "TopTool_top10",
+      "n": 200,
+      "correct": 171,
+      "csr_percent": 85.5,
+      "bootstrap_95_ci_percent": [
+        80.5,
+        90.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 85.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 4
+    },
+    {
+      "condition": "s2:k5:single:TopTool_top15",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "TopTool_top15",
+      "n": 300,
+      "correct": 248,
+      "csr_percent": 82.66666666666667,
+      "bootstrap_95_ci_percent": [
+        78.33333333333333,
+        87.0
+      ],
+      "valid": 300,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 82.66666666666667,
+      "one_of_two_percent": 0.0,
+      "abstentions": 8
+    },
+    {
+      "condition": "s2:k5:single:TopTool_top5",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "TopTool_top5",
+      "n": 100,
+      "correct": 89,
+      "csr_percent": 89.0,
+      "bootstrap_95_ci_percent": [
+        83.0,
+        95.0
+      ],
+      "valid": 100,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 89.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 4
+    },
+    {
+      "condition": "s2:k5:single:artists&designers",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "artists&designers",
+      "n": 200,
+      "correct": 183,
+      "csr_percent": 91.5,
+      "bootstrap_95_ci_percent": [
+        87.5,
+        95.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 91.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 11
+    },
+    {
+      "condition": "s2:k5:single:elders",
+      "subtask": 2,
+      "shots": 5,
+      "policy": "single",
+      "scenario": "elders",
+      "n": 200,
+      "correct": 177,
+      "csr_percent": 88.5,
+      "bootstrap_95_ci_percent": [
+        84.0,
+        93.0
+      ],
+      "valid": 200,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 88.5,
+      "one_of_two_percent": 0.0,
+      "abstentions": 11
+    },
+    {
+      "condition": "s3:k0:single:all",
+      "subtask": 3,
+      "shots": 0,
+      "policy": "single",
+      "scenario": null,
+      "n": 995,
+      "correct": 866,
+      "csr_percent": 87.03517587939699,
+      "bootstrap_95_ci_percent": [
+        84.92462311557789,
+        89.14572864321609
+      ],
+      "valid": 995,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 0.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 866
+    },
+    {
+      "condition": "s3:k5:single:all",
+      "subtask": 3,
+      "shots": 5,
+      "policy": "single",
+      "scenario": null,
+      "n": 995,
+      "correct": 881,
+      "csr_percent": 88.54271356783919,
+      "bootstrap_95_ci_percent": [
+        86.53266331658291,
+        90.45226130653266
+      ],
+      "valid": 995,
+      "invalid": 0,
+      "two_of_two_percent": 0.0,
+      "one_of_one_percent": 0.0,
+      "one_of_two_percent": 0.0,
+      "abstentions": 881
+    },
+    {
+      "condition": "s4:k0:at_most_two:all",
+      "subtask": 4,
+      "shots": 0,
+      "policy": "at_most_two",
+      "scenario": null,
+      "n": 497,
+      "correct": 404,
+      "csr_percent": 81.28772635814889,
+      "bootstrap_95_ci_percent": [
+        77.66599597585513,
+        84.70824949698189
+      ],
+      "valid": 497,
+      "invalid": 0,
+      "two_of_two_percent": 81.28772635814889,
+      "one_of_one_percent": 7.042253521126761,
+      "one_of_two_percent": 11.066398390342052,
+      "abstentions": 0
+    },
+    {
+      "condition": "s4:k0:exactly_two:all",
+      "subtask": 4,
+      "shots": 0,
+      "policy": "exactly_two",
+      "scenario": null,
+      "n": 497,
+      "correct": 439,
+      "csr_percent": 88.32997987927565,
+      "bootstrap_95_ci_percent": [
+        85.3118712273642,
+        91.14688128772636
+      ],
+      "valid": 497,
+      "invalid": 0,
+      "two_of_two_percent": 88.32997987927565,
+      "one_of_one_percent": 0.0,
+      "one_of_two_percent": 11.46881287726358,
+      "abstentions": 0
+    }
+  ],
+  "usage": {
+    "http_attempts": 8574,
+    "input_tokens": 11038054,
+    "output_tokens": 1527250,
+    "reported_cost_usd": 0.463598268,
+    "attempts_without_reported_cost": 0,
+    "http_statuses": {
+      "200": 8574
+    }
+  },
+  "preflight_usage": {
+    "http_attempts": 4,
+    "input_tokens": 4435,
+    "output_tokens": 1310,
+    "reported_cost_usd": 0.00018627,
+    "attempts_without_reported_cost": 0,
+    "http_statuses": {
+      "200": 4
+    }
+  },
+  "cases_with_retry": 0,
+  "case_latency_ms": {
+    "median": 324.85900000000004,
+    "p95": 461.01075
+  },
+  "active_seconds": 591.3580714468844,
+  "scored_at": "2026-09-19T12:15:30.070532+00:00"
+}

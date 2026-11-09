@@ -1,0 +1,68 @@
+Workflow evals
+Workflow evals
+Overview
+Security Incidents
+Agent Trace Observability
+Invoice Processing
+Customer Service
+Structured workflows for automation tasks
+Real world tasks can be executed via
+structured workflows
+or
+standalone prompts
+. Structure is always better.
+Lens
+Cost
+Time
+Mean accuracy vs cost and time
+TypeSafe
+OpenAI
+Anthropic
+Fireworks
+workflow
+prompt
+frontier: nothing is both cheaper and more accurate
+frontier: nothing is both faster and more accurate
+Each point averages one model configuration's accuracy, cost and time over the four workflows with equal weight, against the consensus labels. Every model runs at its provider's default reasoning setting. Up and to the left is better.
+How we evaluate
+Decompose the work, build a harness
+To automate a task, we decompose the decisions into programmatic rules and intelligent judgments. Rather than ask a model to solve the entire problem in one shot (like the prompt examples in the plot), we ask independent narrow questions and defer to code where possible. We use three types:
+Noul
+, yes or no;
+Choice
+, one option among several;
+Score
+, a level on a scale. The results are then used programmatically to produce the output actions. Averaged across the four example tasks, every model is more accurate, cheaper and faster in the workflow than it is with the same policy as a prompt.
+Noul
+· yes or no. The model gives a probability.
+Choice
+· one option from a defined set. The model gives a distribution over the choices, as well as confidence.
+Score
+· a continuous rating on a scale. The model gives a score, distribution over the levels, and confidence.
+Docs: Primitives
+A toy example. The policy on the left is the kind of paragraph a team writes down; the chart on the right is the same policy as a workflow. Each sentence became either a question for the model, with a type, or a rule for the code.
+Expense claims
+1
+Every claim comes with a receipt. If the receipt cannot be read, ask the employee for a new one.
+2
+Work out what kind of expense it is: a meal, travel, or equipment.
+3
+A meal over $75 needs a manager's sign-off when the description on the claim does not clearly match the receipt.
+4
+Everything else is approved.
+becomes
+Questions
+Noul
+Score
+Choice
+Assume the harness is correct
+Instead of debating the correctness of the harness and labels, we assume that the code is correct, and measure against the current smartest large models. For this eval, the reference labels are generated via an average of the responses of GPT-6 Astra and Claude Fable 5.1, both at high thinking, answering every question in the harness. All other models are evaluated using the provider's default reasoning settings.
+Example workflows
+Security Incidents
+A security alert fires on a laptop or a server. Given the alert and everything on file about that machine, we decide whether to close it, pass it to an analyst, or contain it now.
+Agent Trace Observability
+A support agent has just finished with a customer. Given the whole run, every tool call included, we decide whether a person needs to look at it, and how soon.
+Invoice Processing
+A vendor's bill arrives. Given the bill, the order behind it, and what was actually delivered, we decide whether it gets paid, held, or sent back.
+Customer Service
+A customer writes in. Given the thread so far and the state of their account, we decide what the assistant should say and do next.

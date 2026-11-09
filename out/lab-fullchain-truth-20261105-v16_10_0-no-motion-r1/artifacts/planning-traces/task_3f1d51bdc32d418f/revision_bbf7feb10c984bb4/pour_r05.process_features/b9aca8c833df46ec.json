@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "d10f9766d19cf90c2a0c85692bd2bf2fbc1286e813330f01ba981234a2a0b0e5",
+  "created_at": "2026-11-05T05:20:40.838093Z",
+  "decision_reason": "首个就绪节点为只读工艺特征查询，使用当前任务冻结的标签及观测绑定，保持运动禁用。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:c69fd391a87f4a48886f1e0661bd0763:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "f3200c2a9f3873a5984b1dbebf9aed89ce1d63e9895f88cdb27d109a8617ae83",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_3f1d51bdc32d418f/revision_bbf7feb10c984bb4/pour_r05.process_features/b9aca8c833df46ec",
+      "input_binding_digest": "f3200c2a9f3873a5984b1dbebf9aed89ce1d63e9895f88cdb27d109a8617ae83",
+      "node_digest": "262e6121b7d58f9591d10d91fef9dfbd016fc480013f03c39039999b5f045427",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_bbf7feb10c984bb4"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/b35c2728dee440f88f22a09dbc1f6554.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 721,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:c69fd391a87f4a48886f1e0661bd0763:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:c69fd391a87f4a48886f1e0661bd0763:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_bbf7feb10c984bb4",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:c69fd391a87f4a48886f1e0661bd0763:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_3f1d51bdc32d418f"
+}

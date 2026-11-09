@@ -1,0 +1,526 @@
+{
+  "models": {
+    "OpenJev / Qwen3.6": {
+      "manifest": {
+        "dataset": "google/boolq",
+        "split": "validation",
+        "revision": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+        "data_url": "https://huggingface.co/datasets/google/boolq/resolve/35b264d03638db9f4ce671b711558bf7ff0f80d5/data/validation-00000-of-00001.parquet",
+        "sha256": "52355d11524b4b874a9b9dcc278feb10f672d52c4f4eff9872e695ede59820f8",
+        "endpoint": "https://ekzhang--openjev-sglang-openjev.us-west.modal.direct",
+        "route": "/v1/systemone",
+        "model": "Qwen/Qwen3.6-35B-A3B",
+        "count": 3270,
+        "instructions": "Based on the passage, answer this yes/no question:\n{question}",
+        "state": "{passage}",
+        "criteria": {
+          "true": "Yes",
+          "false": "No"
+        },
+        "concurrency": 16,
+        "delay_per_worker_seconds": 0.1,
+        "started_at": "2026-09-18T03:55:25.211409+00:00",
+        "execution": [
+          {
+            "started_at": "2026-09-18T03:55:25.212859+00:00",
+            "concurrency": 16,
+            "delay_per_worker_seconds": 0.1,
+            "resumed_rows": 0
+          }
+        ]
+      },
+      "metrics": {
+        "n": 3270,
+        "positive_rate": 0.6217125382262997,
+        "accuracy": 0.8944954128440367,
+        "brier": 0.08118760834712367,
+        "log_loss": 0.292622426693788,
+        "mean_top_probability": 0.9318616822182552,
+        "overconfidence_gap": 0.037366269374218476,
+        "positive_ece_10": 0.046388845847188775,
+        "top_ece_10": 0.04045891163886691,
+        "positive_reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.1,
+            "count": 794,
+            "mean_probability": 0.035437678336281545,
+            "observed_frequency": 0.06423173803526448
+          },
+          {
+            "lower": 0.1,
+            "upper": 0.2,
+            "count": 141,
+            "mean_probability": 0.14078342063835542,
+            "observed_frequency": 0.14893617021276595
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.3,
+            "count": 110,
+            "mean_probability": 0.24393654429275208,
+            "observed_frequency": 0.2727272727272727
+          },
+          {
+            "lower": 0.3,
+            "upper": 0.4,
+            "count": 46,
+            "mean_probability": 0.35399662041190344,
+            "observed_frequency": 0.2826086956521739
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.5,
+            "count": 65,
+            "mean_probability": 0.4379702768362911,
+            "observed_frequency": 0.26153846153846155
+          },
+          {
+            "lower": 0.5,
+            "upper": 0.6,
+            "count": 76,
+            "mean_probability": 0.5448894459428766,
+            "observed_frequency": 0.4605263157894737
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.7,
+            "count": 54,
+            "mean_probability": 0.6483221133445175,
+            "observed_frequency": 0.42592592592592593
+          },
+          {
+            "lower": 0.7,
+            "upper": 0.8,
+            "count": 84,
+            "mean_probability": 0.7533102784592224,
+            "observed_frequency": 0.5357142857142857
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.9,
+            "count": 102,
+            "mean_probability": 0.8631010165625506,
+            "observed_frequency": 0.7156862745098039
+          },
+          {
+            "lower": 0.9,
+            "upper": 1.0,
+            "count": 1798,
+            "mean_probability": 0.9916714422002235,
+            "observed_frequency": 0.9593993325917687
+          }
+        ],
+        "top_reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.1,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.1,
+            "upper": 0.2,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.3,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.3,
+            "upper": 0.4,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.5,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.5,
+            "upper": 0.6,
+            "count": 141,
+            "mean_probability": 0.5527909921794305,
+            "observed_frequency": 0.5886524822695035
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.7,
+            "count": 100,
+            "mean_probability": 0.6472554958165638,
+            "observed_frequency": 0.56
+          },
+          {
+            "lower": 0.7,
+            "upper": 0.8,
+            "count": 194,
+            "mean_probability": 0.7548713583421235,
+            "observed_frequency": 0.6443298969072165
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.9,
+            "count": 243,
+            "mean_probability": 0.8608470838657286,
+            "observed_frequency": 0.7942386831275721
+          },
+          {
+            "lower": 0.9,
+            "upper": 1.0,
+            "count": 2592,
+            "mean_probability": 0.983367182282791,
+            "observed_frequency": 0.9521604938271605
+          }
+        ],
+        "high_certainty": [
+          {
+            "threshold": 0.9,
+            "count": 2592,
+            "errors": 124,
+            "mean_probability": 0.983367182282791
+          },
+          {
+            "threshold": 0.95,
+            "count": 2280,
+            "errors": 85,
+            "mean_probability": 0.9911787460517357
+          },
+          {
+            "threshold": 0.99,
+            "count": 1610,
+            "errors": 32,
+            "mean_probability": 0.9979063142952791
+          }
+        ]
+      },
+      "bootstrap_95": {
+        "accuracy": [
+          0.8838055237172321,
+          0.905880015548761
+        ],
+        "brier": [
+          0.0734324137208718,
+          0.08905010506979996
+        ],
+        "log_loss": [
+          0.26300513208451937,
+          0.32292012714673024
+        ],
+        "mean_top_probability": [
+          0.927728633815095,
+          0.9360343194923458
+        ],
+        "overconfidence_gap": [
+          0.02758310371813012,
+          0.04742198736236871
+        ],
+        "positive_ece_10": [
+          0.03865723081050723,
+          0.057367672946986685
+        ],
+        "top_ece_10": [
+          0.03153385610338801,
+          0.050444413027646316
+        ]
+      },
+      "requests_with_retries": 0,
+      "response_model_ids": [
+        "Qwen/Qwen3.6-35B-A3B"
+      ],
+      "reported_cost_usd": null
+    },
+    "Jev / OpenRouter": {
+      "manifest": {
+        "dataset": "google/boolq",
+        "split": "validation",
+        "revision": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+        "data_url": "https://huggingface.co/datasets/google/boolq/resolve/35b264d03638db9f4ce671b711558bf7ff0f80d5/data/validation-00000-of-00001.parquet",
+        "sha256": "52355d11524b4b874a9b9dcc278feb10f672d52c4f4eff9872e695ede59820f8",
+        "endpoint": "https://openrouter.ai",
+        "route": "/api/alpha/decisions",
+        "model": "~typesafe/jev-latest",
+        "count": 3270,
+        "instructions": "Based on the passage, answer this yes/no question:\n{question}",
+        "state": "{passage}",
+        "criteria": {
+          "true": "Yes",
+          "false": "No"
+        },
+        "concurrency": 2,
+        "delay_per_worker_seconds": 0.1,
+        "started_at": "2026-09-18T03:44:06.188409+00:00",
+        "execution": [
+          {
+            "started_at": "2026-09-18T03:44:06.188409+00:00",
+            "concurrency": 2,
+            "delay_per_worker_seconds": 0.1,
+            "resumed_rows": 0
+          },
+          {
+            "started_at": "2026-09-18T03:51:04.891838+00:00",
+            "concurrency": 16,
+            "delay_per_worker_seconds": 0.1,
+            "resumed_rows": 3002
+          }
+        ]
+      },
+      "metrics": {
+        "n": 3270,
+        "positive_rate": 0.6217125382262997,
+        "accuracy": 0.9155963302752294,
+        "brier": 0.06396318042813456,
+        "log_loss": 0.22569172056026757,
+        "mean_top_probability": 0.8969357798165137,
+        "overconfidence_gap": -0.01866055045871559,
+        "positive_ece_10": 0.035272171253822704,
+        "top_ece_10": 0.02505810397553517,
+        "positive_reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.1,
+            "count": 694,
+            "mean_probability": 0.06314121037463977,
+            "observed_frequency": 0.04610951008645533
+          },
+          {
+            "lower": 0.1,
+            "upper": 0.2,
+            "count": 354,
+            "mean_probability": 0.13011299435028248,
+            "observed_frequency": 0.0903954802259887
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.3,
+            "count": 130,
+            "mean_probability": 0.24115384615384616,
+            "observed_frequency": 0.33076923076923076
+          },
+          {
+            "lower": 0.3,
+            "upper": 0.4,
+            "count": 61,
+            "mean_probability": 0.3460655737704918,
+            "observed_frequency": 0.4262295081967213
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.5,
+            "count": 62,
+            "mean_probability": 0.455,
+            "observed_frequency": 0.5967741935483871
+          },
+          {
+            "lower": 0.5,
+            "upper": 0.6,
+            "count": 69,
+            "mean_probability": 0.5482608695652174,
+            "observed_frequency": 0.5217391304347826
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.7,
+            "count": 83,
+            "mean_probability": 0.643132530120482,
+            "observed_frequency": 0.8433734939759037
+          },
+          {
+            "lower": 0.7,
+            "upper": 0.8,
+            "count": 102,
+            "mean_probability": 0.7469607843137255,
+            "observed_frequency": 0.8627450980392157
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.9,
+            "count": 210,
+            "mean_probability": 0.8558571428571428,
+            "observed_frequency": 0.9095238095238095
+          },
+          {
+            "lower": 0.9,
+            "upper": 1.0,
+            "count": 1505,
+            "mean_probability": 0.9670431893687707,
+            "observed_frequency": 0.9820598006644519
+          }
+        ],
+        "top_reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.1,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.1,
+            "upper": 0.2,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.3,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.3,
+            "upper": 0.4,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.5,
+            "count": 0,
+            "mean_probability": null,
+            "observed_frequency": null
+          },
+          {
+            "lower": 0.5,
+            "upper": 0.6,
+            "count": 126,
+            "mean_probability": 0.5446031746031746,
+            "observed_frequency": 0.46825396825396826
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.7,
+            "count": 145,
+            "mean_probability": 0.6446206896551724,
+            "observed_frequency": 0.7172413793103448
+          },
+          {
+            "lower": 0.7,
+            "upper": 0.8,
+            "count": 220,
+            "mean_probability": 0.7492727272727273,
+            "observed_frequency": 0.7454545454545455
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.9,
+            "count": 501,
+            "mean_probability": 0.8570259481037924,
+            "observed_frequency": 0.9021956087824351
+          },
+          {
+            "lower": 0.9,
+            "upper": 1.0,
+            "count": 2278,
+            "mean_probability": 0.9555223880597015,
+            "observed_frequency": 0.9723441615452151
+          }
+        ],
+        "high_certainty": [
+          {
+            "threshold": 0.9,
+            "count": 2278,
+            "errors": 63,
+            "mean_probability": 0.9555223880597015
+          },
+          {
+            "threshold": 0.95,
+            "count": 1477,
+            "errors": 16,
+            "mean_probability": 0.9731753554502369
+          },
+          {
+            "threshold": 0.99,
+            "count": 366,
+            "errors": 1,
+            "mean_probability": 0.9899999999999999
+          }
+        ]
+      },
+      "bootstrap_95": {
+        "accuracy": [
+          0.9056080413891788,
+          0.9250477967393128
+        ],
+        "brier": [
+          0.058121020692951476,
+          0.06989871259334504
+        ],
+        "log_loss": [
+          0.20916550737979323,
+          0.24233095880825675
+        ],
+        "mean_top_probability": [
+          0.8929999309617813,
+          0.9009318752162196
+        ],
+        "overconfidence_gap": [
+          -0.02708427800594531,
+          -0.00952620958175755
+        ],
+        "positive_ece_10": [
+          0.027904097951661513,
+          0.0441708733347131
+        ],
+        "top_ece_10": [
+          0.018856934519895646,
+          0.03431953339432758
+        ]
+      },
+      "requests_with_retries": 0,
+      "response_model_ids": [
+        "typesafe/jev-1.13-20260917"
+      ],
+      "reported_cost_usd": 0.05946129
+    }
+  },
+  "bootstrap": {
+    "draws": 2000,
+    "seed": 42,
+    "unit": "passage",
+    "clusters": 2938
+  },
+  "paired_difference_95_openjev_minus_jev": {
+    "accuracy": [
+      -0.03035847385653788,
+      -0.011677218850958185
+    ],
+    "brier": [
+      0.012138509705750648,
+      0.022510529143278606
+    ],
+    "log_loss": [
+      0.04763851250413394,
+      0.08637750468933979
+    ],
+    "mean_top_probability": [
+      0.031280664804952604,
+      0.038646709960586424
+    ],
+    "overconfidence_gap": [
+      0.04671339639941529,
+      0.06518123782223409
+    ],
+    "positive_ece_10": [
+      -0.0030287296613210404,
+      0.026600496775892248
+    ],
+    "top_ece_10": [
+      -0.000289375294292833,
+      0.02903993069503679
+    ]
+  }
+}

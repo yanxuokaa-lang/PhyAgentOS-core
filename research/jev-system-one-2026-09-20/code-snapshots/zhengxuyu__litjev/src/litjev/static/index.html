@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LitJev · Schema Playground</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/method.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header><a href="/" class="brand">Lit<span>Jev</span></a><span class="subtitle">Schema Playground · 独立实验项目 · <a href="/film">游戏轨迹回放</a></span><span id="health" class="status">检查连接…</span></header>
+  <main>
+    <div class="heading"><div><p class="eyebrow">SYSTEM 1 / DECISION INTERFACE</p><h1>输入约束，得到选择。</h1></div><p>两次 forward · 共享前缀缓存<br>独立分支 · 不生成答案文本</p></div>
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-title"><h2>01 / 输入</h2><button id="example" type="button" class="secondary">载入示例</button></div>
+        <form id="decision-form">
+          <label for="schema-input">Questions <span>Jev 结构 · JSON 对象 · 示例含 10 题</span></label>
+          <textarea id="schema-input" required spellcheck="false" aria-describedby="schema-help"></textarea>
+          <p id="schema-help" class="hint">支持 choice / score / noul。每题使用 type、instructions、criteria。Choice 的 criteria 是「选项键 → 描述」；键可为多个 token。这里粘贴 questions 对象，不是 JSON Schema。</p>
+          <label for="state-input">上下文 <span>可选</span></label>
+          <textarea id="state-input" rows="3" placeholder="输入对话、状态或补充指令…"></textarea>
+          <label for="image-input">截图 <span>可选 · PNG/JPEG · 最多 4 MB / 1M 像素</span></label>
+          <input id="image-input" type="file" accept="image/png,image/jpeg">
+          <p class="hint">选图后，像素直接进入 Qwen 视觉编码器；不自动生成图片描述，也不发送文件路径。</p>
+          <div class="actions"><span id="elapsed" role="status">就绪</span><button id="submit" type="submit">运行决策 ↗</button></div>
+        </form>
+      </section>
+      <section class="panel output" aria-live="polite" aria-busy="false" id="output-panel">
+        <div class="panel-title"><h2>02 / 结果</h2><span id="result-status">等待输入</span></div>
+        <div id="error" role="alert" hidden></div>
+        <div class="metrics"><div><span>请求往返</span><strong id="roundtrip">—</strong></div><div><span>服务端决策</span><strong id="decision-time">—</strong></div><div><span>模型准备</span><strong id="setup-time">—</strong></div></div>
+        <p class="hint">请求往返包含网络与响应读取；服务端决策包含输入编码、等待和推理。首次请求可能需要加载模型。</p>
+        <p id="calibration" class="notice">概率是否校准取决于服务端配置，不把 softmax 当成已验证的正确率。</p>
+        <div id="answers"><div class="empty">提交 schema 后，在这里查看每个字段的选择与概率分布。</div></div>
+        <details id="raw-details" hidden><summary>Debug 响应 JSON：result 为标准响应，diagnostics 为扩展</summary><pre id="raw"></pre></details>
+      </section>
+    </div>
+    <section class="panel methodology" aria-labelledby="method-title">
+      <p class="eyebrow">HOW IT WORKS / 数据来源</p>
+      <h2 id="method-title">不是让模型生成 JSON，而是读取下一个 token 的分数。</h2>
+      <p>当前实现使用原模型的语言模型输出头 <code>lm_head</code>，没有训练新的分类头，也没有生成计划、解释或答案 JSON。所有 JSON 键和结构由 Python 组装。</p>
+      <ol class="pipeline">
+        <li><strong>第一次 forward：共享前缀</strong><span>只编码公共 state 和通用指令（可包含图片），得到前缀缓存。问题 ID 和标准答案不进入模型。</span></li>
+        <li><strong>第二次 forward：独立分支</strong><span>复制前缀的 KV 与循环状态，每行仅输入自己的 instructions、criteria 和 <code>Answer:</code> 后缀。选项键映射为通过单 token 检查的内部字母代码（A、B…）；各分支看不到其他题目和答案。</span></li>
+        <li><strong>最后一层 → 输出头</strong><span>Qwen 文本解码器最后一个 block 的输出，经最终 RMSNorm（<code>model.language_model.norm</code>），再经线性词表投影 <code>lm_head</code>，得到 <code>output.logits</code>。不是 attention 权重或中间层打分。</span></li>
+        <li><strong>各行独立读出</strong><span>取每行最后一个真实输入 token（Answer: 的冒号）的候选 logits，再 softmax 和 argmax。候选 token 表示「空格 + 代码」。不是读取问题 ID 位置，也不生成任何答案 token。</span></li>
+      </ol>
+      <div class="method-grid">
+        <div><h3>具体取哪个值？</h3><pre># 第一次：共享前缀
+base = model(prefix_ids, use_cache=True)
+cache = replicate_cache(base.past_key_values, M)
+# 第二次：仅输入十个独立后缀
+output = model(suffix_ids, past_key_values=cache)
+z = output.logits[i, suffix_lengths[i]-1, candidate_token_ids[i]]
+# 等价于完整词表输出中：
+# full_logits[i, lengths[i]-1, candidate_token_ids[i]]
+p = softmax(z / temperature)
+choice = original_keys[argmax(p)]
+score = sum(i * p[i] for i in range(K))
+noul = p[true_index]
+confidence = (K * sum(p*p) - 1) / (K-1)</pre><p class="hint">confidence 为 LitJev 的归一化 Gini 集中度（单选项时为 1），不是正确率，也不声称等于 Jev 的未公开公式。所有索引均从 0 开始；「空格 + 内部代码」必须在 Answer: 后恰好追加一个 token，否则拒绝请求。</p><p class="hint">查看 diagnostics.fields.*.provenance 获取本次实际层、序列位置和 token ID；不同请求不能照搬位置数字。</p></div>
+        <div><h3>响应 JSON：哪些来自模型？</h3><div class="table-scroll"><table><thead><tr><th>字段</th><th>来源与含义</th></tr></thead><tbody>
+          <tr><td><code>diagnostics.fields.*.logits</code></td><td><strong>直接取自模型。</strong>原 LM head 的候选词表 logits；转成 float32 后序列化。顺序见 provenance.candidate_labels / candidate_codes。</td></tr>
+          <tr><td><code>probabilities</code></td><td>Python 计算：对候选 logits / T 做 softmax，不是模型口述的置信度，也不是完整词表概率。</td></tr>
+          <tr><td><code>choice / score / noul</code></td><td>Python 计算：原键 argmax / 等级期望 / yes 概率。Noul 不额外返回 confidence。</td></tr>
+          <tr><td><code>confidence</code></td><td>Python 计算的分布集中度。max_probability 另放在 diagnostics，二者不混用。</td></tr>
+          <tr><td><code>diagnostics.fields.*.provenance</code></td><td>程序记录的层数、索引、绝对位置、词表 ID 和温度；不是模型生成。</td></tr>
+          <tr><td><code>type / model / usage</code></td><td>来自输入类型、实际加载配置与程序计数；标准 usage 只有 input_tokens、output_tokens（0）。</td></tr>
+          <tr><td><code>diagnostics</code></td><td>LitJev 扩展：forward_calls（2）、calibration_fitted、timing、fields。标准 /v1/systemone 不返回这些字段。</td></tr>
+        </tbody></table></div></div>
+      </div>
+      <p class="notice">标准请求：POST /v1/systemone，{model, state, questions}；标准响应：{model, answers, usage}。本页面使用 /v1/systemone/debug 获取计时和截图扩展。沿用 Qwen 原始 LM head、两次 forward，不宣称复现 Jev 的权重、内部架构或置信度数值。</p>
+    </section>
+  </main>
+  <footer>Transformers backend <span>类型约束输出 / 零生成 token</span></footer>
+</body>
+</html>

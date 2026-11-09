@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect width="1280" height="720" fill="#F3F7FB"/>
+<rect width="1280" height="8" fill="#5B9BD5"/>
+<text x="58" y="62" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="bold" fill="#17324D">比赛背景：实验室操作进入真实赛场</text>
+<text x="58" y="98" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#62788E">IEEE ICRA 2026 WBCD · 晶泰科技生命科学赛道</text>
+<rect x="58" y="142" width="570" height="420" fill="#FFFFFF" stroke="#C9D9E8" stroke-width="2"/>
+<rect x="82" y="168" width="522" height="260" fill="#EEF4F9" stroke="#C9D9E8" stroke-width="2"/>
+<text x="343" y="290" text-anchor="middle" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="bold" fill="#62788E">赛事官网截图待补</text>
+<text x="343" y="328" text-anchor="middle" font-family="Consolas, Courier New, monospace" font-size="16" fill="#62788E">待替换：官方赛事页面截图</text>
+<text x="82" y="480" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#5B9BD5">官网素材</text>
+<text x="82" y="518" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#17324D">官方赛事网址 / 页面截图 / 任务说明</text>
+<rect x="680" y="142" width="542" height="420" fill="#17324D"/>
+<text x="716" y="194" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="bold" fill="#FFFFFF">赛道任务</text>
+<line x1="716" y1="220" x2="1176" y2="220" stroke="#184CA0" stroke-width="2"/>
+<circle cx="734" cy="274" r="8" fill="#5B9BD5"/><text x="760" y="282" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#FFFFFF">样品瓶装载</text>
+<circle cx="734" cy="334" r="8" fill="#5B9BD5"/><text x="760" y="342" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#FFFFFF">样品架入仪器</text>
+<circle cx="734" cy="394" r="8" fill="#5B9BD5"/><text x="760" y="402" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#FFFFFF">溶剂瓶管路切换</text>
+<text x="716" y="466" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#5B9BD5">我的负责范围</text>
+<text x="716" y="502" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#FFFFFF">真机采集 · 策略微调 · 控制链路 · 现场部署</text>
+<text x="58" y="646" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#62788E">素材状态：官网与任务图片暂以占位框展示</text>
+</svg>

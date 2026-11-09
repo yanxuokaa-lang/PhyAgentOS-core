@@ -1,0 +1,54 @@
+{
+  "_note": "CITATION, not measurement. Values are transcribed from TypeSafe's official public leaderboard (https://evals.typesafe.ai/) on the retrieved date. Per-workflow accuracies are only filled where supplied; the rest are null. Update by re-checking the source and bumping `retrieved`.",
+  "source_url": "https://evals.typesafe.ai/",
+  "retrieved": "2026-09-17",
+  "models": [
+    {
+      "name": "Jev",
+      "accuracy": 0.678,
+      "by_workflow": {
+        "customer_service": 0.760,
+        "agent_trace_observability": 0.716,
+        "security_incidents": 0.617,
+        "invoice_processing": 0.618
+      },
+      "time_per_case_s": 0.4,
+      "cost_per_case_usd": 0.0004
+    },
+    {
+      "name": "GPT-5.6 Terra",
+      "accuracy": 0.679,
+      "by_workflow": {},
+      "time_per_case_s": 10.1,
+      "cost_per_case_usd": 0.0304
+    },
+    {
+      "name": "Claude Sonnet 5",
+      "accuracy": 0.678,
+      "by_workflow": {},
+      "time_per_case_s": 78.1,
+      "cost_per_case_usd": 0.1174
+    },
+    {
+      "name": "Claude Opus 5",
+      "accuracy": 0.731,
+      "by_workflow": {},
+      "time_per_case_s": 37.8,
+      "cost_per_case_usd": 0.1761
+    },
+    {
+      "name": "GPT-5.6 Sol",
+      "accuracy": 0.741,
+      "by_workflow": {},
+      "time_per_case_s": 23.3,
+      "cost_per_case_usd": 0.0836
+    },
+    {
+      "name": "Claude Haiku 4.5",
+      "accuracy": 0.536,
+      "by_workflow": {},
+      "time_per_case_s": 12.5,
+      "cost_per_case_usd": 0.0195
+    }
+  ]
+}

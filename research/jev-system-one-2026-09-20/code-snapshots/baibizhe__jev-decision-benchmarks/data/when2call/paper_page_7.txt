@@ -1,0 +1,85 @@
+Model When2Call BFCL AST BFCL Irr.
+F1 ↑ Acc ↑ Tool Hall% ↓ Acc ↑ Acc ↑
+GPT-4o 61.3 61.3% 26% 79.8% 83.8%
+GPT-4o-Mini 52.9 54.2% 41% 76.5% 80.7%
+GPT-4-Turbo-04-09 64.6 64.3% 22% 63.8% 35.6%
+Table 4: Results on When2Call, BFCL v2 Live AST and BFCL Irrelevance for three closed-source tool-calling
+models using LLM-as-judge evaluation. For BFCL, we report the scores using prompting, not native function-
+calling, for best comparison. The best scores are bolded; see Table 3 for comparison with community models.
+Model MC LLM-as-Judge
+F1 F1
+MNM 4B baseline 29.7 27.9
+MNM 4B SFT 48.1 48.6
+MNM 4B RPO 51.0 64.3
+MNM 8B baseline 31.9 34.8
+MNM 8B SFT 49.4 57.1
+MNM 8B RPO 52.4 66.1
+Table 5: Results on When2Call for multiple-choice vs.
+LLM-as-judge evaluation. F1 scores are comparable
+for models trained only on tool-calling datasets, but
+multiple-choice sometimes underestimates performance
+for models that see specific answer phrasings as part of
+the When2Call training set.
+sible and affordable for models that are trained on
+how to answer when not calling tools, but results
+appear to be similar for models primarily trained
+on datasets that only evaluate correct tool-calling.
+4.2 Results for closed-source models
+We evaluate three GPT-4 models using the LLM-
+as-judge method since closed-source tool-calling
+models are often reported to be better than open-
+source variants (Zhang et al., 2024b i.a.). Results
+are shown in Table 4. Indeed, we find that the GPT-
+4 models outperform the community models in
+Table 3, including the 4B and 8B models fine-tuned
+on When2Call. Nonetheless, there is still room for
+improvement. In particular, their tool hallucination
+rates are not better than the community models.
+5 Discussion
+Improving when-to-call accuracy is not trivial
+We find that improving scores on when-not-to-call
+benchmarks like BFCL Irrelevance and When2Call
+is not as simple as training on negative examples,
+as this can make the model over-conservative about
+calling tools and cause a dip in performance on
+BFCL AST. For example, simply adding negative
+examples of tool-calling to the instruction-tuning
+blend of our 4B model by randomly pairing tool
+specifications with unrelated instruction-following
+questions in the SFT blend increases performance
+on When2Call but decreases performance on BFCL
+AST, as the model becomes too conservative and
+does not call tools often enough. A similar is-
+sue arises if we simply add the entire When2Call
+training set to our instruction-tuning blend: per-
+formance improves on When2Call, but the model
+becomes too conservative and drops slightly in per-
+formance on BFCL (Section 3.3.1).
+This issue is compounded if SFT is followed
+by a helpfulness training step. Instead, we pro-
+pose using an appropriately balanced sample of the
+When2Call training set with RPO training (Sec-
+tion 3.3.2), which successfully balances these two
+competing pressures and enhances the training sig-
+nal by providing negative as well as positive exam-
+ples.
+How does When2Call compare to BFCL Irrele-
+vance? As shown in Figure 2, When2Call does
+not measure the same question as BFCL Irrele-
+vance. Good performance on BFCL Irrelevance,
+i.e. not calling a highly mismatching tool, is not
+enough to predict good performance on When2Call,
+which firstly requires the model to choose the cor-
+rect other behavior (asking a follow-up question
+or admitting it can’t answer), and secondly has
+subtler mismatches between the questions and the
+provided tools (Section 2.4). This is a finer-grained
+and more difficult task, which is often largely out-
+side the models’ training data, even when they are
+trained on data mimicking BFCL Irrelevance.
+Do models ask follow-up questions when re-
+quired to call the tool? A novel contribution
+of this dataset is explicitly testing whether models
+can ask follow-up questions when the tool matches
+the question but the required information is miss-
+3397

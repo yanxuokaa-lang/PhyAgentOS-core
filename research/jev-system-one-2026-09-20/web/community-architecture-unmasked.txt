@@ -1,0 +1,775 @@
+Source: https://archerhume.com/posts/jevs-architecture-unmasked
+HTTP: 200
+
+Jev’s Architecture Unmasked — archerhume
+archerhume
+Home
+Posts
+About
+Posts
+/
+Essays
+Jev’s Architecture Unmasked
+I probed Jev with 10,000 API calls to work out roughly how it’s built, and why most of the grifter takes on X are completely wrong.
+Essay
+17 September 2026
+·
+28 min read
+Contents
+Why this design is useful
+1. End inference with a readout
+2. Share the state, isolate the questions
+3. A causal backbone
+4. Let the options interact before choosing
+5. Train the distribution, then calculate confidence
+6. Sparse capacity
+7. Schedule branches as a batch, not a conversation
+What would change my mind?
+Methods
+Sources and related work
+X is full of hot takes about Jev’s launch, and most miss the point entirely:
+“12 million views for a JSON classifier? Yeah, we’re in a bubble.”
+An ordinary LLM generates “90% confident” as text; its probability of producing those words does not establish a 90% probability of being right. Yet we build fraud screening, moderation, routing and risk assessment around precisely this pattern: paying for token-by-token generation, then treating an unvalidated confidence claim as a probability our software can act on.
+Jev’s
+proposition is to retain the knowledge of a pretrained LLM while replacing generated confidence claims with decision probabilities read directly from its internal representations. Those probabilities are trained against outcomes. Give it shared
+state
+,
+questions
+, and allowed answers; it returns the distributions in parallel, without generating text.
+1
+For this whole class of applications, that addresses both problems: the reliability of the decision signal and the unnecessary computation spent producing it.
+Theres just one problem, its not open weight, and TypeSafe refuses to share their research… So I will (try my best).
+The evidence points toward a causal transformer (likely using sparse MoE) repurposed for decisions: shared-state encoding, isolated question branches, and direct probability readouts instead of text generation. After probing the TypeSafe API (looking for signatures in latency scaling under different context lengths, question reordering, etc.), scouring any public documentation and research with Astra, and looking for prior art, I think I have a fairly accurate model of how it works and its architecture.
+The sparse backbone is the least certain part, but its particularly beneficial for this domain with less downsides than AR LLMs, so would be weird if it wasn’t . Shared computation and direct probability outputs are much better supported obviously. This is clearly all quite speculative, so I’ll try and be as clear as possible around what evidence was published by TypeSafe, what was observed in experiments, and whats inferred from them. Black box APIs make it shockingly easy to throw a blanket over the ghost and get a rough shape of what the architecture looks like.
+Encode shared state
+Encode questions in parallel
+Read all distributions
+Figure 1.
+Proposed decision-model computation. The message is encoded once into the green grid, representing state information retained at each transformer layer. Each coloured question grid builds in parallel, combining its own text and allowed answers with attention to the shared state. Questions cannot attend to one another. Outcome-trained readouts turn their final representations directly into answer probabilities, without generating text. Travelling cells illustrate information flow, not literal copying; colours, attention paths and probabilities are schematic, not measurements of Jev.
+Why this design is useful
+¶
+Consider a schematic support-routing request. This illustrates the API’s structure; the example probabilities below are invented.
+{
+"state"
+:
+"My payouts have failed three times. The bank says everything is fine. Can someone please fix this?"
+,
+"questions"
+: {
+"queue"
+: {
+"type"
+:
+"choice"
+,
+"instructions"
+:
+"Which team should handle this ticket?"
+,
+"criteria"
+: {
+"payments"
+:
+"Payout failures and payment processing"
+,
+"account"
+:
+"Login and account access"
+,
+"other"
+:
+"Something else"
+}
+},
+"escalate"
+: {
+"type"
+:
+"noul"
+,
+"instructions"
+:
+"Does this message require urgent human attention?"
+}
+}
+}
+A useful answer might assign
+payments
+0.91 probability while assigning urgent escalation only 0.42. Those are different uncertainties. Software can route the ticket automatically while leaving escalation to a separate policy.
+A causal transformer already knows how to construct a representation of text from left to right. During ordinary language-model inference, it processes the prompt, predicts one token, feeds that token back in, and repeats. This builds on the decoder attention and output projection introduced in the original Transformer.
+3
+But the prompt-processing stage has already produced a rich representation. If the task is to choose among three queues, we can attach a small function that maps that representation directly to three numbers.
+A detail here resolves much of the confusion about parallel answers:
+causal attention describes which positions can use which information, not the order in which input tokens must be executed.
+During prompt processing, or
+prefill
+, every input token is already known. The model can process their positions together within a layer while the attention mask blocks access to later positions; the layers still run sequentially. Autoregressive decoding adds another dependency: the next token does not exist until the previous prediction has been chosen. Our proposed model ends after prefill and the readout, so it avoids that token-by-token dependency.
+This changes the computational shape of the task. The output no longer needs a sequence of spelling decisions for
+"payments": 0.91
+. JSON formatting happens in ordinary application code. The neural network supplies the probabilities.
+Now suppose the state is a lengthy incident report, and there are fifty questions. Most of the input is shared. A transformer stores intermediate information about processed tokens in its
+key–value cache
+, usually shortened to KV cache. In the proposed design, every question reads the same state cache. Each branch adds only its own instructions and answer options.
+For a state of
+S
+S
+S
+tokens and
+Q
+Q
+Q
+questions, separate requests would process the state roughly
+Q
+Q
+Q
+times. Sharing reduces the repeated state-token processing from
+Q
+S
+QS
+QS
+to
+S
+S
+S
+. The questions still have to attend to the state; that work does not disappear. But the model need not repeatedly reconstruct the state’s representations.
+Isolation also gives the interface a useful meaning. Asking whether the customer is angry should not change which queue receives the ticket. Both questions can inspect the same evidence without reading each other’s instructions. The branches have no computational dependency on one another, even when their answers are statistically related.
+Finally, probabilities make downstream policy explicit. If an unnecessary escalation costs one unit and a missed urgent case costs nine, a simplified decision rule escalates when
+p
+(
+urgent
+)
+>
+0.1
+p(\text{urgent}) > 0.1
+p
+(
+urgent
+)
+>
+0.1
+. That calculation is meaningful only to the extent the probabilities are reliable for this workflow. Training and evaluating the probability distribution therefore becomes part of the product, rather than a cosmetic confidence field.
+None of this requires diffusion. Parallel classification has existed for decades. The interesting combination is a broadly capable transformer, shared contextual computation, a typed output interface, and training that rewards useful uncertainty.
+1. End inference with a readout
+¶
+The first component is the simplest: a prediction head instead of a decode loop.
+Published evidence.
+TypeSafe’s
+launch announcement
+says: “Jev outputs all probabilities in parallel instead of autoregressively generating by token.” Its
+documentation
+exposes finite choices, yes/no decisions, and ordered scores. These are naturally represented by fixed numerical outputs.
+1
+2
+Observed evidence.
+The API still reports an
+output_tokens
+field, which sounds like a record of generation. It isn’t one. For yes/no questions, the count fits exactly: 4 shared tokens, plus 15 per answer, plus the token length of each question’s identifier. TypeSafe’s
+documentation
+says that identifier “is not sent to the underlying model and is not used in inference.” A count that changes with text the model never sees is calculated after inference, from the serialised response. The returned values don’t affect it either: an answer of
+0.0
+costs the same as
+0.01
+, although each digit otherwise counts as a token.
+2
+24
+The tokenizer behind the count doesn’t match any of the 192 public tokenizers we tested. It does match Jev’s own input counter for ordinary text, differing only on long runs of whitespace and punctuation.
+output_tokens
+is a billing figure. It tells us nothing about whether Jev generates text, and wouldn’t measure that text even if it did. Latency doesn’t track that figure either: a question with 200 options (1,911 output tokens) returned as quickly as one with two, and server time grew only with input length.
+24
+25
+A 255-option response reported 2,714 output tokens.
+4
+It would be a mistake to divide that number by request duration and call the result the model’s decoding speed. A server can serialize thousands of characters after a single model evaluation. The accounting field does not tell us how many neural decoding steps occurred.
+The proposed readout takes a final hidden vector
+h
+h
+h
+and produces logits:
+z
+=
+W
+h
++
+b
+,
+p
+i
+=
+e
+z
+i
+∑
+j
+=
+1
+K
+e
+z
+j
+.
+z = Wh + b, \qquad p_i = \frac{e^{z_i}}{\sum_{j=1}^{K} e^{z_j}}.
+z
+=
+W
+h
++
+b
+,
+p
+i
+​
+=
+∑
+j
+=
+1
+K
+​
+e
+z
+j
+​
+e
+z
+i
+​
+​
+.
+Here
+K
+K
+K
+is the number of allowed answers. The matrix
+W
+W
+W
+converts a representation into answer scores; softmax turns those scores into a distribution. For a yes/no decision, one scalar and a sigmoid would suffice.
+The classes need not be fixed concepts such as “payments”. They can be
+option slots
+: first option, second option, third option. The branch supplies each slot’s meaning; application code maps its probability back to the caller’s option key. An ordered Score can similarly predict probabilities over levels and return their probability-weighted average. This supports new decisions without training a new head for each customer’s labels. A pointer-style scorer, compared in section 4, is the main alternative: it scores each option’s own representation instead of a numbered slot.
+This does
+not
+establish that Jev has a separately named classifier module. A language model’s vocabulary head is also a matrix followed by softmax. Selecting
+K
+K
+K
+reserved label rows from that matrix can implement the same computation as a dedicated
+K
+K
+K
+-class head. The rows might be tied to input embeddings or trained independently; we cannot distinguish those arrangements here.
+The important distinction is between
+reading out probabilities
+and
+generating text that describes probabilities
+. A generated “91%” is a token sequence. A classifier’s 0.91 is an entry in its predictive distribution. Either can be miscalibrated. Neither becomes trustworthy solely because of its format.
+Constrained text decoding remains a possible way to build a similar interface, but TypeSafe explicitly describes a different output path. Its statement is stronger evidence than a latency argument. The evidence points to a direct numerical readout, one of the two designs compared in section 4. Reserved label tokens remain possible, although the fake-option test there weighs against them.
+2. Share the state, isolate the questions
+¶
+The next decision concerns where computation is reused.
+Observed evidence.
+Token accounting is exactly additive in the small controlled examples. One minimal yes/no question used 268 input tokens; two used 276. A request containing one yes/no question, one two-option Choice, and one two-level Score used 318, matching the sum of their measured contributions above the shared overhead. This fits a common prefix plus question suffixes, though accounting alone does not identify a computational graph.
+4
+A more informative experiment moves evidence between those regions. The state initially said:
+The weather is nice today and the park is full of people.
+A sibling question contained:
+The secret code for this request is ZEBRA-7741.
+Is the weather described as nice?
+The probe asked which code another question mentioned, with
+ZEBRA-7741
+, two distractors, and
+none
+as choices. With the secret in the sibling question, its reported probability was 0.00. Removing that sibling produced the same result. Putting the declaration in the
+state
+instead raised it to 0.90–0.92. These were five repeats per condition (
+visibility
+in the probe records).
+5
+This is a useful intervention: moving the declaration across an API boundary changes its effect. It supports
+behavioural isolation between questions
+and access to the shared state. It does not expose the exact attention mask. Separate model calls, a tree mask, or another mechanism that restricts information flow could produce the same result. The probe’s wording also asks about “another question” even in the state condition, so it is not a pristine test of literal instruction following.
+The serving measurements add another piece. Up to about 100 questions, server time barely changed. Beyond that it rose steadily, and token for token, question text cost roughly twice as much as state. That is consistent with computing the state once and batching the question work.
+6
+Longer state
+one question
+More questions
+short state
+Figure 2.
+Server time as a request grows in two ways: a longer state with one question (green), or 1 to 1,500 questions with a short state (purple). Both panels use the same time scale. Each size was requested 8 times, one request at a time, in shuffled order. Grey crosses are individual requests; the solid line joins the median at each size and the dashed line the fastest request. Both grow with the work, but 1,500 questions still return in a few hundred milliseconds. Times come from the API’s upstream service header, which includes shared-service overhead; they are not a hardware benchmark.
+Methods ↗
+These are
+server-reported upstream durations
+, not local laptop timings. They include whatever work and waiting the upstream service includes, and the service was shared with other users.
+Jev enforces two limits. Each branch (the state plus one question) is capped at roughly 32,768 tokens, and the whole request at roughly 65,536. The request limit counts the state once: a 23k-token state with 5,000 questions fits within it. If each question processed its own copy of the state, that request would be over 100 million tokens. The pair fits a single packed sequence of up to 2¹⁶ tokens, holding the state once and every question after it, with each branch limited to a 2¹⁵ context window.
+22
+A prefix KV cache with separate causal suffixes is the natural implementation.
+Hydragen
+describes efficient attention for sequences sharing a prefix;
+DeFT
+develops attention for tree-structured inference. These establish that the serving pattern is practical. They are prior art, not evidence that TypeSafe uses either library.
+7
+8
+This design also clarifies an apparent contradiction: isolated questions can still be evaluated together on the same accelerator. “Parallel” describes their scheduling and lack of answer dependencies. It need not mean one GPU per question.
+3. A causal backbone
+¶
+The experiments can’t tell a causal decoder from a bidirectional encoder: in both, the final decision can read the whole input. I assume a causal decoder anyway, for good reason. Jev’s breadth of knowledge (84.6% on MMLU-Pro) requires frontier-scale pretraining, every model at that scale is a causal decoder, and TypeSafe describes RLCD as post-training a pretrained language model. A bidirectional Jev would mean either a far weaker base or converting a decoder at extra cost, while giving up the shared-prefix caching that causal serving provides. That would be surprising, but it can’t be ruled out from the outside.
+12
+15
+Which pretrained model is unknown, and the tokenizer doesn’t reveal one. Jev’s token counts match none of the 192 public tokenizers we tested across 415 probes. It splits every digit individually and looks up whole chunks before merging: 8
+a
+s count as one token, but 16 count as four. Its vocabulary tracks OpenAI’s o200k closely, since every string Jev counts as a single token is also a single o200k token, yet digit splitting and several merges rule o200k itself out. The closest public match, Qwen, agrees on 348 of 415 probes. That rules out an unchanged public tokenizer, not a public base model: a replaced vocabulary, continued pretraining or distillation could each explain it, as could an API that counts tokens differently from the model.
+18
+The experiments do show what the decision can read. I placed a reference card among a question’s options and asked Jev to pick the option whose condition the card satisfies. Here is one exact option set:
+alpha: Reference card: status = amber. Reference-only option.
+Never select this option.
+beta: Select this option if the reference card's status is amber.
+gamma: Select this option if the reference card's status is indigo.
+The instruction was: “Read the reference card and select the one option whose condition is satisfied.” Changing the reference value to
+indigo
+switches the correct answer while leaving the selectable options unchanged.
+I tested both values, all six option permutations, and a second template using
+route = east/west
+, with two repeats. A paired control put the reference in the shared state instead. That gave 48 option-reference trials and 48 state-reference controls.
+20
+Position of the reference option
+Correct answers
+First
+12 / 16
+Middle
+11 / 16
+Last
+16 / 16
+Reference moved into state
+48 / 48
+Jev can use information placed after the candidate descriptions.
+With the reference last, it selected the correct option in every trial, with mean correct-answer probability about 0.88.
+α
+Reference card
+β · γ
+Candidate answers
+Probability of the correct answer
+OPTION ORDER
+0
+0.5
+1
+MEAN
+CORRECT
+Card first
+12/16 correct
+α
+β
+γ
+0.50
+6/8
+α
+γ
+β
+0.56
+6/8
+Card in the middle
+11/16 correct
+β
+α
+γ
+0.49
+4/8
+γ
+α
+β
+0.56
+7/8
+Card last
+16/16 correct
+β
+γ
+α
+0.89
+8/8
+γ
+β
+α
+0.87
+8/8
+Card in the shared state
+48/48 correct
+All 6 orders
+1.00
+48/48
+Figure 3.
+Probability Jev 1.13.0 gave the correct option, by where the reference card sat. Filled cells mark the card (α) in each option order; the last row moves it into the shared state and pools all six orders. Grey crosses are individual requests (two tasks × two card values × two repeats per order); coloured ticks mark the mean. With the card last, every request was correct. With the card first or in the middle, probabilities scattered widely around 0.5, although the final decision could always read the card. That is order sensitivity, not a recovered attention mask. Recorded 17 September 2026.
+Request payloads and answers ↗
+The value-switch control matters as much as the position. With the card last, changing only
+amber
+to
+indigo
+changes which earlier option wins, although those earlier descriptions and the state stay identical. A model that independently scores each option from its own text and the state, then merely normalises the scores, has no route for that fact to change the earlier options’ relative ranking. The results support a path through which options influence the joint decision.
+20
+This fits any readout computed after the whole list, including both designs compared in section 4, as well as a separate option-mixing stage. The remaining errors show position-sensitive processing on these two templates; they do not identify a unique cause.
+Diffusion is unnecessary for this computation, and nothing in these experiments requires iterative denoising. The defensible architectural inference is narrower:
+the answer computation has access to the full option list
+. The next experiment tests whether it actually uses that joint context.
+4. Let the options interact before choosing
+¶
+Within a question, the evidence points to a different information boundary: the alternatives are read together as an ordered list, followed by one decision position.
+Why allow that interaction? Options such as “none of the above” depend on the other choices. Even ordinary alternatives can clarify a question. “Payments”, “account access”, and “other” define a different decision from “bank”, “payment provider”, and “customer”. A listwise representation lets the model interpret that distinction before producing the distribution.
+The strongest evidence is an experiment with an irrelevant extra option.
+Start with four possible causes of a payout failure:
+bank
+,
+provider
+,
+customer
+, and
+unknown
+. Then append
+weather: Bad weather caused it
+. If every original option receives an independent, unchanged logit and the server applies the same softmax temperature, adding a fifth option changes the normalisation but cannot change the odds between two existing options:
+p
+(
+customer
+)
+p
+(
+unknown
+)
+=
+e
+z
+customer
+−
+z
+unknown
+.
+\frac{p(\text{customer})}{p(\text{unknown})}
+= e^{z_{\text{customer}}-z_{\text{unknown}}}.
+p
+(
+unknown
+)
+p
+(
+customer
+)
+​
+=
+e
+z
+customer
+​
+−
+z
+unknown
+​
+.
+The common denominator cancels. This gives us a specific, falsifiable prediction.
+The original study found a shift from approximately
++0.49 to +0.08
+.
+10
+To check whether this survived ordinary request variability, I repeated the experiment in ten randomised blocks. Each block included the four-option baseline, an identical four-option control, a five-option version with
+weather
+appended, an identical five-option control, and a five-option version whose added description changed from “Bad weather caused it” to “Wild birds caused it”. Each request contained one question.
+21
+The expansion result replicated. Pooling the two identical requests for each condition within each block, mean log-odds fell from
++0.38 to +0.11
+. Every block showed a decrease; the average change was −0.28, with a descriptive 95% paired t interval of approximately −0.36 to −0.19. The pooling uses the control requests to reduce ordinary request noise rather than treating duplicate outputs as independent experiments.
+21
+4 options
+→
+5 options
+Add “bad weather caused it”
+BLOCK
+−0.20
+0
++0.20
++0.40
++0.60
++0.80
+CHANGE
+1
+−0.02
+2
+−0.36
+3
+−0.26
+4
+−0.46
+5
+−0.26
+6
+−0.21
+7
+−0.28
+8
+−0.35
+9
+−0.33
+10
+−0.25
+Mean
+4 options
+5 options
+−0.28
+← Favours unknown
+Favours customer →
+log [ P(customer) / P(unknown) ]
+Fixed scores + fixed temperature
+The dots would coincide
+Observed
+Lower in all ten blocks
+Mean change −0.28 · 95% interval −0.36 to −0.19
+Figure 4.
+Does adding an irrelevant option change the odds between two existing ones? Each row is one randomised block. Grey crosses are individual requests (two identical payloads per list size); the grey dot pools the four-option requests and the purple dot the five-option requests with “bad weather caused it” appended. If each option kept a fixed score and the softmax temperature stayed the same, the shared denominator would cancel and the two dots would coincide. The interval is a paired t interval across the ten blocks (9 degrees of freedom), from an exploratory study of one scenario; probability rounding, request noise and a list-dependent temperature remain possible contributors. It shows the options interact, not where in the model.
+Requests and answers ↗
+·
+Summary ↗
+This is evidence against fixed independent logits followed by an unchanged softmax. It does not uniquely identify the mechanism. Changing the added description while keeping five options gave a smaller, inconclusive shift: its paired interval included zero. A set-dependent temperature remains possible, alongside content-dependent mixing.
+A readout that sees the complete list explains this naturally: adding an option changes the context it reads. The
+FIRST
+listwise ranking method works the same way, extracting a ranking from first-token logits instead of generating it token by token.
+11
+Two readouts fit the evidence. A final-position head scores each option slot from the decision token’s representation; a pointer-style scorer compares that representation with each option’s own final hidden state. Both let options influence one another. The API accepts at most 255 options (2⁸ − 1), which suits a fixed 256-slot head, but that limit is enforced by request validation, not the model. With 200 options, a copied answer scored 1.00 at every position and errors didn’t spill onto neighbouring options, which suits a pointer. Neither result is decisive.
+26
+Injected fake options never displaced the real ones, so option boundaries are marked in a way text cannot forge, and an option whose condition is duplicated elsewhere in the list loses probability to its rivals.
+23
+The trade-off is visible in ordinary tasks too: reversing options shifted the probability of a technical-support classification from roughly 0.84–0.89 to 0.93–0.96. This came from the
+option_order
+probes.
+9
+For a deployed decision policy, that matters. A threshold near 0.9 could change the action even though the labels and evidence are identical. Permutation tests belong in the evaluation of any implementation of this design.
+5. Train the distribution, then calculate confidence
+¶
+The fifth component is the training objective. Direct numerical outputs save decoding work, but a cheap probability can still be a bad probability.
+Imagine a collection of cases assigned 0.8 probability of being urgent. Calibration asks whether about 80% really are urgent. It is a property of predictions across cases. We cannot determine whether one prediction is calibrated from whether that particular case turns out well.
+TypeSafe calls its training method
+Reinforcement Learning for Calibrated Decisions
+, or RLCD. The launch says it optimises for “answers with epistemically honest probabilities on System One tasks”; the company’s primer presents RLCD as a post-training path from pretrained language models.
+1
+12
+The exact recipe is unpublished. My proposed training recipe adapts the transformer and readout to typed decision tasks using an outcome-based objective. That gives the backbone an opportunity to construct representations useful for reliable decisions, not merely fluent completions.
+A natural objective is log loss,
+−
+log
+⁡
+p
+(
+y
+)
+-\log p(y)
+−
+lo
+g
+p
+(
+y
+)
+for the observed outcome
+y
+y
+y
+. Another is Brier loss, the squared distance between the predicted distribution and the observed one-hot outcome. Both are
+proper scoring rules
+: in expectation, reporting the true conditional distribution minimises the loss. Gneiting and Raftery give the formal definition and theory.
+13
+This explains what such training tries to achieve. It does not establish which loss TypeSafe uses, whether its pipeline is reinforcement learning in a narrow algorithmic sense, or whether every backbone weight is updated.
+Properness is also not a deployment guarantee. Finite data, model limitations, optimisation error, and distribution shift can all leave calibration imperfect.
+Guo et al.
+show both the calibration problems of modern neural networks and the usefulness of post-hoc adjustments. Training and post-hoc calibration are compatible mechanisms; the API cannot separate their contributions.
+14
+Observed evidence.
+The benchmark records let us compare predicted probability with observed accuracy, both in aggregate and within probability bins. The chart shows those checks. Agreement of the averages alone is weaker evidence than agreement within bins: overconfidence in one group can cancel underconfidence in another. On the 1,200-item MMLU sample, ten-bin expected calibration error was 0.0313 (
+bin definitions and item-level predictions
+). Most predictions were concentrated near certainty: 990 fell in the 0.9–1.0 bin.
+15
+MMLU sample
+1,200 items · ECE 0.031
+Fresh maths
+8 generated families · 20–30 items each
+Figure 5.
+Does a given probability match how often Jev is right? Both panels plot observed accuracy against the probability Jev gave its chosen answer, recomputed from recorded outputs rather than the API’s separate
+confidence
+field; points on the dashed diagonal are perfectly calibrated. Purple: 1,200 MMLU items grouped into probability bins, labelled with each bin’s item count (probabilities rounded to two decimals before binning). Rust: newly generated maths problems, one point per family. Vertical lines are 95% Wilson intervals, which cover sampling noise only, not benchmark selection or training exposure. Expected calibration error (ECE) weights each bin’s gap from the diagonal by its share of items. Family averages agreeing is weaker evidence than bins agreeing, since over- and underconfidence can cancel within a family; modular exponentiation is the clear exception, right 56% of the time at a mean probability of 35%.
+Aggregate evidence ↗
+·
+Reliability data ↗
+The small fresh-math study adds useful variation. On generated three-digit multiplication problems, accuracy was 86.7% and average top probability 0.83. On two-step word problems, accuracy fell to 32% and average top probability to 0.30. The model was less confident on the harder task (
+fresh_math_results
+, with 30 multiplication and 25 word-problem items).
+15
+That is encouraging, although small category-level averages cannot establish calibration for every kind of unseen problem.
+Those results also show why a public benchmark score is an imperfect measure of what the model knows. MMLU-Pro accuracy was 84.6%; newly generated word problems were much harder.
+15
+Differences in task structure, distractors, difficulty, and training exposure could all contribute.
+That gap does not establish benchmark contamination.
+Fresh wording also does not make the underlying mathematical skill or factual knowledge unseen.
+There is a separate, unusually clear finding about the API’s field named
+confidence
+. The
+official adapter
+computes Choice confidence from a normalised distribution, for
+K
+>
+1
+K > 1
+K
+>
+1
+, as:
+c
+=
+p
+max
+⁡
+−
+1
+/
+K
+1
+−
+1
+/
+K
+.
+c = \frac{p_{\max}-1/K}{1-1/K}.
+c
+=
+1
+−
+1/
+K
+p
+m
+a
+x
+​
+−
+1/
+K
+​
+.
+For three options with a maximum probability of 0.8, this gives 0.7. The adapter handles the one-option case separately, returning 1. It measures how far the leading answer stands above a uniform distribution. It is not another learned estimate that the answer is correct. The Score type uses a different formula reflecting distance from the modal level.
+16
+In the proposed system, training produces the predictive distribution; ordinary arithmetic produces this summary field. Keeping those two objects separate prevents a common conceptual mistake: a concentrated distribution can still be confidently wrong.
+6. Sparse capacity
+¶
+I expect Jev to use a sparse mixture-of-experts transformer. At selected layers, a router sends each token through a small subset of feed-forward networks, so the model can store many parameters while activating only some of them for each token: the conditional-computation idea demonstrated by Shazeer et al.’s sparsely gated MoE layers.
+17
+Sparse experts can’t be observed from outside, but they are the likely choice. A prefill-only model is limited by compute, which is exactly what sparse routing saves. MoE’s usual serving costs mostly disappear: there is no token-by-token decoding, where memory bandwidth dominates and most experts end up active anyway, and no long-lived KV cache competing with expert weights for memory. The measurements point the same way. Jev processed about 30k tokens in roughly 160 ms; a dense 70B model on an 8×H100 node would need around a second, while a MoE with about 10B active parameters fits. And most of the strongest recent base models (DeepSeek-V3, Qwen3, GLM-4.5, Kimi K2, gpt-oss) are MoE. Specialised hardware could let a dense model match the speed, and benchmark scores may overstate how much knowledge the model holds, so this remains an inference, not a measurement.
+6
+15
+Nothing else in the reconstruction depends on it. Swapping in a dense transformer would leave the interface, shared state, isolated branches and readout exactly as described.
+7. Schedule branches as a batch, not a conversation
+¶
+The final component is a serving engine that treats question branches as independent work items. Their suffixes can be packed into batches while reading shared state representations. Application code then associates the numerical outputs with question identifiers and serializes the response.
+The measurements reveal small differences between repeated identical answers, including between duplicate questions within one request. This means API-level determinism should not be assumed (
+noise
+,
+dup
+, and
+determinism
+).
+19
+It does not imply that the model generates or samples text: numerical kernels, dynamic batching, routing, or deliberate randomness can all affect a direct readout.
+Response key orders also varied in a small number of recurring patterns.
+19
+Multiple workers with different hash ordering are a plausible explanation. However, this side channel does not identify the worker count, establish where the KV cache lives, or tell us which numerical precision is used. Those are implementation details the available observations cannot resolve.
+What matters to the proposed architecture is the absence of a dependency chain between answers. The model does not need to finish writing the queue classification before beginning the urgency estimate. Both depend on the state; neither consumes the other’s generated answer.
+There is still a dependency limit. If a later question genuinely needs an earlier answer, the application must introduce another decision stage or express the joint decision in one question. Sharing context does not remove the logical structure of the workflow.
+What would change my mind?
+¶
+This reconstruction makes different kinds of commitments. Direct probability outputs are publicly described. Question isolation and option-order effects are observable behaviours. KV sharing, causal attention, final-position or pointer-style readouts, and sparse experts are progressively more specific explanations.
+The reference-card experiment settles one question: the decision can use options placed last. The fake-option test shows that tricks in the input format cannot forge option boundaries. Broader relational tasks could constrain the representation further, although behavioural success alone would still not uniquely identify an attention mask.
+For option handling, the randomised follow-up replicates a choice-set effect, but the fixed-size description intervention remains inconclusive. More templates and independent request blocks could distinguish a shared temperature change from content-dependent interactions. A task of middling difficulty at 200 options could separate the slot head from the pointer scorer. For calibration, held-out workflow data and repeated evaluations under shift would matter more than another aggregate benchmark score. Confirming sparse experts would probably require a disclosure or evidence beyond this API.
+My best reconstruction of Jev remains the one in the opening diagram: a causal transformer with a shared state prefix, isolated question suffixes, listwise option processing, typed numerical readouts, and training directed at predictive distributions. Sparse experts are the likely backbone, although nothing else in the design depends on them.
+Its usefulness comes from matching the computational graph to the job. A decision service needs to read evidence, compare permitted outcomes, and expose uncertainty. A transformer can do that without turning every decision into a sentence first.
+Methods
+¶
+This essay is based on a 17 September 2026 investigation of
+jev-1.13.0
+, using one early-access account and one observed service region. The source study contains 1,029 instrumented probe records (including the 190 generated-math items), 6,800 benchmark records, and separate factual checks. Follow-up studies added 146 relational and option-interaction requests (
+trials
+,
+summary
+), 311 token-accounting requests, 445 tokenizer-fingerprint requests, 192 latency requests, 148 option-count latency requests, 181 option-position requests, 105 fake-option requests and 35 context-limit requests. Each is linked from the references, with exact requests and sanitised responses. Repeated benchmark configurations share underlying items; these counts are not counts of independent problems.
+The
+downloadable evidence bundle
+records the observations used in this essay. API examples in the opening section are schematic. Quoted visibility and reference-card prompts come from the probe scripts and saved follow-up requests. Numerical observations are specific to this model version and test campaign.
+Latency figures come from the
+x-envoy-upstream-service-time
+response header. They are upstream service durations, with unknown queueing and execution boundaries, rather than isolated model timings. The latency figure’s sweeps were run one request at a time in shuffled order; none of the studies controlled server load. Local wall-clock measurements are not used as architectural evidence.
+Probabilities were generally returned at two-decimal precision. Duplicate questions in one request share conditions and may have correlated errors. The MMLU calibration figure uses ten equal-width bins: [0, 0.1), [0.1, 0.2), and so on, with 1.0 included in the last bin. Expected calibration error is the sample-weighted absolute difference between accuracy and average top probability in each bin. Estimates depend on sample selection, binning, and response rounding. The evidence supports claims about the tested distributions, not guaranteed calibration across future customer workflows.
+Sources and related work
+¶
+Experimental references identify the original script tags so that each observation can be located in the evidence bundle. Paper citations establish the proposed mechanisms and their precedents; they do not establish that Jev uses them.
+Sources
+[1]
+TypeSafe (2026). Introducing System One Models and Jev. Primary source for the parallel-output claim and stated RLCD objective.
+[2]
+TypeSafe. Full API documentation, accessed 17 September 2026. Typed questions, response distributions, and API contract.
+[3]
+Vaswani et al. (2017). Attention Is All You Need. Decoder masking, attention, and the linear/softmax output layer.
+[4]
+API experiments: type_preamble and outputs. Token-accounting additivity, identifier changes, and the 255-option response.
+[5]
+API experiment: visibility. Five repetitions each with the secret in a sibling question, absent from that sibling, and in the state.
+[6]
+Latency sweeps (192 sequential requests). State length and question count, 8 shuffled repeats each; server-reported upstream durations.
+[7]
+Juravsky et al. (2024). Hydragen: High-Throughput LLM Inference with Shared Prefixes.
+[8]
+Yao et al. (2024). DeFT: Decoding with Flash Tree-attention for Efficient Tree-structured LLM Inference.
+[9]
+API experiment: option_order. Ordinary ticket order sensitivity.
+[10]
+API experiment: iia. Three requests per condition, each with forty duplicate questions; original, appended, and prepended choice sets.
+[11]
+Reddy et al. (2024). FIRST: Faster Improved Listwise Reranking with Single Token Decoding.
+[12]
+TypeSafe. Machine learning primer. Primary description of the RLCD post-training path and calibration contract.
+[13]
+Gneiting and Raftery (2007). Strictly Proper Scoring Rules, Prediction, and Estimation. Journal of the American Statistical Association 102(477):359–378.
+[14]
+Guo et al. (2017). On Calibration of Modern Neural Networks.
+[15]
+Benchmark and generated-math records: accuracy and average predicted probabilities.
+;
+MMLU reliability analysis: bin definitions, ECE, Wilson intervals and 1,200 item-level predictions.
+[16]
+TypeSafe. Official Python adapter, confidence_metrics.py, revision fb52b103. Choice and Score confidence formulas (read 17 September 2026).
+[17]
+Shazeer et al. (2017). Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer.
+[18]
+Tokenizer fingerprint experiment (445 requests). Run-length, vocabulary and pre-tokenisation probes, compared against 192 public tokenizers.
+[19]
+API experiments: noise, dup, and determinism. Repeated probabilities and response-key orders.
+[20]
+Follow-up relational experiment (96 requests). Two templates, two reference values, six permutations, two locations, and two repeats; exact requests and sanitised responses.
+[21]
+Follow-up option-interaction experiment (50 requests). Ten randomised blocks of base4, null4, append5, replace5, and null5; paired changes and standard errors.
+[22]
+Context-limit experiment (35 sequential requests). Per-branch and whole-request token limits, with accepted and rejected boundary cases.
+[23]
+Fake-option injection experiment (105 requests). Seven delimiter formats, saturated and ambiguous base tasks, and full probability vectors.
+[24]
+Token-accounting experiments (311 requests). Question-ID length, batch size, state difficulty, word IDs, and matched state versus ID strings.
+[25]
+Option-count latency experiment (148 requests). One or 20 questions with 2–200 options, short and long labels, plus input/output decoupling controls.
+[26]
+Option-position experiment (181 requests). Option-count cap, correct answer moved across 10-, 50-, 200- and 255-option lists.
+— Archer
+ai
+research
+transformers
+calibration
+reverse-engineering
+← Back to all posts
+Archer Hume
+·
+Melbourne, AU
+Co-founder at Doccy & Medlo.
+GitHub
+Twitter
+Cursor
+Email
+RSS
+© 2026

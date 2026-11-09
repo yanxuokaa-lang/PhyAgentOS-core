@@ -1,0 +1,110 @@
+[
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 4,
+    "status": 200,
+    "total_count": 568,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=jev+typesafe+created%3A%3E%3D2026-09-19&per_page=100&page=4&sort=stars"
+  },
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 5,
+    "status": 200,
+    "total_count": 568,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=jev+typesafe+created%3A%3E%3D2026-09-19&per_page=100&page=5&sort=stars"
+  },
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 6,
+    "status": 200,
+    "total_count": 569,
+    "incomplete_results": false,
+    "returned": 69,
+    "url": "https://api.github.com/search/repositories?q=jev+typesafe+created%3A%3E%3D2026-09-19&per_page=100&page=6&sort=stars"
+  },
+  {
+    "query": "\"typesafe.ai\"",
+    "page": 1,
+    "status": 200,
+    "total_count": 317,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22typesafe.ai%22&per_page=100&page=1&sort=stars"
+  },
+  {
+    "query": "\"typesafe.ai\"",
+    "page": 2,
+    "status": 200,
+    "total_count": 317,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22typesafe.ai%22&per_page=100&page=2&sort=stars"
+  },
+  {
+    "query": "\"typesafe.ai\"",
+    "page": 3,
+    "status": 200,
+    "total_count": 317,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22typesafe.ai%22&per_page=100&page=3&sort=stars"
+  },
+  {
+    "query": "\"typesafe.ai\"",
+    "page": 4,
+    "status": 200,
+    "total_count": 317,
+    "incomplete_results": false,
+    "returned": 17,
+    "url": "https://api.github.com/search/repositories?q=%22typesafe.ai%22&per_page=100&page=4&sort=stars"
+  },
+  {
+    "query": "\"system one\" \"typesafe\"",
+    "page": 1,
+    "status": 200,
+    "total_count": 332,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22system+one%22+%22typesafe%22&per_page=100&page=1&sort=stars"
+  },
+  {
+    "query": "\"system one\" \"typesafe\"",
+    "page": 2,
+    "status": 200,
+    "total_count": 332,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22system+one%22+%22typesafe%22&per_page=100&page=2&sort=stars"
+  },
+  {
+    "query": "\"system one\" \"typesafe\"",
+    "page": 3,
+    "status": 200,
+    "total_count": 332,
+    "incomplete_results": false,
+    "returned": 100,
+    "url": "https://api.github.com/search/repositories?q=%22system+one%22+%22typesafe%22&per_page=100&page=3&sort=stars"
+  },
+  {
+    "query": "\"system one\" \"typesafe\"",
+    "page": 4,
+    "status": 403,
+    "total_count": null,
+    "incomplete_results": null,
+    "returned": 0,
+    "url": "https://api.github.com/search/repositories?q=%22system+one%22+%22typesafe%22&per_page=100&page=4&sort=stars"
+  },
+  {
+    "query": "topic:jev",
+    "page": 1,
+    "status": 403,
+    "total_count": null,
+    "incomplete_results": null,
+    "returned": 0,
+    "url": "https://api.github.com/search/repositories?q=topic%3Ajev&per_page=100&page=1&sort=stars"
+  }
+]

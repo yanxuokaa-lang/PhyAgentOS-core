@@ -1,0 +1,142 @@
+[
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 1,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 2,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 3,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 4,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 5,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 6,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:<2026-09-19",
+    "page": 7,
+    "total_count": 648,
+    "incomplete_results": false,
+    "returned": 48
+  },
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 1,
+    "total_count": 564,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 2,
+    "total_count": 565,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "jev typesafe created:>=2026-09-19",
+    "page": 3,
+    "total_count": 565,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"openjev\"",
+    "page": 1,
+    "total_count": 39,
+    "incomplete_results": false,
+    "returned": 39
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 1,
+    "total_count": 5081,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 2,
+    "total_count": 5081,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 3,
+    "total_count": 5081,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 4,
+    "total_count": 5081,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 5,
+    "total_count": 5081,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 6,
+    "total_count": 5082,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 7,
+    "total_count": 5082,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 8,
+    "total_count": 5082,
+    "incomplete_results": false,
+    "returned": 100
+  },
+  {
+    "query": "\"jev\" fork:only",
+    "page": 9,
+    "total_count": 5082,
+    "incomplete_results": false,
+    "returned": 100
+  }
+]

@@ -1,0 +1,101 @@
+{
+  "snapshot_date": "2026-09-19",
+  "actual_jev_model": "typesafe/jev-1.13-20260917",
+  "files": [
+    {
+      "path": "data/metatool/comparison.csv",
+      "original_artifact": "metatool/model-comparison.csv",
+      "sha256": "ee8492699b27fced5c13d29d593c573b7dcdce00aad9a25432363a51a467ab07"
+    },
+    {
+      "path": "data/metatool/summary.json",
+      "original_artifact": "metatool/runs/v1/summary.json",
+      "sha256": "e51b4b960a2b235d64f7d1c7ea198b04e9d849e5977ae50966c36d14d69ca95c"
+    },
+    {
+      "path": "data/metatool/published_baselines.csv",
+      "original_artifact": "metatool/runs/v1/published_baselines.csv",
+      "sha256": "9e63743d38e6008d95ef3721695bf02e4d335ab95cf5aeb1aa2b19e1f252e431"
+    },
+    {
+      "path": "data/metatool/protocol.json",
+      "original_artifact": "metatool/runs/v1/protocol.json",
+      "sha256": "6d756a4c6c733bf060ba192929915530df50671a90c87131a0bd09f5a81c60ee"
+    },
+    {
+      "path": "data/metatool/paper-tables.json",
+      "original_artifact": "metatool/sources/paper-tables.json",
+      "sha256": "ac0ff5cbc0f9a8b375192daa837bc180145cac03319cebf1922d985b4400291f"
+    },
+    {
+      "path": "data/when2call/comparison.csv",
+      "original_artifact": "when2call/comparisons/20260919/official_mcq_and_jev.csv",
+      "sha256": "4520d5d7d64dd07e511d4776407e7ca25f8d45972093688e026976a1fe3b113b"
+    },
+    {
+      "path": "data/when2call/judge.csv",
+      "original_artifact": "when2call/comparisons/20260919/official_judge.csv",
+      "sha256": "339b653407707208c3a9a52d07435860d27a63b850a6f5951e089521f9c37481"
+    },
+    {
+      "path": "data/when2call/summary.json",
+      "original_artifact": "when2call/runs/v1/summary.json",
+      "sha256": "0cf72fc13bb918133c4082a515347ed4c28c323b12f6d0203a496f8635ddc63b"
+    },
+    {
+      "path": "data/when2call/per_example.csv",
+      "original_artifact": "when2call/runs/v1/per_example.csv",
+      "sha256": "a4d8cd63dae095053cb67fa3454f0ca2fd54a120708bcf9bd0f826e6bea01f2f"
+    },
+    {
+      "path": "data/when2call/derived_checks.json",
+      "original_artifact": "when2call/comparisons/20260919/derived_checks.json",
+      "sha256": "681e77ec16f3a0a6a58949f0cfe08456375725833c3cdad2abf54b907e3cf4cd"
+    },
+    {
+      "path": "data/when2call/hallucination_case.json",
+      "original_artifact": "when2call/comparisons/20260919/hallucination_case.json",
+      "sha256": "0cd16508a74ae685df162ee794710148b9820480fa590f40c3ef4bb4d89ce22b"
+    },
+    {
+      "path": "data/when2call/official_README.txt",
+      "original_artifact": "when2call/comparisons/20260919/sources/official_README.md",
+      "sha256": "53671e729c8b1ed7f8bef14cef33997f7561a06547112913ae4cf38fda5a3fc2"
+    },
+    {
+      "path": "data/when2call/paper_page_18.txt",
+      "original_artifact": "when2call/comparisons/20260919/sources/official_paper_page_18.txt",
+      "sha256": "eaf4fd023ccb9c4a5162cd0ac214622c7ec62f2724d92f69ddec38cc571afba8"
+    },
+    {
+      "path": "data/when2call/paper_page_19.txt",
+      "original_artifact": "when2call/comparisons/20260919/sources/official_paper_page_19.txt",
+      "sha256": "0a248843f38e98d70608af6af9fdc74fe493aae5e15c359eb8364fca4a5402bb"
+    },
+    {
+      "path": "data/when2call/paper_page_7.txt",
+      "original_artifact": "when2call/comparisons/20260919/sources/official_paper_page_7.txt",
+      "sha256": "4b0de849f85a7fff22f998f092dcd45a0c27c8666e7ff3f64e774181b8552ee5"
+    },
+    {
+      "path": "data/bfcl/comparison.csv",
+      "original_artifact": "bfcl_decisions/leaderboard_decision_comparison_20260919.csv",
+      "sha256": "306929e01d39a330e421e5858a777371e8d7715004c34a7cd887714e756f3119"
+    },
+    {
+      "path": "data/bfcl/summary.json",
+      "original_artifact": "bfcl_decisions/runs/v1/summary.json",
+      "sha256": "6401372fabc7b7b77f431548ebe8d8e4f6e0f8cdbe68c0c8bf739f3a320f0793"
+    },
+    {
+      "path": "data/bfcl/official_leaderboard.csv",
+      "original_artifact": "bfcl_decisions/provenance/leaderboard_decisions_20260919/data_overall.csv",
+      "sha256": "ede5081a24bc5ac7f9b3b09a52af6bcfcd35aa0f1709239fed979db77a8159a6"
+    },
+    {
+      "path": "data/bfcl/leaderboard_metadata.json",
+      "original_artifact": "bfcl_decisions/provenance/leaderboard_decisions_20260919/manifest.json",
+      "sha256": "1b7da2a5065d98383231d7f8e4df62d0e0c4e483ccba803bdea7ad9d7c540f8f"
+    }
+  ]
+}

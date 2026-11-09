@@ -1,0 +1,456 @@
+{
+  "counts": {
+    "ambiguous": 6,
+    "ambiguous_ids": [
+      "A10",
+      "A11",
+      "A12",
+      "B10",
+      "B11",
+      "B12"
+    ],
+    "family_a": 12,
+    "family_b": 12,
+    "total": 24
+  },
+  "families": {
+    "payment_risk": {
+      "cases": [
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98107\nCardholder: Daniel Okafor (3-year account, average monthly spend $2,400)\nMerchant: Harbor Market (United States, domestic merchant)\nAmount: USD 42.50\nDevice: device recognition: known device, active for 13 months, 33 prior transactions\nConnection: residential ISP (24.19.201.77, Austin, TX)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A01",
+          "labels": {
+            "action": "APPROVE",
+            "fraud": false,
+            "risk": "LOW"
+          },
+          "note": "Clear low: small domestic purchase on a known device.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98114\nCardholder: Mei Lin (4-year account, average monthly spend $780)\nMerchant: Aurora Electronics (United States, domestic merchant)\nAmount: $2,400.00\nDevice: UNRECOGNIZED device, first seen 10 minutes before the alert, no prior purchases\nConnection: residential ISP (98.114.6.203, Chicago, IL)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A02",
+          "labels": {
+            "action": "BLOCK",
+            "fraud": true,
+            "risk": "HIGH"
+          },
+          "note": "Rule A3: unrecognized device plus amount >= 2000.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98121\nCardholder: Tomas Novak (5-year account, average monthly spend $3,200)\nMerchant: Alpen Motoren (Germany, foreign merchant)\nAmount: $2,600.00\nDevice: recognized cardholder device (enrolled 23 months ago, 59 prior purchases)\nConnection: residential ISP (67.183.90.12, Denver, CO)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A03",
+          "labels": {
+            "action": "REVIEW",
+            "fraud": false,
+            "risk": "ELEVATED"
+          },
+          "note": "Rule A4: foreign merchant and high amount, but no device or transport signal.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98128\nCardholder: Priya Raman (6-year account, average monthly spend $560)\nMerchant: Streamly (United States, domestic merchant)\nAmount: USD 89.00\nDevice: device recognition: known device, active for 28 months, 72 prior transactions\nConnection: anonymizing proxy / Tor exit node (185.220.101.5, Frankfurt, Germany)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A04",
+          "labels": {
+            "action": "REVIEW",
+            "fraud": false,
+            "risk": "ELEVATED"
+          },
+          "note": "Rule A4: Tor alone, small amount and known device, so not fraud.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98135\nCardholder: Elena Petrova (7-year account, average monthly spend $1,890)\nMerchant: CipherTrade Exchange (Cyprus, foreign merchant)\nAmount: $3,100.00\nDevice: UNRECOGNIZED device, first seen 19 minutes before the alert, no prior purchases\nConnection: anonymizing proxy / Tor exit node (185.220.101.5, Frankfurt, Germany)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 5 payments in the last 10 minutes, 2 declined",
+          "family": "payment_risk",
+          "id": "A05",
+          "labels": {
+            "action": "BLOCK",
+            "fraud": true,
+            "risk": "CRITICAL"
+          },
+          "note": "Rule A2: Tor plus unrecognized device plus high amount, the CRITICAL branch.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98142\nCardholder: Marcus Webb (8-year account, average monthly spend $4,150)\nMerchant: PixelPlay Games (United States, domestic merchant)\nAmount: $19.99\nDevice: recognized cardholder device (enrolled 38 months ago, 98 prior purchases)\nConnection: residential ISP (73.162.44.18, Seattle, WA)\nAuthentication: 2FA bypassed: the session was hijacked with a stolen cookie\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A06",
+          "labels": {
+            "action": "BLOCK",
+            "fraud": true,
+            "risk": "CRITICAL"
+          },
+          "note": "Rule A1: tiny amount but the session was hijacked.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98149\nCardholder: Aisha Karim (9-year account, average monthly spend $940)\nMerchant: Nimbus Hosting (United States, domestic merchant)\nAmount: USD 640.00\nDevice: device recognition: known device, active for 43 months, 111 prior transactions\nConnection: residential ISP (24.19.201.77, Austin, TX)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 5 payments in the last 10 minutes, 2 declined",
+          "family": "payment_risk",
+          "id": "A07",
+          "labels": {
+            "action": "REVIEW",
+            "fraud": false,
+            "risk": "ELEVATED"
+          },
+          "note": "Rule A4: velocity burst without any takeover signal.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98156\nCardholder: Jonas Berg (2-year account, average monthly spend $1,675)\nMerchant: Metro Pharmacy (United States, domestic merchant)\nAmount: $120.00\nDevice: recognized cardholder device (enrolled 8 months ago, 124 prior purchases)\nConnection: residential ISP (98.114.6.203, Chicago, IL)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A08",
+          "labels": {
+            "action": "APPROVE",
+            "fraud": false,
+            "risk": "LOW"
+          },
+          "note": "Clear low: routine repeat merchant.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98163\nCardholder: Clara Moreau (3-year account, average monthly spend $2,280)\nMerchant: Britannia Jewels (United Kingdom, foreign merchant)\nAmount: $1,950.00\nDevice: UNRECOGNIZED device, first seen 31 minutes before the alert, no prior purchases\nConnection: residential ISP (67.183.90.12, Denver, CO)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A09",
+          "labels": {
+            "action": "REVIEW",
+            "fraud": false,
+            "risk": "ELEVATED"
+          },
+          "note": "Rule A4: unrecognized device but amount is just under the 2000 threshold, so not fraud.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {
+            "action": [
+              "APPROVE"
+            ],
+            "risk": [
+              "LOW"
+            ]
+          },
+          "ambiguous": true,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98170\nCardholder: Victor Salazar (4-year account, average monthly spend $3,025)\nMerchant: QuickShip Courier (United States, domestic merchant)\nAmount: USD 300.00\nDevice: device recognition: known device, active for 18 months, 150 prior transactions\nConnection: residential ISP (47.210.55.31, Portland, OR)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 3 payments in the last 6 minutes, 1 declined then retried",
+          "family": "payment_risk",
+          "id": "A10",
+          "labels": {
+            "action": "REVIEW",
+            "fraud": false,
+            "risk": "ELEVATED"
+          },
+          "note": "Ambiguous: 3 payments in 6 minutes is only arguably a velocity burst.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {
+            "action": [
+              "BLOCK"
+            ],
+            "fraud": [
+              true
+            ],
+            "risk": [
+              "HIGH"
+            ]
+          },
+          "ambiguous": true,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98177\nCardholder: Hannah Cole (5-year account, average monthly spend $690)\nMerchant: LuxTime Jewelers (United States, domestic merchant)\nAmount: $2,450.00\nDevice: device enrolled through the bank app 2 days ago after a verified one-time code; no prior purchase on this device\nConnection: residential ISP (71.9.128.240, Boston, MA)\nAuthentication: 2FA completed on the phone number on file\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A11",
+          "labels": {
+            "action": "APPROVE",
+            "fraud": false,
+            "risk": "LOW"
+          },
+          "note": "Ambiguous: device is new but enrolled and verified through the bank app.",
+          "primary_field": "fraud"
+        },
+        {
+          "acceptable": {
+            "action": [
+              "REVIEW"
+            ],
+            "fraud": [
+              true
+            ],
+            "risk": [
+              "ELEVATED"
+            ]
+          },
+          "ambiguous": true,
+          "context": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.\n\nTRANSACTION ALERT #TX-98184\nCardholder: Sarah Jenkins (6-year account, average monthly spend $1,100)\nMerchant: Northline Travel (United States, domestic merchant)\nAmount: $890.00\nDevice: recognized cardholder device (enrolled 28 months ago, 176 prior purchases)\nConnection: residential ISP (73.162.44.18, Seattle, WA)\nAuthentication: 2FA code approved on a phone number the cardholder replaced yesterday; the cardholder confirms the purchase by chat\nRecent activity: 1 payment in the last 24 hours",
+          "family": "payment_risk",
+          "id": "A12",
+          "labels": {
+            "action": "APPROVE",
+            "fraud": false,
+            "risk": "LOW"
+          },
+          "note": "Ambiguous: 2FA was approved, but from a phone number replaced the day before.",
+          "primary_field": "fraud"
+        }
+      ],
+      "policy": "PAYMENT RISK POLICY - apply the first matching rule\nA1. 2FA bypassed, or the session was hijacked: fraud=true, risk=CRITICAL, action=BLOCK.\nA2. Connection via anonymizing proxy or Tor exit node AND unrecognized device: fraud=true; risk=CRITICAL if amount >= 2000 USD, otherwise HIGH; action=BLOCK.\nA3. Unrecognized device AND amount >= 2000 USD: fraud=true, risk=HIGH, action=BLOCK.\nA4. No fraud under A1-A3, but any of: connection via anonymizing proxy or Tor exit node; unrecognized device; several payments in a short window (velocity burst); foreign merchant AND amount >= 2000 USD: fraud=false, risk=ELEVATED, action=REVIEW.\nA5. Otherwise: fraud=false, risk=LOW, action=APPROVE.",
+      "schema": {
+        "action": {
+          "choices": [
+            "APPROVE",
+            "REVIEW",
+            "BLOCK"
+          ],
+          "description": "Recommended action",
+          "type": "enum"
+        },
+        "fraud": {
+          "description": "Whether the transaction is fraudulent",
+          "type": "boolean"
+        },
+        "risk": {
+          "choices": [
+            "LOW",
+            "ELEVATED",
+            "HIGH",
+            "CRITICAL"
+          ],
+          "description": "Risk tier",
+          "type": "enum"
+        }
+      }
+    },
+    "support_triage": {
+      "cases": [
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44013\nFrom: Dana Whitfield, operations lead\nPlan: Pro\nSubject: Charged twice for my Pro plan this month\n\nInvoice INV-8891 lists two charges of USD 29.99 for the same billing period. I authorised one payment only. Please refund the duplicate charge to the card ending 4412.",
+          "family": "support_triage",
+          "id": "B01",
+          "labels": {
+            "category": "BILLING",
+            "needs_human": false,
+            "priority": "P2"
+          },
+          "note": "Clear: wrong bill, refund under 100 USD.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44026\nFrom: Marcus Vance, CTO\nPlan: Enterprise\nSubject: Production API down: every checkout returns 502\n\nOur production checkout integration has returned 502 Bad Gateway on every request for 40 minutes. All customers are affected and no orders are completing. This is our busiest trading window and we have no workaround.",
+          "family": "support_triage",
+          "id": "B02",
+          "labels": {
+            "category": "TECHNICAL",
+            "needs_human": true,
+            "priority": "P1"
+          },
+          "note": "Clear: production outage, everyone blocked.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44039\nFrom: Ravi Patel, sole trader\nPlan: Free\nSubject: Password reset email never arrives\n\nI request a reset link from the sign-in page and nothing arrives, not even in spam. I have tried three times today. I can still use the mobile app session that is already open, but I cannot sign in from a new browser.",
+          "family": "support_triage",
+          "id": "B03",
+          "labels": {
+            "category": "ACCOUNT",
+            "needs_human": false,
+            "priority": "P2"
+          },
+          "note": "Clear ACCOUNT: self-service reset flow.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44052\nFrom: Ingrid Halvorsen, workspace owner\nPlan: Team\nSubject: Workspace owner locked out after failed sign-in attempts\n\nMy account was locked after five failed sign-in attempts because my password manager had a stale entry. I am the workspace owner and my team of 12 cannot reach the shared dashboards until this is unlocked.",
+          "family": "support_triage",
+          "id": "B04",
+          "labels": {
+            "category": "ACCOUNT",
+            "needs_human": true,
+            "priority": "P1"
+          },
+          "note": "Clear ACCOUNT: unlock plus team-wide impact.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44065\nFrom: Owen Brady, subscriber\nPlan: Pro\nSubject: Parcel marked delivered but never arrived\n\nTracking for order ORD-55210 says delivered on Tuesday, but nothing was left at my address. The carrier told me to contact the sender. The contents are worth USD 75.",
+          "family": "support_triage",
+          "id": "B05",
+          "labels": {
+            "category": "SHIPPING",
+            "needs_human": true,
+            "priority": "P2"
+          },
+          "note": "Clear SHIPPING: lost parcel investigation.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44078\nFrom: Lucia Ferreira, analyst\nPlan: Team\nSubject: CSV export crashes the app on large reports\n\nExporting reports above roughly 10,000 rows crashes the desktop app every time. Smaller exports work, so I can split the report and finish my work, but this costs me about 20 minutes each morning.",
+          "family": "support_triage",
+          "id": "B06",
+          "labels": {
+            "category": "TECHNICAL",
+            "needs_human": false,
+            "priority": "P2"
+          },
+          "note": "Clear TECHNICAL: reproducible, workaround exists.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44091\nFrom: Noah Kim, subscriber\nPlan: Pro\nSubject: Change delivery address before dispatch\n\nPlease change the delivery address on order ORD-55988 to my office address before it ships. The order is still marked processing and nothing has shipped yet.",
+          "family": "support_triage",
+          "id": "B07",
+          "labels": {
+            "category": "SHIPPING",
+            "needs_human": false,
+            "priority": "P3"
+          },
+          "note": "Clear SHIPPING: routine pre-dispatch update.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44104\nFrom: Grace Lindqvist, finance manager\nPlan: Enterprise\nSubject: Correct invoice INV-9021: USD 480 overage charge\n\nINV-9021 charges USD 480 for API overages in August. Our own logs show 20,000 calls where the invoice counts 120,000. Please refund the USD 400 difference and reissue the invoice, our accounting close is next week.",
+          "family": "support_triage",
+          "id": "B08",
+          "labels": {
+            "category": "BILLING",
+            "needs_human": true,
+            "priority": "P2"
+          },
+          "note": "Clear BILLING: invoice correction above the 100 USD threshold.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {},
+          "ambiguous": false,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44117\nFrom: Felix Braun, founder\nPlan: Free\nSubject: Pricing question: difference between Pro and Team plans\n\nWe are four people and want to know whether the Team plan includes the same API limits as Pro. No urgency, we are planning next quarter's budget.",
+          "family": "support_triage",
+          "id": "B09",
+          "labels": {
+            "category": "BILLING",
+            "needs_human": false,
+            "priority": "P3"
+          },
+          "note": "Clear BILLING: pricing question, no action needed.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {
+            "category": [
+              "TECHNICAL"
+            ]
+          },
+          "ambiguous": true,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44130\nFrom: Amara Nwosu, IT manager\nPlan: Enterprise\nSubject: SSO login loop for our whole team since this morning\n\nSince about 08:00 UTC every member of our team of 30 authenticates with SSO successfully and is then bounced back to the sign-in page. Nothing in our configuration changed. There is no workaround: nobody can reach the dashboard.",
+          "family": "support_triage",
+          "id": "B10",
+          "labels": {
+            "category": "ACCOUNT",
+            "needs_human": true,
+            "priority": "P1"
+          },
+          "note": "Ambiguous: sign-in failure (ACCOUNT) or SSO integration defect (TECHNICAL).",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {
+            "category": [
+              "TECHNICAL"
+            ]
+          },
+          "ambiguous": true,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44143\nFrom: Theo Marsh, consultant\nPlan: Pro\nSubject: Duplicate charge and very slow dashboard\n\nTwo things: I was charged USD 89 twice for the same month, please refund one charge; and since the last update the dashboard takes about 15 seconds to load for me. The charge is the more urgent item.",
+          "family": "support_triage",
+          "id": "B11",
+          "labels": {
+            "category": "BILLING",
+            "needs_human": false,
+            "priority": "P2"
+          },
+          "note": "Ambiguous: billing refund or technical performance issue.",
+          "primary_field": "category"
+        },
+        {
+          "acceptable": {
+            "priority": [
+              "P3"
+            ]
+          },
+          "ambiguous": true,
+          "context": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).\n\nSUPPORT TICKET #INC-44156\nFrom: Sofia Marchetti, engineering manager\nPlan: Team\nSubject: Dashboards slow for the whole team after yesterday's release\n\nSince yesterday's release our dashboards take 12-15 seconds to load for all 8 team members. Everything still works and we can keep shipping, it is just painful.",
+          "family": "support_triage",
+          "id": "B12",
+          "labels": {
+            "category": "TECHNICAL",
+            "needs_human": false,
+            "priority": "P2"
+          },
+          "note": "Ambiguous: team-wide impairment, but nothing is blocked.",
+          "primary_field": "category"
+        }
+      ],
+      "policy": "SUPPORT TRIAGE POLICY - apply the first matching rule\nB1. Category: BILLING for charges, invoices, refunds and pricing; TECHNICAL for errors, crashes, outages, performance and integrations; ACCOUNT for sign-in, passwords, 2FA, permissions and profile; SHIPPING for delivery, tracking, parcels and addresses.\nB2. Priority: P3 for questions, routine updates, cosmetic issues and feature requests; P1 if the issue blocks the customer's work and either affects more than one user or has no workaround; otherwise P2.\nB3. needs_human=true if any of: priority is P1; a refund, credit or invoice correction above 100 USD is requested or warranted; the account requires unlocking or a security check; a parcel is lost, damaged or in dispute. Otherwise needs_human=false (an automated or self-service flow resolves it).",
+      "schema": {
+        "category": {
+          "choices": [
+            "BILLING",
+            "TECHNICAL",
+            "ACCOUNT",
+            "SHIPPING"
+          ],
+          "description": "Main issue category",
+          "type": "enum"
+        },
+        "needs_human": {
+          "description": "Whether a human must handle the ticket",
+          "type": "boolean"
+        },
+        "priority": {
+          "choices": [
+            "P1",
+            "P2",
+            "P3"
+          ],
+          "description": "Triage priority",
+          "type": "enum"
+        }
+      }
+    }
+  },
+  "generated_by": "quality-eval/make_cases.py",
+  "primary_metric_note": "primary field: fraud (family A) / category (family B)",
+  "version": 1
+}

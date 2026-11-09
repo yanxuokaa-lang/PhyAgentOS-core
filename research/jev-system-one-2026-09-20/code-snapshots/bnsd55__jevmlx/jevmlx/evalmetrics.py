@@ -1,0 +1,1322 @@
+"""Eval metrics over predictions.jsonl (see E-contracts).
+
+Pure Python + math, no third-party dependencies. Every metric treats an
+invalid prediction as wrong (unconditional field accuracy); ``correct`` is
+respected when present (null label -> excluded from accuracy denominators).
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import random
+from collections import Counter, defaultdict
+from collections.abc import Callable
+from pathlib import Path
+
+__all__ = [
+    "balanced_accuracy",
+    "load_predictions",
+    "macro_f1",
+    "perturbation_flip_rate",
+    "compute_metrics",
+    "typesafe_agreement",
+    "tvd_vs_consensus",
+    "exact_record_accuracy",
+    "constraint_violation_rate",
+    "child_accuracy_given_parent_correct",
+    "oracle_parent_gap",
+    "order_flip_rate",
+    "wilson_interval",
+    "cluster_bootstrap_ci",
+    "mcnemar_exact",
+    "paired_bootstrap_difference",
+    "valid_accuracy",
+]
+
+
+def load_predictions(path: str | Path) -> list[dict]:
+    """Read a predictions.jsonl file (one JSON object per non-blank line)."""
+    records = []
+    for line in Path(path).read_text().splitlines():
+        if line.strip():
+            records.append(json.loads(line))
+    return records
+
+
+def _valid_correct(record: dict) -> bool:
+    """True iff this prediction counts as correct (invalid => wrong)."""
+    if record.get("correct") is not None:
+        return bool(record["correct"])
+    return bool(record.get("valid")) and record.get("prediction") is not None
+
+
+def _labelled(records: list[dict]) -> list[dict]:
+    """Records that have a label (correct may be False when invalid)."""
+    return [r for r in records if r.get("label") is not None or r.get("correct") is not None]
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _tvd(dist_a: dict[str, float], dist_b: dict[str, float]) -> float:
+    """Total variation distance between two distributions over a shared support."""
+    keys = set(dist_a) | set(dist_b)
+    return 0.5 * sum(abs(dist_a.get(k, 0.0) - dist_b.get(k, 0.0)) for k in keys)
+
+
+def _finite(*values: float) -> bool:
+    return all(isinstance(v, (int, float)) and math.isfinite(v) for v in values)
+
+
+# ---------------------------------------------------------------- accuracies
+
+
+def field_accuracy(records: list[dict]) -> float | None:
+    """Unconditional field accuracy: correct / labelled, invalid counts wrong."""
+    labelled = _labelled(records)
+    if not labelled:
+        return None
+    return sum(1 for r in labelled if _valid_correct(r)) / len(labelled)
+
+
+def case_exact_match(records: list[dict]) -> float | None:
+    """Share of cases where every labelled field is correct (invalid = wrong)."""
+    by_case: dict[str, list[dict]] = defaultdict(list)
+    for record in records:
+        by_case[record["case_id"]].append(record)
+    if not by_case:
+        return None
+    perfect = 0
+    for case_records in by_case.values():
+        labelled = _labelled(case_records)
+        if labelled and all(_valid_correct(r) for r in labelled):
+            perfect += 1
+    return perfect / len(by_case)
+
+
+def macro_by(records: list[dict], key: str) -> dict[str, float]:
+    """Macro (per-group unweighted mean) field accuracy grouped by ``key``.
+
+    Records whose ``key`` is None are skipped (a null workflow is no group).
+    """
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for record in records:
+        if record.get(key) is None:
+            continue
+        grouped[str(record[key])].append(record)
+    macro = {}
+    for group, group_records in grouped.items():
+        accuracy = field_accuracy(group_records)
+        if accuracy is not None:
+            macro[group] = accuracy
+    return dict(sorted(macro.items()))
+
+
+def majority_class_baseline(records: list[dict]) -> dict[str, float]:
+    """Per-field accuracy of always predicting the modal labelled value."""
+    by_field: dict[str, list[dict]] = defaultdict(list)
+    for record in _labelled(records):
+        by_field[record["field"]].append(record)
+    baseline: dict[str, float] = {}
+    for field, field_records in by_field.items():
+        counts = Counter(
+            json.dumps(r["label"], sort_keys=True)
+            if isinstance(r["label"], (list, dict))
+            else r["label"]
+            for r in field_records
+        )
+        baseline[field] = counts.most_common(1)[0][1] / len(field_records)
+    return dict(sorted(baseline.items()))
+
+
+# ------------------------------------------------------------- probabilistic
+
+
+def brier_score(records: list[dict]) -> float | None:
+    """Multiclass Brier: mean over fields of sum over choices of (p - y)^2."""
+    scores = []
+    for record in records:
+        distribution = _record_distribution(record)
+        if distribution is None:
+            continue
+        label = record.get("label")
+        scores.append(
+            sum(
+                (prob - (1.0 if choice == label else 0.0)) ** 2
+                for choice, prob in distribution.items()
+            )
+        )
+    return _mean(scores)
+
+
+def log_loss(records: list[dict]) -> float | None:
+    """Multiclass true-label log loss (natural log)."""
+    losses = []
+    for record in records:
+        distribution = _record_distribution(record)
+        if distribution is None:
+            continue
+        label = record.get("label")
+        prob = distribution.get(label)
+        if prob is None or not _finite(prob) or prob <= 0:
+            return None  # unmeasurable distribution; never paper over it
+        losses.append(-math.log(prob))
+    return _mean(losses)
+
+
+def _record_distribution(record: dict) -> dict[str, float] | None:
+    """Best available choice distribution: log_scores softmaxed at T=1."""
+    log_scores = record.get("log_scores")
+    if not isinstance(log_scores, dict) or not log_scores:
+        return None
+    if not all(_finite(v) for v in log_scores.values()):
+        return None
+    peak = max(log_scores.values())
+    exp = {choice: math.exp(score - peak) for choice, score in log_scores.items()}
+    total = sum(exp.values())
+    if total <= 0:
+        return None
+    return {choice: value / total for choice, value in exp.items()}
+
+
+def correctness_auroc(records: list[dict]) -> float | None:
+    """AUROC of confidence predicting correctness (rank-statistic, no numpy).
+
+    Labelled records only; pairs with equal confidence count 0.5. Returns
+    None without both classes.
+    """
+    scored = [
+        (float(r["probability"]), _valid_correct(r))
+        for r in _labelled(records)
+        if r.get("probability") is not None and _finite(r["probability"])
+    ]
+    positive = sum(1 for _, correct in scored if correct)
+    negative = len(scored) - positive
+    if not positive or not negative:
+        return None
+    wins = 0.0
+    for confidence_a, correct_a in scored:
+        for confidence_b, correct_b in scored:
+            if not correct_a or correct_b:
+                continue  # only positive-vs-negative pairs contribute
+            if confidence_a > confidence_b:
+                wins += 1.0
+            elif confidence_a == confidence_b:
+                wins += 0.5
+    return wins / (positive * negative)
+
+
+def ece_equal_mass(records: list[dict], bins: int = 5) -> float | None:
+    """Descriptive ECE over ``bins`` equal-mass confidence bins.
+
+    Empty-sample safety: returns None when there is nothing to measure.
+    """
+    scored = [
+        (float(r["probability"]), 1.0 if _valid_correct(r) else 0.0)
+        for r in _labelled(records)
+        if r.get("probability") is not None and _finite(r["probability"])
+    ]
+    if not scored:
+        return None
+    scored.sort()
+    total = len(scored)
+    bin_size = math.ceil(total / bins)
+    ece = 0.0
+    for start in range(0, total, bin_size):
+        chunk = scored[start : start + bin_size]
+        mean_confidence = sum(c for c, _ in chunk) / len(chunk)
+        mean_correct = sum(y for _, y in chunk) / len(chunk)
+        ece += (len(chunk) / total) * abs(mean_confidence - mean_correct)
+    return ece
+
+
+# ------------------------------------------------------------------ set fields
+
+
+def multi_jaccard(records: list[dict]) -> float | None:
+    """Mean Jaccard similarity of multi predictions (invalid => 0.0)."""
+    scores = []
+    for record in records:
+        if record.get("type") != "multi":
+            continue
+        if record.get("label") is None:
+            continue
+        predicted = record.get("prediction")
+        if not record.get("valid") or not isinstance(predicted, list):
+            scores.append(0.0)
+            continue
+        predicted_set, label_set = set(predicted), set(record["label"])
+        union = predicted_set | label_set
+        scores.append(len(predicted_set & label_set) / len(union) if union else 1.0)
+    return _mean(scores)
+
+
+# ------------------------------------------------- balanced accuracy / macro-F1
+
+
+def _prediction_label_pair(record: dict) -> tuple[str, str] | None:
+    """(label, prediction) as comparable strings, or None when not scoreable.
+
+    Lists (multi fields) are compared as sorted JSON — order-insensitive, so
+    ``["a", "b"]`` and ``["b", "a"]`` are the same value. Non-str labels are
+    stringified to a stable JSON form.
+    """
+    label = record.get("label")
+    prediction = record.get("prediction")
+    if label is None:
+        return None
+    if not record.get("valid", prediction is not None) or prediction is None:
+        prediction = "<invalid>"
+    if isinstance(label, list | dict):
+        label = json.dumps(label, sort_keys=True)
+    if isinstance(prediction, list | dict):
+        prediction = json.dumps(prediction, sort_keys=True)
+    return str(label), str(prediction)
+
+
+def balanced_accuracy(records: list[dict]) -> dict[str, float | None]:
+    """Per field: mean recall over classes (balanced accuracy).
+
+    Recall is computed per class among that class's labelled records; classes
+    with no labelled records are skipped, and a field whose every class lacks
+    support yields None. Predictions are counted for the predicted class
+    (invalid predictions never contribute to any class's recall).
+    """
+    by_field: dict[str, Counter] = defaultdict(Counter)
+    support: dict[str, Counter] = defaultdict(Counter)
+    for record in records:
+        pair = _prediction_label_pair(record)
+        if pair is None:
+            continue
+        label, prediction = pair
+        by_field[record["field"]][label] += 0  # register the class
+        support[record["field"]][label] += 1
+        if prediction == label:
+            by_field[record["field"]][label] += 1
+    result: dict[str, float | None] = {}
+    for field in sorted(by_field):
+        recalls = [
+            by_field[field][cls] / support[field][cls]
+            for cls in by_field[field]
+            if support[field][cls] > 0
+        ]
+        result[field] = _mean(recalls)
+    return result
+
+
+def macro_f1(records: list[dict]) -> dict[str, float | None]:
+    """Per field: macro-averaged F1 across the label classes present.
+
+    For each class: precision = TP / predicted, recall = TP / labelled, F1 =
+    2PR/(P+R) (0 when both are 0). The class mean ignores classes with no
+    labelled records; a field with none yields None.
+    """
+    tp: dict[str, Counter] = defaultdict(Counter)
+    predicted: dict[str, Counter] = defaultdict(Counter)
+    labelled_n: dict[str, Counter] = defaultdict(Counter)
+    for record in records:
+        pair = _prediction_label_pair(record)
+        if pair is None:
+            continue
+        label, prediction = pair
+        field = record["field"]
+        labelled_n[field][label] += 1
+        if prediction == label:
+            tp[field][label] += 1
+        elif record.get("valid", True) and prediction is not None:
+            predicted[field][prediction] += 1
+    result: dict[str, float | None] = {}
+    for field in sorted(labelled_n):
+        f1s = []
+        for cls in labelled_n[field]:
+            recall = tp[field][cls] / labelled_n[field][cls]
+            precision_den = tp[field][cls] + predicted[field][cls]
+            precision = tp[field][cls] / precision_den if precision_den else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+            f1s.append(f1)
+        result[field] = _mean(f1s)
+    return result
+
+
+# ------------------------------------------------------- ordinal (W6-B1)
+
+
+def _ordinal_lines(records: list[dict]) -> list[tuple[str, dict, list[str], dict]]:
+    """Ordered-enum prediction lines: (field, record, choices, ordinal).
+
+    A line is ordinal when the schema declared it ordered (the prediction
+    line carries ``ordinal_choices``) — unordered fields never enter the
+    ordinal metrics. F3: STRICT pairing — a line that carries
+    ``ordinal_choices`` but no ``ordinal`` record is a contract violation
+    (every track now emits both), never a silently-skipped row.
+    """
+    lines = []
+    for record in records:
+        choices = record.get("ordinal_choices")
+        if not isinstance(choices, list):
+            continue
+        ordinal = record.get("ordinal")
+        if not isinstance(ordinal, dict):
+            raise ValueError(
+                f"prediction line for field {record.get('field')!r} carries "
+                "'ordinal_choices' but no 'ordinal' telemetry (results-contract "
+                "violation; every track emits both for ordered enums)"
+            )
+        lines.append((record.get("field", ""), record, list(choices), ordinal))
+    return lines
+
+
+def _level_index(choices: list[str], value) -> int | None:
+    """Index of value in the scale order, or None when absent/invalid."""
+    if value is None:
+        return None
+    text = str(value)
+    try:
+        return choices.index(text)
+    except ValueError:
+        return None
+
+
+def ordinal_mae(records: list[dict]) -> dict[str, float | None]:
+    """Per ordered-enum field: mean |argmax_level - gold_level| (W6-B1).
+
+    The DECIDED value's distance from the gold level on the scale — the
+    headline ordinal error. Unordered fields are absent (never zero-filled);
+    a prediction whose value is not on the scale (invalid) counts at the
+    worst level distance (len-1), matching the invalid-is-wrong rule.
+    """
+    per_field: dict[str, list[float]] = defaultdict(list)
+    for field, record, choices, _ordinal in _ordinal_lines(records):
+        gold = _level_index(choices, record.get("label"))
+        if gold is None:
+            continue
+        predicted = _level_index(choices, record.get("prediction"))
+        if predicted is None:
+            # Invalid or off-scale: count at the worst distance.
+            predicted = len(choices) - 1
+        per_field[field].append(abs(predicted - gold))
+    return {field: _mean(gaps) for field, gaps in sorted(per_field.items())}
+
+
+def ordinal_mae_expected(records: list[dict]) -> dict[str, float | None]:
+    """Per ordered-enum field: mean |expected_index - gold_level| (W6-B1).
+
+    The DISTRIBUTION's mean position vs gold — the soft ordinal error the
+    hard argmax MAE cannot express (a 50/50 split between levels 0 and 2
+    sits at expected 1.0: zero soft error against gold 1, two hard).
+
+    Skips records tagged ``source="hard"`` EXPLICITLY (a non-parallel track
+    has no distribution — its expected_index is the hard argmax, so the soft
+    metric is undefined on it, not merely absent). A validated record with a
+    non-numeric expected_index is a contract violation, not a silent skip.
+    """
+    per_field: dict[str, list[float]] = defaultdict(list)
+    for field, record, choices, ordinal in _ordinal_lines(records):
+        if ordinal.get("source") == "hard":
+            continue
+        gold = _level_index(choices, record.get("label"))
+        if gold is None:
+            continue
+        expected = ordinal.get("expected_index")
+        if not isinstance(expected, (int, float)):
+            raise ValueError(
+                f"ordinal record for field {field!r} has a non-numeric "
+                f"expected_index ({expected!r}); a validated record must "
+                "carry a real distribution mean"
+            )
+        per_field[field].append(abs(float(expected) - gold))
+    return {field: _mean(gaps) for field, gaps in sorted(per_field.items())}
+
+
+def ordinal_confusion(records: list[dict]) -> dict[str, dict[str, dict[str, int]]]:
+    """Per ordered-enum field: gold x predicted level confusion counts.
+
+    Shape: {field: {gold_level: {predicted_level: count}}} — levels named by
+    their scale STRING (the choices themselves), so the matrix reads against
+    the cases file directly. Unordered fields are absent.
+    """
+    matrices: dict[str, dict[str, dict[str, int]]] = {}
+    for field, record, choices, _ordinal in _ordinal_lines(records):
+        gold = _level_index(choices, record.get("label"))
+        if gold is None:
+            continue
+        predicted = _level_index(choices, record.get("prediction"))
+        predicted_name = choices[predicted] if predicted is not None else "<invalid>"
+        row = matrices.setdefault(field, {}).setdefault(choices[gold], {})
+        row[predicted_name] = row.get(predicted_name, 0) + 1
+    return matrices
+
+
+# ------------------------------------------------------- perturbation flips
+
+
+def _canonical_form(value) -> str:
+    """Comparison form of a prediction: lists order-insensitive, dicts stable.
+
+    Multi predictions are lists; ["a", "b"] and ["b", "a"] are the same
+    value, so list elements are sorted before serialising.
+    """
+    if isinstance(value, list):
+        return json.dumps(sorted(value), sort_keys=True)
+    return json.dumps(value, sort_keys=True)
+
+
+def perturbation_flip_rate(records: list[dict]) -> float | None:
+    """Share of (original, perturbed) pairs whose prediction differs.
+
+    A pair is (group_id, field, case_id) where one line carries a
+    ``perturbation`` (the variant) and the other does not (the original).
+    Only canonical lines count: ``permutation`` must be ``"canonical"`` or
+    missing, so choice-rotation rows never pollute the pairs. Requires
+    meta.perturbation to have flowed through to the line (see evalrun).
+    Returns None when no such pair exists.
+    """
+    originals: dict[tuple[str, str], object] = {}
+    variants: dict[tuple[str, str], list[tuple[str, object]]] = defaultdict(list)
+    for record in records:
+        if record.get("permutation") not in (None, "canonical"):
+            continue  # rotation/fieldperm rows are order probes, not perturbations
+        kind = record.get("perturbation") or (record.get("meta") or {}).get("perturbation")
+        key = (record.get("group_id") or record["case_id"], record["field"])
+        if kind is None:
+            originals.setdefault(key, record.get("prediction"))
+        else:
+            variants[key].append((record["case_id"], record.get("prediction")))
+    pairs = 0
+    flipped = 0
+    for key, variant_list in variants.items():
+        if key not in originals:
+            continue
+        base = _canonical_form(originals[key])
+        for _case_id, prediction in variant_list:
+            pairs += 1
+            if _canonical_form(prediction) != base:
+                flipped += 1
+    if not pairs:
+        return None
+    return flipped / pairs
+
+
+# -------------------------------------------------------- position-bias (permutation)
+
+
+def any_flip_rate(records: list[dict]) -> dict[str, float]:
+    """Per field: share of permuted runs whose chosen value differs from canonical."""
+    canonical: dict[tuple[str, str], object] = {}
+    permuted: dict[str, list[dict]] = defaultdict(list)
+    for record in records:
+        key = (record["case_id"], record["field"])
+        if (record.get("permutation") or "canonical") == "canonical":
+            canonical[key] = record.get("prediction")
+        else:
+            permuted[record["field"]].append(record)
+    flips: dict[str, float] = {}
+    for field, field_records in permuted.items():
+        comparable = [r for r in field_records if (r["case_id"], field) in canonical]
+        if not comparable:
+            continue
+        flipped = sum(
+            1
+            for r in comparable
+            if json.dumps(r.get("prediction"), sort_keys=True)
+            != json.dumps(canonical[(r["case_id"], field)], sort_keys=True)
+        )
+        flips[field] = flipped / len(comparable)
+    return dict(sorted(flips.items()))
+
+
+def mean_tvd_across_permutations(records: list[dict]) -> dict[str, float]:
+    """Per field: mean TVD between each permutation's distribution and canonical's.
+
+    Uses the softmaxed log_scores distribution; requires a canonical record
+    per (case, field). Skips permutations lacking one.
+    """
+    canonical: dict[tuple[str, str], dict] = {}
+    grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for record in records:
+        if record.get("log_scores") is None:
+            continue
+        key = (record["case_id"], record["field"])
+        if record.get("permutation") == "canonical":
+            canonical[key] = record
+        else:
+            grouped[key].append(record)
+    tvds: dict[str, list[float]] = defaultdict(list)
+    for key, permuted_records in grouped.items():
+        base = canonical.get(key)
+        if base is None:
+            continue
+        base_distribution = _record_distribution(base)
+        if base_distribution is None:
+            continue
+        for record in permuted_records:
+            distribution = _record_distribution(record)
+            if distribution is None:
+                continue
+            tvds[record["field"]].append(_tvd(base_distribution, distribution))
+    return {field: _mean(values) for field, values in sorted(tvds.items()) if values}
+
+
+def tie_rate(records: list[dict]) -> float | None:
+    """Share of scored records whose top-two log_scores are exactly equal."""
+    scored = [r for r in records if isinstance(r.get("log_scores"), dict) and r["log_scores"]]
+    if not scored:
+        return None
+    ties = 0
+    for record in scored:
+        values = sorted(record["log_scores"].values(), reverse=True)
+        if len(values) >= 2 and values[0] == values[1]:
+            ties += 1
+    return ties / len(scored)
+
+
+# -------------------------------------------------------------- risk-coverage
+
+
+def risk_coverage_curve(records: list[dict], points: int = 10) -> list[dict]:
+    """Risk (1 - accuracy) at ``points`` evenly spaced coverage levels.
+
+    Records are sorted by confidence descending (tie-break: stable order);
+    at each coverage the prefix risk is computed. Uncovered records count as
+    neither right nor wrong — they are simply not yet included.
+    """
+    scored = sorted(
+        (
+            (float(r["probability"]), 1.0 if _valid_correct(r) else 0.0)
+            for r in _labelled(records)
+            if r.get("probability") is not None and _finite(r["probability"])
+        ),
+        key=lambda pair: -pair[0],
+    )
+    total = len(scored)
+    if total == 0:
+        return []
+    curve = []
+    for i in range(1, points + 1):
+        coverage = i / points
+        take = max(1, min(total, math.ceil(coverage * total)))
+        prefix = scored[:take]
+        accuracy = sum(y for _, y in prefix) / len(prefix)
+        curve.append({"coverage": round(coverage, 2), "risk": 1.0 - accuracy, "n": take})
+    return curve
+
+
+# ------------------------------------------------------------------ bootstrap
+
+
+# ------------------------------------------------------------- W6-B6b stats
+
+
+def wilson_interval(k: int, n: int, z: float = 1.96) -> dict | None:
+    """Wilson score interval for a single Bernoulli proportion.
+
+    Used ONLY where cases are independent and unstratified — one Bernoulli
+    decision per case. For correlated fields, balanced sampling, macro-
+    averaged tasks, or paired comparisons, use ``cluster_bootstrap_ci`` or
+    ``mcnemar_exact`` instead (B6 statistics: Wilson is fine for a single
+    Bernoulli per independent case, not sufficient otherwise).
+
+    Returns None when ``n`` is 0 (no interval, not a vacuous [0,0]).
+    """
+    if n <= 0:
+        return None
+    p = k / n
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return {
+        "point": p,
+        "ci_low": max(0.0, center - half),
+        "ci_high": min(1.0, center + half),
+        "method": "wilson",
+        "n": n,
+        "k": k,
+        "z": z,
+    }
+
+
+_MIN_BOOTSTRAP_CASES = 2
+
+
+def cluster_bootstrap_ci(
+    records: list[dict],
+    metric_fn: Callable[[list[dict]], float | None],
+    *,
+    draws: int = 2000,
+    seed: int = 0,
+    confidence: float = 0.95,
+    metric_name: str = "metric",
+) -> dict | None:
+    """Case-cluster bootstrap CI for ANY aggregate metric.
+
+    Resamples whole cases (all their fields move together) ``draws`` times
+    and returns the point estimate plus the central percentile interval.
+    This is the DEFAULT CI everywhere fields are correlated within a case or
+    sampling is balanced — accuracy, macro-F1, NLL, Brier, ECE all use this.
+
+    Returns None when there are too few cases (< 2) or the metric is None on
+    the full set. A metric that is None on some resamples is skipped (the
+    interval reflects the cases where it is defined).
+    """
+    by_case: dict[str, list[dict]] = defaultdict(list)
+    for record in records:
+        by_case[record.get("case_id", "")].append(record)
+    case_ids = sorted(by_case)
+    if len(case_ids) < _MIN_BOOTSTRAP_CASES:
+        return None
+    point = metric_fn(records)
+    if point is None:
+        return None
+    rng = random.Random(seed)
+    stats: list[float] = []
+    for _ in range(draws):
+        sample = [r for case in rng.choices(case_ids, k=len(case_ids)) for r in by_case[case]]
+        value = metric_fn(sample)
+        if value is not None and math.isfinite(value):
+            stats.append(value)
+    if len(stats) < _MIN_BOOTSTRAP_CASES:
+        return None
+    stats.sort()
+    alpha = (1.0 - confidence) / 2
+    lower_index = math.floor(alpha * (len(stats) - 1))
+    upper_index = math.ceil((1 - alpha) * (len(stats) - 1))
+    return {
+        metric_name: point,
+        "ci_low": stats[lower_index],
+        "ci_high": stats[upper_index],
+        "method": "case_cluster_bootstrap",
+        "n_cases": len(case_ids),
+        "draws": draws,
+        "seed": seed,
+    }
+
+
+def mcnemar_exact(b: int, c: int) -> dict:
+    """Exact McNemar test (binomial) on a 2x2 discordance table.
+
+    ``b`` = correct->wrong (condition A right, B wrong); ``c`` = wrong->correct
+    (A wrong, B right). The exact two-sided p-value is the binomial tail:
+    under the null, b and c are binomial(b+c, 0.5); the two-sided p is
+    2 * P(X <= min(b,c)) (capped at 1.0).
+
+    Used for paired comparisons of two conditions on the SAME cases
+    (perturbation tracks, A/B branches) — correct->wrong vs wrong->correct.
+    """
+    n = b + c
+    if n == 0:
+        return {"statistic": 0.0, "p_value": 1.0, "b": b, "c": c, "n": n, "method": "mcnemar_exact"}
+    # Exact two-sided binomial test: P(X <= min(b,c)) under Binom(n, 0.5),
+    # doubled. Use math.comb for the exact PMF.
+    from math import comb
+
+    smaller = min(b, c)
+    tail = sum(comb(n, i) for i in range(smaller + 1)) / (2**n)
+    p_value = min(1.0, 2 * tail)
+    return {
+        "statistic": abs(b - c),
+        "p_value": p_value,
+        "b": b,
+        "c": c,
+        "n": n,
+        "method": "mcnemar_exact",
+    }
+
+
+def paired_bootstrap_difference(
+    records_a: list[dict],
+    records_b: list[dict],
+    *,
+    draws: int = 2000,
+    seed: int = 0,
+    confidence: float = 0.95,
+) -> dict | None:
+    """Paired bootstrap CI of the accuracy difference (A - B).
+
+    ``records_a`` and ``records_b`` are two conditions on the SAME cases
+    (paired by case_id). Resamples whole cases ``draws`` times and computes
+    the accuracy difference in each resample. Returns the point estimate
+    (accuracy_a - accuracy_b), the percentile CI, and the exact McNemar
+    test on the discordance counts.
+    """
+    by_case_a: dict[str, list[dict]] = defaultdict(list)
+    for r in _labelled(records_a):
+        by_case_a[r["case_id"]].append(r)
+    by_case_b: dict[str, list[dict]] = defaultdict(list)
+    for r in _labelled(records_b):
+        by_case_b[r["case_id"]].append(r)
+    paired_ids = sorted(set(by_case_a) & set(by_case_b))
+    if len(paired_ids) < _MIN_BOOTSTRAP_CASES:
+        return None
+    acc_a = field_accuracy(records_a)
+    acc_b = field_accuracy(records_b)
+    if acc_a is None or acc_b is None:
+        return None
+    # Discordance counts for McNemar: per case, did A and B agree?
+    b_disc = 0  # A right, B wrong
+    c_disc = 0  # A wrong, B right
+    for cid in paired_ids:
+        a_correct = all(_valid_correct(r) for r in by_case_a[cid])
+        b_correct = all(_valid_correct(r) for r in by_case_b[cid])
+        if a_correct and not b_correct:
+            b_disc += 1
+        elif b_correct and not a_correct:
+            c_disc += 1
+    mcnemar = mcnemar_exact(b_disc, c_disc)
+    rng = random.Random(seed)
+    diffs: list[float] = []
+    for _ in range(draws):
+        sample = rng.choices(paired_ids, k=len(paired_ids))
+        recs_a = [r for cid in sample for r in by_case_a[cid]]
+        recs_b = [r for cid in sample for r in by_case_b[cid]]
+        va = field_accuracy(recs_a)
+        vb = field_accuracy(recs_b)
+        if va is not None and vb is not None:
+            diffs.append(va - vb)
+    if len(diffs) < _MIN_BOOTSTRAP_CASES:
+        return None
+    diffs.sort()
+    alpha = (1.0 - confidence) / 2
+    lower_index = math.floor(alpha * (len(diffs) - 1))
+    upper_index = math.ceil((1 - alpha) * (len(diffs) - 1))
+    return {
+        "difference": acc_a - acc_b,
+        "accuracy_a": acc_a,
+        "accuracy_b": acc_b,
+        "ci_low": diffs[lower_index],
+        "ci_high": diffs[upper_index],
+        "method": "paired_bootstrap",
+        "mcnemar": mcnemar,
+        "n_cases": len(paired_ids),
+        "draws": draws,
+        "seed": seed,
+    }
+
+
+def valid_accuracy(records: list[dict]) -> float | None:
+    """Valid-only accuracy: correct / (labelled AND valid lines).
+
+    Alongside ``field_accuracy`` (failure-inclusive: invalid predictions
+    count as wrong, denominator = all labelled lines), this EXCLUDES invalid
+    lines from the denominator entirely. The gap between the two is the
+    invalid-prediction rate — if they're equal, every prediction was valid.
+    This is NOT a duplicate of field_accuracy: field_accuracy counts invalid
+    as wrong (denominator = all labelled); valid_accuracy excludes them
+    (denominator = labelled AND valid).
+    """
+    valid_labelled = [r for r in _labelled(records) if r.get("valid", True)]
+    if not valid_labelled:
+        return None
+    return sum(1 for r in valid_labelled if _valid_correct(r)) / len(valid_labelled)
+
+
+# ------------------------------------------------------------------- assembly
+
+
+# ------------------------------------------------- TypeSafe-comparable metrics
+
+
+# Sources whose labels are TypeSafe-style consensus pseudo-labels: the web
+# scrape and the same task published as parquet (LocalLLaMA/typed-decisions).
+CONSENSUS_SOURCES = frozenset({"typesafe", "typed-decisions"})
+
+
+def _typesafe_lines(records: list[dict]) -> list[dict]:
+    """Records from consensus-labelled cases (see ``CONSENSUS_SOURCES``)."""
+    return [r for r in records if r.get("source") in CONSENSUS_SOURCES]
+
+
+def _is_ambiguous(record: dict) -> bool:
+    """Whether the line's field was flagged ambiguous by the fetcher.
+
+    The line-level ``ambiguous`` key (a list of field names, carried from
+    meta when requested) or a per-line ``field_ambiguous`` flag both count.
+    """
+    field = record.get("field")
+    flag = record.get("field_ambiguous")
+    if flag is not None:
+        return bool(flag)
+    ambiguous = record.get("ambiguous")
+    if isinstance(ambiguous, list):
+        return field in ambiguous
+    return False
+
+
+def typesafe_agreement(records: list[dict]) -> dict:
+    """Agreement with TypeSafe's published consensus (their headline metric).
+
+    For records whose case source is ``typesafe``: the share of labelled
+    fields whose prediction equals the consensus label — numerically the
+    accuracy restricted to that source, reported under TypeSafe's name.
+    Returns::
+
+        {"overall": float, "by_workflow": {workflow: float},
+         "agreement_common_subset": float, "n_fields": int,
+         "n_cases": int}
+
+    ``agreement_common_subset`` is computed only on fields that are not
+    flagged ambiguous (meta.ambiguous from the fetcher), the subset closest
+    to TypeSafe's own presentation; it is None when every field is flagged.
+    Records with no label are excluded from all rates; ``n_cases`` counts
+    distinct case_ids among the labelled lines.
+    """
+    lines = [r for r in _typesafe_lines(records) if _labelled([r])]
+    if not lines:
+        return {}
+    by_workflow: dict[str, list[dict]] = defaultdict(list)
+    common: list[dict] = []
+    for record in lines:
+        by_workflow[str(record.get("workflow"))].append(record)
+        if not _is_ambiguous(record):
+            common.append(record)
+    overall = field_accuracy(lines)
+    result = {
+        "overall": overall,
+        "by_workflow": macro_by(lines, "workflow"),
+        "agreement_common_subset": field_accuracy(common),
+        "n_fields": len(lines),
+        "n_cases": len({record.get("case_id") for record in lines}),
+    }
+    return result
+
+
+def tvd_vs_consensus(records: list[dict]) -> dict:
+    """Mean TVD between our choice distribution and the consensus one.
+
+    Our distribution is the same one the calibration metrics use (softmax
+    over ``log_scores`` at T=1, or ``per_option`` for multi); the reference
+    is the fetcher's ``consensus`` distribution carried on the line. Lines
+    without either side are skipped. Returns ``{"overall": float,
+    "by_workflow": {...}}`` (both absent when no line qualifies).
+    """
+    scored: list[tuple[str, float]] = []
+    for record in _typesafe_lines(records):
+        reference = record.get("consensus")
+        if not isinstance(reference, dict) or not reference:
+            continue
+        ours = _record_distribution(record)
+        if ours is None:
+            continue
+        workflow = str(record.get("workflow"))
+        scored.append((workflow, _tvd(ours, reference)))
+    if not scored:
+        return {}
+    by_workflow: dict[str, list[float]] = defaultdict(list)
+    for workflow, value in scored:
+        by_workflow[workflow].append(value)
+    result = {
+        "overall": sum(value for _w, value in scored) / len(scored),
+        "by_workflow": {
+            workflow: sum(values) / len(values) for workflow, values in sorted(by_workflow.items())
+        },
+    }
+    return result
+
+
+# ----------------------------------------------------- dependent-schema metrics
+
+
+def _case_predictions(records: list[dict]) -> dict[str, dict[str, object]]:
+    """Group records by case_id -> {field: prediction}.
+
+    Only fields with a label are kept (constraints only apply to labelled
+    fields). Multi predictions are normalized to a list (or empty list).
+    """
+    by_case: dict[str, dict[str, object]] = defaultdict(dict)
+    for r in records:
+        case_id = r.get("case_id")
+        if case_id is None or r.get("label") is None:
+            continue
+        pred = r.get("prediction")
+        if r.get("type") == "multi":
+            if isinstance(pred, list):
+                pass
+            elif isinstance(pred, str):
+                pred = [pred] if pred else []
+            else:
+                pred = []
+        by_case[case_id][r["field"]] = pred
+    return by_case
+
+
+def _case_labels(records: list[dict]) -> dict[str, dict[str, object]]:
+    """Group records by case_id -> {field: label}."""
+    by_case: dict[str, dict[str, object]] = defaultdict(dict)
+    for r in records:
+        case_id = r.get("case_id")
+        if case_id is None or r.get("label") is None:
+            continue
+        by_case[case_id][r["field"]] = r["label"]
+    return by_case
+
+
+def _case_constraints(records: list[dict]) -> dict[str, list[dict]]:
+    """Group records by case_id -> constraints list (from the first record
+    that carries them)."""
+    by_case: dict[str, list[dict]] = {}
+    for r in records:
+        case_id = r.get("case_id")
+        if case_id is None:
+            continue
+        constraints = r.get("constraints")
+        if isinstance(constraints, list) and constraints and case_id not in by_case:
+            by_case[case_id] = constraints
+    return by_case
+
+
+def constraint_violation_rate(records: list[dict], schema=None) -> dict | None:
+    """Fraction of cases with ≥1 constraint violation, and per-constraint-type
+    breakdown. Returns None when no case carries constraints.
+
+    W5b-11: the compiled path ONLY — no dict-walking dual path. Each case's
+    constraints compile ONCE (jevmlx.constraints.compile_constraints) and
+    evaluation is ``compiled.<kind>.satisfied(case_preds)``. ``schema`` is
+    the StructuredSchema to compile against (compile needs the field
+    domains — records don't carry it); None raises ConstraintError.
+    """
+    from jevmlx.constraints import ConstraintError, compile_constraints
+
+    preds = _case_predictions(records)
+    constraints_by_case = _case_constraints(records)
+    if not constraints_by_case:
+        return None
+    n_cases = len(constraints_by_case)
+    violated = 0
+    by_type: dict[str, int] = defaultdict(int)
+    total_by_type: dict[str, int] = defaultdict(int)
+    for case_id, constraints in constraints_by_case.items():
+        if schema is None:
+            raise ConstraintError(
+                "constraint_violation_rate needs a StructuredSchema to compile "
+                "the case constraints against (no dict-walking fallback exists)"
+            )
+        compiled = compile_constraints(constraints, schema)
+        case_preds = preds.get(case_id, {})
+        case_violated = False
+        # W5b-11: evaluation is by INDEX inside the compiled objects; the
+        # name-keyed entry point is CompiledConstraints.satisfied (the
+        # members' satisfied() take an index-keyed map). One compile-level
+        # call per case; per-type counting walks the same members with the
+        # index map built once.
+        values_by_idx = compiled.name_index_values(case_preds)
+        for kind, group in (
+            ("implies", compiled.implications),
+            ("excludes", compiled.exclusions),
+            ("exclusivity", compiled.exclusivities),
+        ):
+            for c in group:
+                total_by_type[kind] += 1
+                if not c.satisfied(values_by_idx):
+                    by_type[kind] += 1
+                    case_violated = True
+        if case_violated:
+            violated += 1
+    result = {"overall": violated / n_cases if n_cases else 0.0}
+    if total_by_type:
+        result["by_type"] = {
+            t: by_type[t] / total_by_type[t] if total_by_type[t] else 0.0
+            for t in sorted(total_by_type)
+        }
+    return result
+
+
+def child_accuracy_given_parent_correct(records: list[dict]) -> dict | None:
+    """For each implies/requires_parent constraint, child field accuracy
+    among cases where the parent was predicted correctly. Returns None when
+    no such constraints exist."""
+    preds = _case_predictions(records)
+    labels = _case_labels(records)
+    constraints_by_case = _case_constraints(records)
+    if not constraints_by_case:
+        return None
+    # Collect (parent, child) pairs from constraints.
+    pairs: dict[tuple[str, str], list[bool]] = defaultdict(list)
+    for case_id, constraints in constraints_by_case.items():
+        case_preds = preds.get(case_id, {})
+        case_labels = labels.get(case_id, {})
+        for c in constraints:
+            if c.get("type") not in ("implies", "requires_parent"):
+                continue
+            parent = c.get("parent")
+            child = c.get("child")
+            parent_pred = case_preds.get(parent)
+            parent_label = case_labels.get(parent)
+            child_pred = case_preds.get(child)
+            child_label = case_labels.get(child)
+            if parent_pred is None or parent_label is None:
+                continue
+            if parent_pred != parent_label:
+                continue  # parent wrong: skip
+            if child_pred is None or child_label is None:
+                continue
+            pairs[(parent, child)].append(child_pred == child_label)
+    if not pairs:
+        return None
+    return {
+        f"{parent}→{child}": sum(v) / len(v) if v else 0.0
+        for (parent, child), v in sorted(pairs.items())
+    }
+
+
+def oracle_parent_gap(records: list[dict]) -> dict | None:
+    """For each (parent, child) pair with a depends_on relationship, the gap
+    between child accuracy under the TRUE parent (teacher-forced oracle pass)
+    and child accuracy under the PREDICTED parent.
+
+    Records carry ``oracle_prediction`` (the child's value when the true parent
+    is teacher-forced in eval). The gap = oracle_acc - predicted_acc; a positive
+    gap means conditioning on the true parent helps the child.
+
+    Returns None when no records carry ``oracle_prediction``.
+    """
+    preds = _case_predictions(records)
+    labels = _case_labels(records)
+    # Collect oracle predictions: case_id -> {field: oracle_pred}.
+    oracle_preds: dict[str, dict[str, object]] = defaultdict(dict)
+    for r in records:
+        case_id = r.get("case_id")
+        if case_id is None or r.get("label") is None:
+            continue
+        oracle = r.get("oracle_prediction")
+        if oracle is not None:
+            oracle_preds[case_id][r["field"]] = oracle
+    if not oracle_preds:
+        return None
+    # Collect (parent, child) pairs from constraints.
+    constraints_by_case = _case_constraints(records)
+    if not constraints_by_case:
+        return None
+    pairs: dict[tuple[str, str], list[tuple[bool, bool]]] = defaultdict(list)
+    for case_id, constraints in constraints_by_case.items():
+        case_preds = preds.get(case_id, {})
+        case_labels = labels.get(case_id, {})
+        case_oracle = oracle_preds.get(case_id, {})
+        for c in constraints:
+            if c.get("type") not in ("implies", "requires_parent"):
+                continue
+            parent = c.get("parent")
+            child = c.get("child")
+            child_pred = case_preds.get(child)
+            child_label = case_labels.get(child)
+            child_oracle = case_oracle.get(child)
+            if child_pred is None or child_label is None or child_oracle is None:
+                continue
+            pred_correct = child_pred == child_label
+            oracle_correct = child_oracle == child_label
+            pairs[(parent, child)].append((oracle_correct, pred_correct))
+    if not pairs:
+        return None
+    return {
+        f"{parent}→{child}": {
+            "oracle_accuracy": sum(o for o, _ in v) / len(v) if v else 0.0,
+            "predicted_accuracy": sum(p for _, p in v) / len(v) if v else 0.0,
+            "gap": (sum(o for o, _ in v) - sum(p for _, p in v)) / len(v) if v else 0.0,
+            "n": len(v),
+        }
+        for (parent, child), v in sorted(pairs.items())
+    }
+
+
+def exact_record_accuracy(records: list[dict], schema=None) -> float | None:
+    """Fraction of cases where EVERY labelled field is correct AND no
+    constraint is violated. Stricter than case_exact_match (which ignores
+    constraints). Returns None when no cases carry labels."""
+    by_case: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        if r.get("label") is not None or r.get("correct") is not None:
+            by_case[r["case_id"]].append(r)
+    if not by_case:
+        return None
+    preds = _case_predictions(records)
+    constraints_by_case = _case_constraints(records)
+    perfect = 0
+    for case_id, case_records in by_case.items():
+        labelled = _labelled(case_records)
+        if not labelled or not all(_valid_correct(r) for r in labelled):
+            continue
+        # If this case has constraints, they must all be satisfied too
+        # (W5b-11: compiled path only — compile once, satisfied by index).
+        constraints = constraints_by_case.get(case_id, [])
+        if constraints:
+            from jevmlx.constraints import ConstraintError as _ce
+            from jevmlx.constraints import compile_constraints as _cc
+
+            if schema is None:
+                raise _ce(
+                    f"case {case_id!r} carries constraints; this metric needs "
+                    "a schema to compile them against"
+                )
+            case_preds = preds.get(case_id, {})
+            if not _cc(constraints, schema).satisfied(case_preds):
+                continue
+        perfect += 1
+    return perfect / len(by_case)
+
+
+def order_flip_rate(records: list[dict]) -> dict | None:
+    """Fraction of cases where the prediction for a field flips when field
+    order changes (permutation != 'canonical'). Reuses any_flip_rate when
+    permutation data is present; returns None otherwise."""
+    existing = any_flip_rate(records)
+    if existing:
+        return existing
+    return None
+
+
+def compute_metrics(records: list[dict], schema=None) -> dict:
+    """Assemble the metrics dict for evalreport.write_report.
+
+    Missing-data safety: a metric that cannot be computed (no labelled rows,
+    no confidences, no log_scores) is simply absent rather than zero-filled.
+    ``schema`` compiles the constraint-based metrics (W5b-11: the compiled
+    path only); without it those metrics are absent from the result rather
+    than silently dict-walked.
+    """
+    metrics: dict = {}
+    accuracy = field_accuracy(records)
+    if accuracy is not None:
+        metrics["accuracy"] = accuracy
+    # W6-B6b: per-field accuracy with Wilson intervals (independent-case
+    # Bernoulli per field). F4: filter to CANONICAL lines only — permutation
+    # rows (choice rotations) would inflate n by ~3x and narrow the interval
+    # ~1.7x. The report's per-field table shows the interval or 'n too small'.
+    by_field: dict[str, list[dict]] = defaultdict(list)
+    for record in _labelled(records):
+        if record.get("permutation") not in (None, "canonical"):
+            continue  # rotation/fieldperm rows are order probes, not independent trials
+        by_field[record.get("field", "")].append(record)
+    per_field_ci: list[dict] = []
+    for field in sorted(by_field):
+        field_records = by_field[field]
+        n = len(field_records)
+        k = sum(1 for r in field_records if _valid_correct(r))
+        ci = wilson_interval(k, n)
+        entry = {"field": field, "n": n, "accuracy": k / n if n else None}
+        if ci:
+            entry["ci"] = ci
+        per_field_ci.append(entry)
+    if per_field_ci:
+        metrics["per_field_accuracy"] = per_field_ci
+    # W6-B6b: valid-only accuracy (denominator = labelled AND valid lines;
+    # invalid predictions excluded). The gap to field_accuracy (failure-
+    # inclusive: invalid counts as wrong) is the invalid-prediction rate.
+    va = valid_accuracy(records)
+    if va is not None:
+        metrics["valid_accuracy"] = va
+    exact = case_exact_match(records)
+    if exact is not None:
+        metrics["case_exact_match"] = exact
+    majority = majority_class_baseline(records)
+    if majority:
+        metrics["majority_class_baseline"] = majority
+    jaccard = multi_jaccard(records)
+    if jaccard is not None:
+        metrics["multi_jaccard"] = jaccard
+    brier = brier_score(records)
+    if brier is not None:
+        metrics["brier"] = brier
+    nll = log_loss(records)
+    if nll is not None:
+        metrics["log_loss"] = nll
+    auroc = correctness_auroc(records)
+    if auroc is not None:
+        metrics["correctness_auroc"] = auroc
+    ece = ece_equal_mass(records, bins=5)
+    if ece is not None:
+        metrics["ece_5bin_equal_mass"] = ece
+    ties = tie_rate(records)
+    if ties is not None:
+        metrics["tie_rate"] = ties
+    curve = risk_coverage_curve(records, points=10)
+    if curve:
+        metrics["risk_coverage"] = curve
+    flips = any_flip_rate(records)
+    if flips:
+        metrics["any_flip_rate"] = flips
+    tvds = mean_tvd_across_permutations(records)
+    if tvds:
+        metrics["mean_tvd"] = tvds
+    # W6-B6b: case-cluster bootstrap CIs (B=2000, seed fixed, resample
+    # cases not lines) on accuracy, macro-F1, NLL, Brier, ECE. This is the
+    # DEFAULT CI everywhere fields are correlated within a case or sampling
+    # is balanced. The old accuracy_cluster_bootstrap (1000 draws) is
+    # replaced by the generalized cluster_bootstrap_ci.
+    acc_ci = cluster_bootstrap_ci(records, field_accuracy, metric_name="accuracy")
+    if acc_ci:
+        metrics["accuracy_ci"] = acc_ci
+    nll_ci = cluster_bootstrap_ci(records, log_loss, metric_name="log_loss")
+    if nll_ci:
+        metrics["log_loss_ci"] = nll_ci
+    brier_ci = cluster_bootstrap_ci(records, brier_score, metric_name="brier")
+    if brier_ci:
+        metrics["brier_ci"] = brier_ci
+    ece_ci = cluster_bootstrap_ci(records, lambda rs: ece_equal_mass(rs, bins=5), metric_name="ece")
+    if ece_ci:
+        metrics["ece_ci"] = ece_ci
+    balanced = balanced_accuracy(records)
+    if any(value is not None for value in balanced.values()):
+        metrics["balanced_accuracy"] = balanced
+    f1 = macro_f1(records)
+    if any(value is not None for value in f1.values()):
+        metrics["macro_f1"] = f1
+        # macro-F1 is a dict (per field); bootstrap the macro mean.
+        macro_f1_mean = _mean([v for v in f1.values() if v is not None])
+        if macro_f1_mean is not None:
+            f1_ci = cluster_bootstrap_ci(
+                records,
+                lambda rs: _mean([v for v in macro_f1(rs).values() if v is not None]),
+                metric_name="macro_f1",
+            )
+            if f1_ci:
+                metrics["macro_f1_ci"] = f1_ci
+    flips = perturbation_flip_rate(records)
+    if flips is not None:
+        metrics["perturbation_flip_rate"] = flips
+    agreement = typesafe_agreement(records)
+    if agreement:
+        metrics["agreement"] = agreement
+    # W6-B1: per-workflow accuracy for datasets that carry a ``workflow`` key
+    # (jabr's task_id, or any future dataset with per-group breakdown). This
+    # is the GENERAL metric (macro-by-workflow field accuracy); the TypeSafe-
+    # specific ``agreement.by_workflow`` is a separate, narrower metric.
+    labelled = _labelled(records)
+    wf_acc = macro_by(labelled, "workflow")
+    if wf_acc:
+        metrics["per_workflow_accuracy"] = wf_acc
+    tvd = tvd_vs_consensus(records)
+    if tvd:
+        metrics["tvd_vs_consensus"] = tvd
+    # Dependent-schema metrics (EV1: review Q1 'The correct diagnostic').
+    # W5b-11: compiled path only — they need the schema to compile against;
+    # absent schema => absent metric (never a silent dict-walk fallback).
+    exact_record = exact_record_accuracy(records, schema)
+    if exact_record is not None:
+        metrics["exact_record_accuracy"] = exact_record
+    if schema is not None:
+        violations = constraint_violation_rate(records, schema)
+        if violations:
+            metrics["constraint_violation_rate"] = violations
+    child_acc = child_accuracy_given_parent_correct(records)
+    if child_acc:
+        metrics["child_accuracy_given_parent_correct"] = child_acc
+    # oracle_parent_gap: child accuracy under the TRUE parent (teacher-forced)
+    # vs under the predicted parent. Requires oracle_prediction in records
+    # (W3-D part 2: evalrun runs a conditioned pass with the true parent).
+    oracle = oracle_parent_gap(records)
+    if oracle:
+        metrics["oracle_parent_gap"] = oracle
+    flips = order_flip_rate(records)
+    if flips:
+        metrics["order_flip_rate"] = flips
+    # W6-B1: ordinal metrics for ordered-enum fields (absent when none).
+    o_mae = ordinal_mae(records)
+    if o_mae:
+        metrics["ordinal_mae"] = o_mae
+    o_mae_e = ordinal_mae_expected(records)
+    if o_mae_e:
+        metrics["ordinal_mae_expected"] = o_mae_e
+    o_conf = ordinal_confusion(records)
+    if o_conf:
+        metrics["ordinal_confusion"] = o_conf
+    return metrics

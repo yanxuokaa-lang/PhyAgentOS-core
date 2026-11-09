@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "22572a4a24a19def28c7b93b8a586d53f28a56fd7ec63a592dbea139d59eea45",
+  "created_at": "2026-11-09T03:28:06.070494Z",
+  "decision_reason": "为用户指定 R01 到 BEAKER 的倾倒查询当前场景过程特征。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:949d3b48a6804c1f9f398bfd4012bcfe:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "5afe45f0a06094ea4d31e60ed68204fed074627b2fc3685df2ada98cf6c51810",
+  "node_id": "pour_r01.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_85d47119f10f46eb/revision_d1564bfed97649d0/pour_r01.process_features/6841eb09757d4cdc",
+      "input_binding_digest": "5afe45f0a06094ea4d31e60ed68204fed074627b2fc3685df2ada98cf6c51810",
+      "node_digest": "4314d0efc4c4f602dac121eb4d0c8dc32ef48eadc25b594e832259d7a86c1474",
+      "node_id": "pour_r01.process_features",
+      "obligation_id": "pour_r01-process-features",
+      "revision_id": "revision_d1564bfed97649d0"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/ce5ddc16544940e7b91e0ca30ada66f6.json",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 667,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:949d3b48a6804c1f9f398bfd4012bcfe:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:949d3b48a6804c1f9f398bfd4012bcfe:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_d1564bfed97649d0",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:949d3b48a6804c1f9f398bfd4012bcfe:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_85d47119f10f46eb"
+}

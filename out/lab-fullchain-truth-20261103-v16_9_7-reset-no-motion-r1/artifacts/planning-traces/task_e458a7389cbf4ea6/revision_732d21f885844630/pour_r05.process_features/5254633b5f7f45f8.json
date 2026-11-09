@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "d3d848a0ba5f499f3e3417f34735ed0fb0c59ee2652a0e4b74c0f81176849814",
+  "created_at": "2026-11-03T12:21:28.565488Z",
+  "decision_reason": "仅查询本任务当前观测中精确标签绑定 R05 与 BEAKER 的工艺特征；不授权动作。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:b9a9599540cd434dbc142583814fe242:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "b28ed9db42bd228824fc05ba513f93ec3a8a134cad7b13e1f1937826110ae84b",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_e458a7389cbf4ea6/revision_732d21f885844630/pour_r05.process_features/5254633b5f7f45f8",
+      "input_binding_digest": "b28ed9db42bd228824fc05ba513f93ec3a8a134cad7b13e1f1937826110ae84b",
+      "node_digest": "e7729d0c77e93ffcec351edfabf2dfb34843dec02c826989cd7bbd4e21ac4e49",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_732d21f885844630"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/f5d457d9898e4086a59f1c53ab7c703d.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 542,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:b9a9599540cd434dbc142583814fe242:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:b9a9599540cd434dbc142583814fe242:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_732d21f885844630",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:b9a9599540cd434dbc142583814fe242:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_e458a7389cbf4ea6"
+}

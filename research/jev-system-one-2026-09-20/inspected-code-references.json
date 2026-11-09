@@ -1,0 +1,485 @@
+[
+  {
+    "repo": "typesafe-ai/system-one-adapter-python",
+    "path": "src/system_one_adapter/_utils/confidence_metrics.py",
+    "symbol": null,
+    "start": 1,
+    "end": 32
+  },
+  {
+    "repo": "typesafe-ai/typesafe-sdk-python",
+    "path": "src/typesafe_sdk/_core/client/sync/client.py",
+    "symbol": null,
+    "start": 1,
+    "end": 233
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/model.py",
+    "symbol": "encode",
+    "start": 30,
+    "end": 67
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/model.py",
+    "symbol": "branch_mask_batch",
+    "start": 75,
+    "end": 101
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/model.py",
+    "symbol": "PointerHead",
+    "start": 104,
+    "end": 112
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/model.py",
+    "symbol": "DecisionModel",
+    "start": 115,
+    "end": 175
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/train.py",
+    "symbol": "question_loss",
+    "start": 23,
+    "end": 31
+  },
+  {
+    "repo": "jaredpalmer/kev",
+    "path": "kev/train.py",
+    "symbol": "anchor_loss",
+    "start": 34,
+    "end": 39
+  },
+  {
+    "repo": "zhengxuyu/litjev",
+    "path": "src/litjev/backend.py",
+    "symbol": "TransformersScorer",
+    "start": 23,
+    "end": 177
+  },
+  {
+    "repo": "zhengxuyu/litjev",
+    "path": "src/litjev/decision.py",
+    "symbol": "SchemaDecisionEngine",
+    "start": 75,
+    "end": 130
+  },
+  {
+    "repo": "zhengxuyu/litjev",
+    "path": "src/litjev/decision.py",
+    "symbol": "concentration",
+    "start": 67,
+    "end": 72
+  },
+  {
+    "repo": "zhengxuyu/litjev",
+    "path": "src/litjev/slots.py",
+    "symbol": null,
+    "start": 1,
+    "end": 85
+  },
+  {
+    "repo": "ekzhang/openjev-sglang",
+    "path": "src/openjev/prompts.py",
+    "symbol": "PromptCompiler",
+    "start": 72,
+    "end": 142
+  },
+  {
+    "repo": "ekzhang/openjev-sglang",
+    "path": "src/openjev/service.py",
+    "symbol": "EvaluationService",
+    "start": 28,
+    "end": 105
+  },
+  {
+    "repo": "ekzhang/openjev-sglang",
+    "path": "src/openjev/backend.py",
+    "symbol": "SGLangClient",
+    "start": 27,
+    "end": 90
+  },
+  {
+    "repo": "ekzhang/openjev-sglang",
+    "path": "src/openjev/backend.py",
+    "symbol": "parse_generation",
+    "start": 93,
+    "end": 123
+  },
+  {
+    "repo": "ekzhang/openjev-sglang",
+    "path": "src/openjev/scoring.py",
+    "symbol": null,
+    "start": 1,
+    "end": 40
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/model.py",
+    "symbol": "forward_paths",
+    "start": 92,
+    "end": 98
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/model.py",
+    "symbol": "forward_reuse",
+    "start": 100,
+    "end": 135
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/heads.py",
+    "symbol": "DecisionHead",
+    "start": 43,
+    "end": 104
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/posttrain.py",
+    "symbol": "build_model",
+    "start": 73,
+    "end": 97
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/posttrain.py",
+    "symbol": "cache_features",
+    "start": 145,
+    "end": 178
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/calibrate.py",
+    "symbol": "apply_calibration",
+    "start": 44,
+    "end": 56
+  },
+  {
+    "repo": "zeredy879/minojev",
+    "path": "src/minojev/calibrate.py",
+    "symbol": "_fit_one",
+    "start": 122,
+    "end": 135
+  },
+  {
+    "repo": "logan-markewich/jeff",
+    "path": "src/jeff/core/groups.py",
+    "symbol": "PromptOptions",
+    "start": 17,
+    "end": 41
+  },
+  {
+    "repo": "logan-markewich/jeff",
+    "path": "src/jeff/core/engine.py",
+    "symbol": "Engine",
+    "start": 15,
+    "end": 72
+  },
+  {
+    "repo": "logan-markewich/jeff",
+    "path": "src/jeff/core/answers.py",
+    "symbol": "normalize",
+    "start": 24,
+    "end": 35
+  },
+  {
+    "repo": "logan-markewich/jeff",
+    "path": "src/jeff/core/answers.py",
+    "symbol": "decode",
+    "start": 47,
+    "end": 75
+  },
+  {
+    "repo": "logan-markewich/jeff",
+    "path": "src/jeff/server/batcher.py",
+    "symbol": null,
+    "start": 1,
+    "end": 107
+  },
+  {
+    "repo": "wfzyx/von",
+    "path": "src/von/models/option_marker.py",
+    "symbol": "OptionMarkerScorer",
+    "start": 15,
+    "end": 32
+  },
+  {
+    "repo": "wfzyx/von",
+    "path": "src/von/models/option_marker.py",
+    "symbol": "OptionMarkerModel",
+    "start": 35,
+    "end": 79
+  },
+  {
+    "repo": "wfzyx/von",
+    "path": "src/von/backends/option_marker_backend.py",
+    "symbol": "_get_model",
+    "start": 59,
+    "end": 88
+  },
+  {
+    "repo": "wfzyx/von",
+    "path": "src/von/backends/option_marker_backend.py",
+    "symbol": "evaluate",
+    "start": 239,
+    "end": 287
+  },
+  {
+    "repo": "wfzyx/von",
+    "path": "training/train_option_marker.py",
+    "symbol": "compute_marker_rlcd_loss",
+    "start": 83,
+    "end": 114
+  },
+  {
+    "repo": "Heman10x-NGU/Verdict-open-jev",
+    "path": "core/engine_encoder.py",
+    "symbol": "DecisionEngine",
+    "start": 51,
+    "end": 252
+  },
+  {
+    "repo": "Heman10x-NGU/Verdict-open-jev",
+    "path": "core/engine_encoder.py",
+    "symbol": "_compute_concentration",
+    "start": 37,
+    "end": 48
+  },
+  {
+    "repo": "Heman10x-NGU/Verdict-open-jev",
+    "path": "core/calibration.py",
+    "symbol": null,
+    "start": 1,
+    "end": 332
+  },
+  {
+    "repo": "Heman10x-NGU/Verdict-open-jev",
+    "path": "scripts/train.py",
+    "symbol": null,
+    "start": 1,
+    "end": 436
+  },
+  {
+    "repo": "rupeshpoojary9/poorjev",
+    "path": "src/poorjev/backends/local_nli.py",
+    "symbol": "LocalNLIBackend",
+    "start": 26,
+    "end": 108
+  },
+  {
+    "repo": "rupeshpoojary9/poorjev",
+    "path": "src/poorjev/calibration.py",
+    "symbol": "fit_temperature",
+    "start": 57,
+    "end": 69
+  },
+  {
+    "repo": "rupeshpoojary9/poorjev",
+    "path": "src/poorjev/calibration.py",
+    "symbol": "cross_val_calibrate",
+    "start": 88,
+    "end": 113
+  },
+  {
+    "repo": "rupeshpoojary9/poorjev",
+    "path": "src/poorjev/calibration.py",
+    "symbol": "fit_abstention_threshold",
+    "start": 126,
+    "end": 148
+  },
+  {
+    "repo": "TheoLeeCJ/SemIf",
+    "path": "src/semif_phase1/shared.py",
+    "symbol": "score_shared",
+    "start": 53,
+    "end": 146
+  },
+  {
+    "repo": "TheoLeeCJ/SemIf",
+    "path": "src/semif_phase1/shared.py",
+    "symbol": "_state_prefix",
+    "start": 13,
+    "end": 36
+  },
+  {
+    "repo": "TheoLeeCJ/SemIf",
+    "path": "src/semif_phase1/direct.py",
+    "symbol": null,
+    "start": 1,
+    "end": 79
+  },
+  {
+    "repo": "bnsd55/jevmlx",
+    "path": "jevmlx/engine.py",
+    "symbol": "_broadcast_cache",
+    "start": 432,
+    "end": 448
+  },
+  {
+    "repo": "bnsd55/jevmlx",
+    "path": "jevmlx/engine.py",
+    "symbol": "_prefill",
+    "start": 2402,
+    "end": 2442
+  },
+  {
+    "repo": "bnsd55/jevmlx",
+    "path": "jevmlx/engine.py",
+    "symbol": "run_parallel_generation",
+    "start": 2445,
+    "end": 2684
+  },
+  {
+    "repo": "browser-use/jev-ultrafast",
+    "path": "jev_ultrafast/model.py",
+    "symbol": "action_space",
+    "start": 48,
+    "end": 78
+  },
+  {
+    "repo": "browser-use/jev-ultrafast",
+    "path": "jev_ultrafast/model.py",
+    "symbol": "choose",
+    "start": 81,
+    "end": 148
+  },
+  {
+    "repo": "browser-use/jev-ultrafast",
+    "path": "jev_ultrafast/model.py",
+    "symbol": "field_text",
+    "start": 160,
+    "end": 198
+  },
+  {
+    "repo": "browser-use/jev-ultrafast",
+    "path": "jev_ultrafast/agent.py",
+    "symbol": "command",
+    "start": 52,
+    "end": 161
+  },
+  {
+    "repo": "tamaratran/jev-pruner",
+    "path": "src/output.ts",
+    "symbol": null,
+    "start": 1,
+    "end": 675
+  },
+  {
+    "repo": "tamaratran/jev-pruner",
+    "path": "src/jev.ts",
+    "symbol": null,
+    "start": 1,
+    "end": 166
+  },
+  {
+    "repo": "tamaratran/jev-pruner",
+    "path": "src/retention.ts",
+    "symbol": null,
+    "start": 1,
+    "end": 56
+  },
+  {
+    "repo": "sutro-sh/jev-align",
+    "path": "src/jev_align/acquisition.py",
+    "symbol": "prediction_ambiguity",
+    "start": 14,
+    "end": 25
+  },
+  {
+    "repo": "sutro-sh/jev-align",
+    "path": "src/jev_align/acquisition.py",
+    "symbol": "select_batch",
+    "start": 34,
+    "end": 61
+  },
+  {
+    "repo": "sutro-sh/jev-align",
+    "path": "src/jev_align/optimizer.py",
+    "symbol": "ClassAwareBatchSampler",
+    "start": 46,
+    "end": 95
+  },
+  {
+    "repo": "sutro-sh/jev-align",
+    "path": "src/jev_align/optimizer.py",
+    "symbol": "F1BatchEvaluator",
+    "start": 98,
+    "end": 248
+  },
+  {
+    "repo": "sutro-sh/jev-align",
+    "path": "src/jev_align/session.py",
+    "symbol": null,
+    "start": 1,
+    "end": 589
+  },
+  {
+    "repo": "RomanSlack/jev-drone",
+    "path": "tactics.py",
+    "symbol": "Tactician",
+    "start": 109,
+    "end": 219
+  },
+  {
+    "repo": "RomanSlack/jev-drone",
+    "path": "tactics.py",
+    "symbol": "decision_needed",
+    "start": 91,
+    "end": 96
+  },
+  {
+    "repo": "RomanSlack/jev-drone",
+    "path": "tactics.py",
+    "symbol": "build_state",
+    "start": 99,
+    "end": 101
+  },
+  {
+    "repo": "RomanSlack/jev-drone",
+    "path": "run.py",
+    "symbol": "Guidance",
+    "start": 60,
+    "end": 234
+  },
+  {
+    "repo": "hotchpotch/jev-reranker",
+    "path": "src/jev_reranker/_ranking.py",
+    "symbol": "balanced_chunks",
+    "start": 13,
+    "end": 27
+  },
+  {
+    "repo": "hotchpotch/jev-reranker",
+    "path": "src/jev_reranker/_ranking.py",
+    "symbol": "score_listwise",
+    "start": 30,
+    "end": 103
+  },
+  {
+    "repo": "hotchpotch/jev-reranker",
+    "path": "src/jev_reranker/reranker.py",
+    "symbol": "JevReranker",
+    "start": 105,
+    "end": 910
+  },
+  {
+    "repo": "y0usaf/pi-jev",
+    "path": "src/gate.ts",
+    "symbol": null,
+    "start": 1,
+    "end": 229
+  },
+  {
+    "repo": "y0usaf/pi-jev",
+    "path": "src/index.ts",
+    "symbol": null,
+    "start": 1,
+    "end": 649
+  }
+]

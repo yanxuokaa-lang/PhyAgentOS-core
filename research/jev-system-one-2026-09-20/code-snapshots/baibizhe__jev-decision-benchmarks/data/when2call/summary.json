@@ -1,0 +1,390 @@
+{
+  "generated_at": "2026-09-19T11:11:41.050211+00:00",
+  "status": "complete",
+  "expected_requests": 3652,
+  "completed_requests": 3652,
+  "valid_responses": 3652,
+  "coverage": 1.0,
+  "label_order": [
+    "direct",
+    "tool_call",
+    "request_for_info",
+    "cannot_answer"
+  ],
+  "protocol": "When2Call official-default context and original answers; Jev Choice adapter, not likelihood scoring",
+  "primary": {
+    "n": 3652,
+    "correct": 2733,
+    "accuracy": 0.7483570646221248,
+    "macro_f1": 0.5654776944305911,
+    "confusion_matrix": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        8,
+        1186,
+        95,
+        6
+      ],
+      [
+        11,
+        228,
+        817,
+        6
+      ],
+      [
+        77,
+        312,
+        176,
+        730
+      ]
+    ],
+    "per_class": {
+      "direct": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "predicted": 96
+      },
+      "tool_call": {
+        "precision": 0.6871378910776361,
+        "recall": 0.9158301158301159,
+        "f1": 0.7851704733531943,
+        "support": 1295,
+        "predicted": 1726
+      },
+      "request_for_info": {
+        "precision": 0.7509191176470589,
+        "recall": 0.7693032015065914,
+        "f1": 0.76,
+        "support": 1062,
+        "predicted": 1088
+      },
+      "cannot_answer": {
+        "precision": 0.9838274932614556,
+        "recall": 0.5637065637065637,
+        "f1": 0.7167403043691704,
+        "support": 1295,
+        "predicted": 742
+      }
+    },
+    "tool_hallucination": {
+      "count": 197,
+      "n": 258,
+      "rate": 0.7635658914728682,
+      "ci95_wilson": [
+        0.7080896394162809,
+        0.8113086278120237
+      ]
+    },
+    "ci95_cluster": {
+      "method": "original-question cluster percentile bootstrap",
+      "groups": 1295,
+      "repetitions": 2000,
+      "seed": 20260919,
+      "accuracy": [
+        0.7332771404103418,
+        0.7615418291418575
+      ],
+      "macro_f1": [
+        0.5537286541059196,
+        0.5754071427820373
+      ]
+    }
+  },
+  "diagnostic_valid_subset": null,
+  "sources": {
+    "BFCL v2 Live Multiple": {
+      "n": 2901,
+      "correct": 2347,
+      "accuracy": 0.8090313684936229,
+      "macro_f1": 0.6098315062267932,
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          951,
+          81,
+          4
+        ],
+        [
+          2,
+          141,
+          682,
+          2
+        ],
+        [
+          47,
+          115,
+          161,
+          714
+        ]
+      ],
+      "per_class": {
+        "direct": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 0,
+          "predicted": 50
+        },
+        "tool_call": {
+          "precision": 0.7879038939519469,
+          "recall": 0.9170684667309547,
+          "f1": 0.8475935828877005,
+          "support": 1037,
+          "predicted": 1207
+        },
+        "request_for_info": {
+          "precision": 0.7380952380952381,
+          "recall": 0.8246674727932285,
+          "f1": 0.7789834380354084,
+          "support": 827,
+          "predicted": 924
+        },
+        "cannot_answer": {
+          "precision": 0.9916666666666667,
+          "recall": 0.6885245901639344,
+          "f1": 0.8127490039840638,
+          "support": 1037,
+          "predicted": 720
+        }
+      },
+      "tool_hallucination": {
+        "count": 0,
+        "n": 0,
+        "rate": null,
+        "ci95_wilson": null
+      }
+    },
+    "BFCL v2 Live Simple": {
+      "n": 751,
+      "correct": 386,
+      "accuracy": 0.5139813581890812,
+      "macro_f1": 0.3489670121249069,
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          7,
+          235,
+          14,
+          2
+        ],
+        [
+          9,
+          87,
+          135,
+          4
+        ],
+        [
+          30,
+          197,
+          15,
+          16
+        ]
+      ],
+      "per_class": {
+        "direct": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 0,
+          "predicted": 46
+        },
+        "tool_call": {
+          "precision": 0.4527938342967245,
+          "recall": 0.9108527131782945,
+          "f1": 0.6048906048906049,
+          "support": 258,
+          "predicted": 519
+        },
+        "request_for_info": {
+          "precision": 0.823170731707317,
+          "recall": 0.574468085106383,
+          "f1": 0.6766917293233082,
+          "support": 235,
+          "predicted": 164
+        },
+        "cannot_answer": {
+          "precision": 0.7272727272727273,
+          "recall": 0.06201550387596899,
+          "f1": 0.11428571428571428,
+          "support": 258,
+          "predicted": 22
+        }
+      },
+      "tool_hallucination": {
+        "count": 197,
+        "n": 258,
+        "rate": 0.7635658914728682,
+        "ci95_wilson": [
+          0.7080896394162809,
+          0.8113086278120237
+        ]
+      }
+    }
+  },
+  "operations": {
+    "attempts_started": 3652,
+    "attempts_finished": 3652,
+    "ambiguous_attempts": 0,
+    "retries": 0,
+    "reported_cost_usd": 0.196299516,
+    "unknown_cost_attempts": 0,
+    "accounted_cost_with_reservations_usd": 0.19629951600000034,
+    "budget_usd": 5.0,
+    "input_tokens": 4673798,
+    "output_tokens": 186252,
+    "models": {
+      "typesafe/jev-1.13-20260917": 3652
+    },
+    "providers": {
+      "TypeSafe": 3652
+    },
+    "http_statuses": {
+      "200": 3652
+    },
+    "latency_p50_p95_ms": [
+      321.6965824831277,
+      442.3873811494559
+    ],
+    "first_attempt_at": "2026-09-19T11:02:38.771230+00:00",
+    "last_attempt_at": "2026-09-19T11:08:51.014827+00:00",
+    "wall_seconds": 372.243597,
+    "latency_definition": "Request and retry backoff time, including network; excludes scheduling queue and restart downtime."
+  },
+  "official_hallucination_crosscheck": {
+    "value": 0.7635658914728682,
+    "same_as_local": true
+  },
+  "official_reference_rows": [
+    {
+      "model": "Llama 3.2 1B Instruct",
+      "f1_published": "21.7",
+      "tool_hall_published": "43%"
+    },
+    {
+      "model": "Llama 3.2 3B Instruct",
+      "f1_published": "17.9",
+      "tool_hall_published": "52%"
+    },
+    {
+      "model": "Llama 3.1 8B Instruct",
+      "f1_published": "16.6",
+      "tool_hall_published": "67%"
+    },
+    {
+      "model": "Llama 3.1 70B Instruct",
+      "f1_published": "37.8",
+      "tool_hall_published": "57%"
+    },
+    {
+      "model": "Qwen 2.5 0.5B Instruct",
+      "f1_published": "32.0",
+      "tool_hall_published": "20%"
+    },
+    {
+      "model": "Qwen 2.5 1.5B Instruct",
+      "f1_published": "29.9",
+      "tool_hall_published": "23%"
+    },
+    {
+      "model": "Qwen 2.5 3B Instruct",
+      "f1_published": "29.8",
+      "tool_hall_published": "23%"
+    },
+    {
+      "model": "Qwen 2.5 7B Instruct",
+      "f1_published": "32.0",
+      "tool_hall_published": "21%"
+    },
+    {
+      "model": "Qwen 2.5 14B Instruct",
+      "f1_published": "36.2",
+      "tool_hall_published": "21%"
+    },
+    {
+      "model": "Qwen 2.5 32B Instruct",
+      "f1_published": "32.9",
+      "tool_hall_published": "17%"
+    },
+    {
+      "model": "Qwen 2.5 72B Instruct",
+      "f1_published": "32.8",
+      "tool_hall_published": "23%"
+    },
+    {
+      "model": "xLAM 1B FC-R",
+      "f1_published": "25.6",
+      "tool_hall_published": "40%"
+    },
+    {
+      "model": "xLAM 7B FC-R",
+      "f1_published": "31.5",
+      "tool_hall_published": "24%"
+    },
+    {
+      "model": "xLAM 8x7B R",
+      "f1_published": "32.9",
+      "tool_hall_published": "13%"
+    },
+    {
+      "model": "xLAM 8x22B R",
+      "f1_published": "34.3",
+      "tool_hall_published": "9.0%"
+    },
+    {
+      "model": "MNM 4B SFT (baseline)",
+      "f1_published": "29.7",
+      "tool_hall_published": "16%"
+    },
+    {
+      "model": "MNM 4B dataset-SFT",
+      "f1_published": "48.1",
+      "tool_hall_published": "4.3%"
+    },
+    {
+      "model": "MNM 4B dataset-RPO",
+      "f1_published": "51.0",
+      "tool_hall_published": "1.9%"
+    },
+    {
+      "model": "MNM 8B SFT (baseline)",
+      "f1_published": "31.9",
+      "tool_hall_published": "19%"
+    },
+    {
+      "model": "MNM 8B dataset-SFT",
+      "f1_published": "49.4",
+      "tool_hall_published": "7.0%"
+    },
+    {
+      "model": "MNM 8B dataset-RPO",
+      "f1_published": "52.4",
+      "tool_hall_published": "1.2%"
+    }
+  ],
+  "acc_norm": null,
+  "acc_norm_reason": "No candidate continuation likelihoods; intentionally not evaluated",
+  "source_revision": "0bbcb5e35a5e48af439eccf4befa3e2fb92aececc8d15168e0d7bbccabe58e8d",
+  "raw_artifact_sha256": {
+    "requests.jsonl": "022b722538f201b09eff37cb719c298a712afce60fd485149693156f76414822",
+    "responses.jsonl": "b595a9d9abb9c80a88ab4414050917d659b6964250a8bb2363e35c082b97e1dd",
+    "attempts.jsonl": "569ff8a2570d19644e74cbc107c62ea558334dcad5703ab52a8a791222786db2"
+  }
+}

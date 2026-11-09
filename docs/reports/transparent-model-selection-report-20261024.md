@@ -1,6 +1,6 @@
 # 透明材质深度恢复模型对比汇报
 
-日期：2026-10-24
+
 场景：`tabletop_third_person`；目标：右侧大型锥形瓶
 流程：LocateAnything → SAM2 → raw/ReMake 深度 → 点云 → GraspNet
 

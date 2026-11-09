@@ -1,0 +1,1 @@
+{"search_ref": "artifact://labutopia/acquire-search/81c1a3b9aa524e96a0d63c4a5675bc4c.json", "route_strategy": "staged", "clearance_m": 0.12, "transport_order": 0, "corridor_order": 1, "axial_symmetry_angle_rad": 0.0, "motion_authorized": false, "world_change_started": false, "attempt_ordinal": 45, "stage": "route", "status": "started", "elapsed_s": 0.0004055219469591975}

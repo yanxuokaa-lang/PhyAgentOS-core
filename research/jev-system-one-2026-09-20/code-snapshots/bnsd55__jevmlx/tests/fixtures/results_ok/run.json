@@ -1,0 +1,32 @@
+{
+  "config": {
+    "dataset_lock_sha256": null,
+    "dataset_path": "fix",
+    "model": "fake",
+    "model_revision": null,
+    "permutations": "none",
+    "prompt_version": "jevmlx-parallel-v8",
+    "quantization": null,
+    "split": "all",
+    "temperature": 1.0,
+    "track": "parallel"
+  },
+  "counts": {
+    "cases": 2,
+    "fields": 2,
+    "prediction_lines": 2
+  },
+  "environment": {
+    "chip": "Apple M2 Pro",
+    "git_sha": "ead13cbb067abee22f0af1f8e53cec7f175d0857",
+    "jevmlx_version": "0.1.0",
+    "machine_model": "Mac14,9",
+    "macos_version": "26.5.1",
+    "mlx_lm_version": "0.31.3",
+    "mlx_version": "0.32.2",
+    "python_version": "3.12.2",
+    "ram_gb": 32.0,
+    "timestamp_utc": "2026-09-17T19:37:07+00:00"
+  },
+  "run_id": "fix"
+}

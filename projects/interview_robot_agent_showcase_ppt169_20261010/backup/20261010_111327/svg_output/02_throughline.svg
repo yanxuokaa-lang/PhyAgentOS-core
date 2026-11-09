@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect width="1280" height="720" fill="#F4F7F8"/>
+<text x="60" y="64" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="bold" fill="#0B1F2A">两个项目，一条技术主线</text>
+<text x="60" y="101" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">从真实机器人部署，到可解释、可恢复的 Agent 执行闭环</text>
+<line x1="60" y1="132" x2="1220" y2="132" stroke="#D6E0E3" stroke-width="2"/>
+<rect x="60" y="176" width="510" height="330" fill="#FFFFFF" stroke="#F28C28" stroke-width="3"/>
+<rect x="60" y="176" width="510" height="12" fill="#F28C28"/>
+<text x="96" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="27" font-weight="bold" fill="#0B1F2A">比赛项目</text>
+<text x="96" y="275" font-family="Microsoft YaHei, Arial, sans-serif" font-size="19" fill="#F28C28">真实机器人系统落地</text>
+<text x="96" y="334" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#26343A">如何让双臂机器人</text>
+<text x="96" y="370" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#26343A">在现场连续完成实验操作？</text>
+<text x="96" y="432" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">数据采集 · π0.5 微调 · 并行控制</text>
+<text x="96" y="463" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">动作滤波 · 部署调试</text>
+<rect x="710" y="176" width="510" height="330" fill="#FFFFFF" stroke="#1C7C7A" stroke-width="3"/>
+<rect x="710" y="176" width="510" height="12" fill="#1C7C7A"/>
+<text x="746" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="27" font-weight="bold" fill="#0B1F2A">PhyAgentOS</text>
+<text x="746" y="275" font-family="Microsoft YaHei, Arial, sans-serif" font-size="19" fill="#1C7C7A">Agent 组织感知与执行</text>
+<text x="746" y="334" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#26343A">如何让 Agent 根据场景状态</text>
+<text x="746" y="370" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#26343A">选择工具并推进长程任务？</text>
+<text x="746" y="432" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">Tool API · 语义 DAG · AgentTask</text>
+<text x="746" y="463" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">证据验证 · 增量恢复 · 经验演化</text>
+<line x1="280" y1="588" x2="1000" y2="588" stroke="#0B1F2A" stroke-width="3"/>
+<circle cx="280" cy="588" r="10" fill="#F28C28"/><circle cx="520" cy="588" r="10" fill="#1C7C7A"/><circle cx="760" cy="588" r="10" fill="#2D9D78"/><circle cx="1000" cy="588" r="10" fill="#D95D39"/>
+<text x="280" y="628" text-anchor="middle" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#26343A">感知</text>
+<text x="520" y="628" text-anchor="middle" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#26343A">工具调用</text>
+<text x="760" y="628" text-anchor="middle" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#26343A">执行与证据</text>
+<text x="1000" y="628" text-anchor="middle" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#26343A">验证与恢复</text>
+</svg>

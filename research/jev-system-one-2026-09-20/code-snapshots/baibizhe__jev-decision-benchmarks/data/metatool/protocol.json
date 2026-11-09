@@ -1,0 +1,99 @@
+{
+  "protocol_version": "1.0",
+  "prepared_at": "2026-09-19T12:04:40.056496+00:00",
+  "upstream_commit": "35e81bb7576826e980c80fed8f8c0a2b4a1e6fbb",
+  "python_version": "3.12.14",
+  "platform": "Linux-6.8.0-106-generic-x86_64-with-glibc2.39",
+  "model_request": "~typesafe/jev-latest",
+  "endpoint": "https://openrouter.ai/api/alpha/decisions",
+  "expected_inputs": 8574,
+  "runs_per_condition": 1,
+  "default_concurrency": 5,
+  "max_attempts": 3,
+  "timeout_seconds": 60,
+  "schedule_seed": 20260919,
+  "bootstrap_seed": 20260919,
+  "bootstrap_resamples": 10000,
+  "temperature": "Not exposed by Decisions API; no temperature parameter sent",
+  "input_policy": "Published task prompts, full candidate lists, original five-shot examples",
+  "label_policy": "Separate sidecar, never loaded by run/preflight",
+  "scoring": "Exact equality of selected and expected tool sets; invalid response is a failure",
+  "source_datasets": [
+    {
+      "file": "dataset/tmp_dataset/Task2-Subtask1.json",
+      "sha256": "618e882d3d443e11b5c6fb2c983057004c0b3d67056a56c82e8afccba1773ad6",
+      "rows": 995,
+      "target_position_counts_1_based": {
+        "1": 995
+      },
+      "paper_reported_rows": 975
+    },
+    {
+      "file": "dataset/tmp_dataset/Task2-Subtask2.json",
+      "sha256": "0720e711f864210c1a2dd1de5ae54bf9c65eaefd160d89c58c6e88fe93689ef5",
+      "rows": 1800,
+      "target_position_counts_1_based": {
+        "1": 180,
+        "2": 180,
+        "3": 180,
+        "4": 180,
+        "5": 180,
+        "6": 160,
+        "7": 160,
+        "8": 160,
+        "9": 160,
+        "10": 160,
+        "11": 20,
+        "12": 20,
+        "13": 20,
+        "14": 20,
+        "15": 20
+      },
+      "paper_reported_rows": 1800
+    },
+    {
+      "file": "dataset/tmp_dataset/Task2-Subtask3.json",
+      "sha256": "f893730a94cc6342d4171f4eb7187277fc7cc4a218b9060668039cab069f4a75",
+      "rows": 995,
+      "target_position_counts_1_based": {},
+      "paper_reported_rows": 975
+    },
+    {
+      "file": "dataset/tmp_dataset/Task2-Subtask4.json",
+      "sha256": "d7851cee10048f9d650b15f795c50daf097abb2ef4b893f9bb45abfedea0ea63",
+      "rows": 497,
+      "target_position_counts_1_based": {
+        "8": 497,
+        "7": 497
+      },
+      "paper_reported_rows": 497
+    }
+  ],
+  "files": {
+    "inputs.jsonl": "0b819913016b1c5119b5bc0efee05aec7c873a110a2004bb950171261743c80b",
+    "labels.jsonl": "7c372b4447f9a17b7dff5694c46b13fe239f30040b71f4f787264b821398ed18",
+    "published_baselines.json": "b8b454a8cefa2a610807a2d4572b955c96ce2afd8fd4531c83488b637dedacf1"
+  },
+  "source_code": {
+    "fetch_sources.py": "ab3625741da92c2ee9a71f198978ba66f9b55806b26652e6e26165d0ea733193",
+    "pyproject.toml": "5d5fbd2a2bdaa3de12821ca0293694fb2009945c8bf0faae3506347414045744",
+    "protocol.py": "c0f2cbf63aeffe6383bced08902bb5f322c408a74f13d6942743f62e56554ec4",
+    "evaluate.py": "de0d58d8271984cecb48046982245de1053a31e6c94ad3dd673015adf7c39fb1",
+    "reporting.py": "af2a6501f1f838608f93688b222599608914cf6af6f1205e05dd23713f69200b",
+    "uv.lock": "ed850cf45e7559a816781276dfe8f38e58d772b3c5ec4227f1d0c9a5298ee0c3"
+  },
+  "external_sources": {
+    "paper-tables.json": "ac0ff5cbc0f9a8b375192daa837bc180145cac03319cebf1922d985b4400291f",
+    "issue7-comments.json": "5ea215af0c20c2cc9f1fc5666088eadd5182673fe50cf7f45abc0472ef30d791",
+    "issue10-comments.json": "0882adef20901d86ae1664ac4f2b7d6b5f6858fabb6c4478a3718e2c58fe82cd",
+    "urls.json": "13b8191742ba6418fb30d9698a241081d92720a0d314c507af919927d0359217",
+    "jev-endpoints.json": "88a9d4c00f56eee84e94b0b34a75cbda0da27c77818bc3d35a320738c7c2ec24",
+    "paper-v6.html": "8cc467dcfaa6e89a73384d83df7d2c2114f7911f87dc1fcdf789d2e7244fd494"
+  },
+  "comparison_limitations": [
+    "Released similar/reliability sets have 995 items each; paper reports 975.",
+    "Decisions forced-choice output differs from generated names plus explanations.",
+    "Paper baselines are historical aggregate results; paired significance tests are unavailable.",
+    "Five-shot source formatting is preserved, including missing Examples End in reliability prompts."
+  ]
+}

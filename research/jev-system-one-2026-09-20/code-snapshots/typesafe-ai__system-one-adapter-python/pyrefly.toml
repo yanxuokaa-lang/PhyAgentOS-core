@@ -1,0 +1,7 @@
+preset = "strict"
+project-includes = [
+    "src",
+    "tests",
+]
+python-version = "3.10"
+search-path = ["src", "."]

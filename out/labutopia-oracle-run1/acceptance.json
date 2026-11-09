@@ -1,0 +1,8 @@
+{
+  "instruction": "请按可见标签选择 REAGENT A（R01 试剂瓶），将其中的试剂一次性倒入 BEAKER，倾倒时保持瓶口对准 BEAKER 瓶口，完成后将试剂瓶放回原位。",
+  "session_key": "cli:lab-dd0f56273b99",
+  "simulated_motion_enabled": true,
+  "agent_response": "可以，我会按可见标签选择 **REAGENT A（R01）**，执行一次倾倒动作，过程中保持试剂瓶瓶口对准 **BEAKER** 开口，随后将试剂瓶放回原位。\n\n执行前还需要你指定两个参数：\n- **倾倒角度**：多少弧度（rad）？\n- **保持时间**：保持倾倒姿态多少秒（s）？\n\n注意：当前环境是无液体模型的仿真，只能执行并确认机械动作，不能确认试剂是否全部倒出或实际转移量。",
+  "controller_outcomes": [],
+  "tasks": []
+}

@@ -1,0 +1,8 @@
+{
+  "instruction": "请按可见标签选择 REAGENT A（R01 试剂瓶），将其中的试剂一次性倒入 BEAKER，倾倒时保持瓶口对准 BEAKER 瓶口，完成后将试剂瓶放回原位。倾倒参数由你决定：倾倒角度请在 0.8-1.2 rad 内选择，保持时间 2.0 秒，不要向用户反问，直接执行到任务终态。",
+  "session_key": "cli:lab-91a0fc92358d",
+  "simulated_motion_enabled": true,
+  "agent_response": "本次执行受阻，**未启动机械臂运动，也未完成倾倒或归位**。\n\n- 已选择参数：倾角 **1.0 rad**，保持 **2.0 秒**。\n- 使用可见编号 `R01` 绑定后，抓取准备持续报错：`grasp.propose is unavailable or stale`。\n- 虽然实时就绪检查返回可用，但重新绑定仍失败，因此未绕过抓取及路线资格检查执行运动。\n\n由于任务未能成功创建，没有可报告的运动测量或阶段视频。本环境为无液体仿真，亦不涉及实际试剂转移量。",
+  "controller_outcomes": [],
+  "tasks": []
+}

@@ -1,0 +1,65 @@
+name: results-check
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/results/**"
+  workflow_dispatch:
+    inputs:
+      results-dir:
+        description: "results folder to check (relative to repo root)"
+        required: true
+        default: "benchmarks/results"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.15"
+          enable-cache: true
+
+      - name: Install Python toolchain and project
+        run: |
+          uv python install 3.12
+          uv venv --python 3.12 .venv
+          # dev extras not needed: check_results imports jevmlx.evalmetrics/
+          # evalreport only (mlx lives in jevmlx.engine, never imported here).
+          uv pip install --python .venv/bin/python -e .
+
+      - name: Determine changed results folders
+        id: dirs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "dirs=${{ inputs.results-dir }}" >> "$GITHUB_OUTPUT"
+          else
+            # One folder per changed predictions.jsonl, deduplicated, relative.
+            dirs=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'benchmarks/results/**' \
+              | grep -E 'predictions\.jsonl(\.gz)?$' \
+              | xargs -n1 dirname \
+              | sort -u \
+              | tr '\n' ' ')
+            echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+
+      - name: Run check_results + README freshness
+        id: check
+        run: |
+          .venv/bin/python -m benchmarks.check_results ${{ steps.dirs.outputs.dirs }} > summary.md
+          cat summary.md
+          .venv/bin/python -m benchmarks.check_results --check-readme README.md
+        continue-on-error: true
+
+      - name: Post SUMMARY table as a PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body-file summary.md || \
+            echo "could not post comment (likely missing GITHUB_TOKEN write permission)"
+
+      - name: Fail the job if check_results failed
+        if: steps.check.outcome == 'failure'
+        run: exit 1

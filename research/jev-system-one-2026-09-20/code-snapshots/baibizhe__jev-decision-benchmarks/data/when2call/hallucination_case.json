@@ -1,0 +1,139 @@
+{
+  "selection_rule": "First UUID sorted ascending among valid gold=cannot_answer, tools=[], prediction=tool_call cases",
+  "uuid": "0089914c-3735-490a-aa4c-b782fea825d4",
+  "source_references": [
+    {
+      "path": "upstream/data/test/when2call_test_mcq.jsonl",
+      "line": 1273,
+      "file_sha256": "8c3694e583eeeb8dbc297e6cd90da70efc68efa4b6adb7227523e828c6b7b14c"
+    },
+    {
+      "path": "runs/v1/requests.jsonl",
+      "line": 1273,
+      "file_sha256": "022b722538f201b09eff37cb719c298a712afce60fd485149693156f76414822"
+    },
+    {
+      "path": "runs/v1/responses.jsonl",
+      "line": 1273,
+      "file_sha256": "b595a9d9abb9c80a88ab4414050917d659b6964250a8bb2363e35c082b97e1dd"
+    }
+  ],
+  "dataset_example": {
+    "uuid": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "source": "BFCL v2 Live Simple",
+    "source_id": "live_simple_235-124-0",
+    "question": "Play the song 'Friends' by Marshmello",
+    "correct_answer": "cannot_answer",
+    "answers": {
+      "direct": "I'm sorry, I'm unable to play songs, but I can help you find it on a music streaming service. 'Friends' by Marshmello is available on Spotify, Apple Music, and YouTube Music.",
+      "tool_call": "{\"name\": \"play_spotify_song\", \"arguments\": {\"query\": \"track:Friends artist:Marshmello\"}}",
+      "request_for_info": "To ensure I play the correct version, could you please specify the artist's full name or any additional details about the song?",
+      "cannot_answer": "I'm sorry, I'm currently unable to play music. I'm designed to assist with information and tasks, but I don't have the capability to play songs."
+    },
+    "target_tool": null,
+    "tools": [],
+    "orig_tools": [
+      "{\"name\": \"play_spotify_song\", \"description\": \"This function searches for a song on Spotify using a provided query and plays the selected track.\", \"parameters\": {\"type\": \"dict\", \"required\": [\"query\"], \"properties\": {\"query\": {\"type\": \"string\", \"description\": \"The search query for the song, including track and artist information, in the format 'track:SongName artist:ArtistName', such as 'track:Doxy artist:Miles Davis'.\"}, \"shuffle\": {\"type\": \"boolean\", \"description\": \"Indicates whether to play the songs in shuffle mode.\", \"default\": false}, \"volume\": {\"type\": \"integer\", \"description\": \"The volume level to set when playing the song, expressed as a percentage from 0 to 100.\", \"default\": 50}}}}"
+    ]
+  },
+  "request_record": {
+    "key": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "variant": "primary",
+    "sample_id": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "source": "BFCL v2 Live Simple",
+    "request_sha256": "99cb209f2b7ffc6130c9b7763206eb99dbe18500de8c1895924ab27f4a25a64c",
+    "request": {
+      "model": "typesafe/jev-1.13",
+      "state": "You are a helpful AI assistant. \nYou have access to the following tools described in <tool></tool> which you can use to answer the user's questions.\nOnly use a tool if it directly answers the user's question.\n\nTo use a tool, return JSON in the following format:\n{\"name\": \"tool_name\", \"arguments\": {\"argument1\": \"value1\", \"argument2\": \"value2\", ...}}\n\n\n\n\nPlay the song 'Friends' by Marshmello",
+      "questions": {
+        "next_response": {
+          "type": "choice",
+          "instructions": "Select the single best next assistant response for the conversation in state.",
+          "criteria": {
+            "c0": "I'm sorry, I'm unable to play songs, but I can help you find it on a music streaming service. 'Friends' by Marshmello is available on Spotify, Apple Music, and YouTube Music.",
+            "c1": "{\"name\": \"play_spotify_song\", \"arguments\": {\"query\": \"track:Friends artist:Marshmello\"}}",
+            "c2": "To ensure I play the correct version, could you please specify the artist's full name or any additional details about the song?",
+            "c3": "I'm sorry, I'm currently unable to play music. I'm designed to assist with information and tasks, but I don't have the capability to play songs."
+          }
+        }
+      }
+    },
+    "choice_to_label": {
+      "c0": "direct",
+      "c1": "tool_call",
+      "c2": "request_for_info",
+      "c3": "cannot_answer"
+    }
+  },
+  "response_record": {
+    "key": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "sample_id": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "variant": "primary",
+    "request_sha256": "99cb209f2b7ffc6130c9b7763206eb99dbe18500de8c1895924ab27f4a25a64c",
+    "completed_at": "2026-09-19T11:04:54.337254+00:00",
+    "valid": true,
+    "error": null,
+    "parsed": {
+      "choice": "c1",
+      "prediction_index": 1,
+      "prediction": "tool_call",
+      "probabilities": {
+        "c3": 0.28,
+        "c1": 0.52,
+        "c0": 0.19,
+        "c2": 0.01
+      },
+      "confidence": 0.36
+    },
+    "response": {
+      "model": "typesafe/jev-1.13-20260917",
+      "answers": {
+        "next_response": {
+          "type": "choice",
+          "choice": "c1",
+          "probabilities": {
+            "c3": 0.28,
+            "c1": 0.52,
+            "c0": 0.19,
+            "c2": 0.01
+          },
+          "confidence": 0.36
+        }
+      },
+      "usage": {
+        "input_tokens": 568,
+        "output_tokens": 51,
+        "cost": 2.3856e-05
+      },
+      "id": "gen-dec-1789815894-CGz6CII61kWa4nzP74kB",
+      "provider": "TypeSafe"
+    },
+    "attempts": 1,
+    "latency_ms": 317.72834388539195,
+    "reported_cost_usd": 2.3856e-05,
+    "unknown_cost_attempts": 0
+  },
+  "per_example_record": {
+    "uuid": "0089914c-3735-490a-aa4c-b782fea825d4",
+    "source": "BFCL v2 Live Simple",
+    "source_id": "live_simple_235-124-0",
+    "gold": "cannot_answer",
+    "prediction": "tool_call",
+    "valid": "True",
+    "correct": "0",
+    "no_tools": "True",
+    "selected_probability": "0.52",
+    "attempts": "1",
+    "latency_ms": "317.72834388539195",
+    "reported_cost_usd": "2.3856e-05",
+    "request_sha256": "99cb209f2b7ffc6130c9b7763206eb99dbe18500de8c1895924ab27f4a25a64c",
+    "error": ""
+  },
+  "verified": {
+    "unavailable_tools": true,
+    "selected_unavailable_tool_candidate": true,
+    "no_tool_definition_in_actual_state": true,
+    "original_candidates_preserved": true,
+    "model_requests_added": 0
+  }
+}

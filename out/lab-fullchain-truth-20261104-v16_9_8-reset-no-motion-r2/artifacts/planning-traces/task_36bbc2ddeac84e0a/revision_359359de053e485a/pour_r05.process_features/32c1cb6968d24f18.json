@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "253975efeaeb9e50f512d05b4f5c487471977f1efdf79c63459436743383c522",
+  "created_at": "2026-11-04T01:05:59.590671Z",
+  "decision_reason": "使用当前节点冻结的 R05、BEAKER 和观测身份字段，仅执行只读特征提议。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:0318efdf078e43ff9ae626f1275f2210:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "4f5fb0fe632d539ab31d00e2e3ccb88f9f0288e249a4f0f950e5c65154ebec93",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_36bbc2ddeac84e0a/revision_359359de053e485a/pour_r05.process_features/32c1cb6968d24f18",
+      "input_binding_digest": "4f5fb0fe632d539ab31d00e2e3ccb88f9f0288e249a4f0f950e5c65154ebec93",
+      "node_digest": "55e1d04b84c298a0920c57a21d430215fa01410ab980945e1ecb14b7c644f5df",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_359359de053e485a"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/3761e7dd461a402d9bddd906c4d7e76f.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 553,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:0318efdf078e43ff9ae626f1275f2210:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:0318efdf078e43ff9ae626f1275f2210:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_359359de053e485a",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:0318efdf078e43ff9ae626f1275f2210:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_36bbc2ddeac84e0a"
+}

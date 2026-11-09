@@ -1,0 +1,17 @@
+16:22:37 - LiteLLM:WARNING: get_model_cost_map.py:454 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: The read operation timed out. Falling back to local backup.
+2026-11-03 16:22:39.272 | INFO     | PhyAgentOS.agent.loop:_process_message:3151 - Processing message from cli:user: 本次明确授权在现有 Isaac/LabUtopia 仿真环境完成动作执行，不连接真实硬件。使用同次仿真真值深度、点云和标签，不需要 ReMake。按顺序将 R0...
+2026-11-03 16:22:39.297 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1609 - Agent prompt context session=cli:lab-a0a111728026 iteration=1 phase=task_creation tokens=5985/263808 window=272000 trigger=258400 output_reserve=8192 source=tiktoken tools=14 compacted=False bootstrap_system=599 skill=1673 node_facts=0 tool_schemas=3195 history=518 component_total=5985
+2026-11-03 16:22:39.298 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1643 - Agent model start session=cli:lab-a0a111728026 iteration=1 attempt=1
+2026-11-03 16:22:48.857 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1663 - Agent model exit session=cli:lab-a0a111728026 iteration=1 attempt=1 elapsed_s=9.560
+2026-11-03 16:22:48.857 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1678 - Agent model timing session=cli:lab-a0a111728026 iteration=1 attempt=1 request_to_headers=5.599s first_token=5.602s complete_s=9.560 mode=streaming
+2026-11-03 16:22:48.857 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1808 - Tool call: forge_tool_context({"tool_id": "forge_task_create"})
+2026-11-03 16:22:48.857 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1810 - Agent tool start session=cli:lab-a0a111728026 iteration=1 call_id=call_83368e60a0fe4484b094a02d88c7cfe0 tool=forge_tool_context
+2026-11-03 16:22:48.858 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1828 - Agent tool exit session=cli:lab-a0a111728026 iteration=1 call_id=call_83368e60a0fe4484b094a02d88c7cfe0 elapsed_s=0.000
+2026-11-03 16:22:48.865 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1609 - Agent prompt context session=cli:lab-a0a111728026 iteration=2 phase=task_creation tokens=6813/263808 window=272000 trigger=258400 output_reserve=8192 source=tiktoken tools=14 compacted=False bootstrap_system=599 skill=1673 node_facts=0 tool_schemas=3195 history=1346 component_total=6813
+2026-11-03 16:22:48.865 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1643 - Agent model start session=cli:lab-a0a111728026 iteration=2 attempt=1
+2026-11-03 16:23:02.512 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1663 - Agent model exit session=cli:lab-a0a111728026 iteration=2 attempt=1 elapsed_s=13.646
+2026-11-03 16:23:02.512 | INFO     | PhyAgentOS.agent.loop:_run_agent_loop:1678 - Agent model timing session=cli:lab-a0a111728026 iteration=2 attempt=1 request_to_headers=5.103s first_token=5.104s complete_s=13.646 mode=streaming
+2026-11-03 16:23:02.512 | ERROR    | PhyAgentOS.agent.loop:_run_agent_loop:2161 - LLM returned error: Error:
+2026-11-03 16:23:02.535 | DEBUG    | PhyAgentOS.agent.memory:maybe_consolidate_by_tokens:251 - Token consolidation idle cli:lab-a0a111728026: 11539/258400 via tiktoken
+2026-11-03 16:23:02.536 | INFO     | PhyAgentOS.agent.loop:_process_message:3345 - Response to cli:user: Error:
+{"session_key": "cli:lab-a0a111728026", "tasks": []}

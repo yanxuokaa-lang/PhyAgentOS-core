@@ -1,0 +1,23 @@
+{
+  "model": "jev-latest",
+  "state": [
+    {"role": "system", "content": "You are a support assistant."},
+    {"role": "user", "content": "I was charged twice. Please refund the duplicate."}
+  ],
+  "questions": {
+    "refund": {
+      "type": "noul",
+      "instructions": "Does the user request a refund?"
+    },
+    "department": {
+      "type": "choice",
+      "instructions": "Which department should handle this?",
+      "criteria": {"billing": "Payments and refunds", "technical": "Software bugs"}
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "How urgent is the request?",
+      "criteria": ["Routine", "Urgent", "Emergency"]
+    }
+  }
+}

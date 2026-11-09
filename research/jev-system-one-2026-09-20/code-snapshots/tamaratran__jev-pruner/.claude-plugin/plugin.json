@@ -1,0 +1,74 @@
+{
+  "name": "fast-jev-output",
+  "version": "0.1.0",
+  "description": "Trim long Bash output with Jev before the model sees it (Claude Code plugin)",
+  "license": "MIT",
+  "userConfig": {
+    "apiKey": {
+      "type": "string",
+      "title": "TypeSafe API key",
+      "description": "TypeSafe API key. Leave unset to use TYPESAFE_API_KEY.",
+      "sensitive": true
+    },
+    "minTokens": {
+      "type": "number",
+      "title": "Minimum Bash output tokens",
+      "description": "Stdout at or below this estimated token count passes through untouched. Minimum: 10000.",
+      "default": 10000
+    },
+    "persistedOutputs": {
+      "type": "boolean",
+      "title": "Prune output the engine saved",
+      "description": "When Bash output is too large to show inline, prune the saved file instead of leaving the model a head-of-file preview.",
+      "default": true
+    },
+    "persistedMaxChars": {
+      "type": "number",
+      "title": "Budget for engine-saved output",
+      "description": "Rendered character budget including omission markers and the archive footer, also capped by the native model-visible preview when available. If errors or unscored content cannot fit safely, the original result passes through. 0 disables this configured cap; the native preview cap still applies.",
+      "default": 8000
+    },
+    "chunkLines": {
+      "type": "number",
+      "title": "Bash output chunk lines",
+      "description": "Number of Bash output lines grouped into each Jev chunk.",
+      "default": 20
+    },
+    "chunkChars": {
+      "type": "number",
+      "title": "Bash output chunk character target",
+      "description": "Optional character target instead of line grouping. Preserves line boundaries after long-line splitting; adjacent chunks merge if needed to stay within 200 decisions. 0 uses chunkLines.",
+      "default": 0
+    },
+    "diagnostics": {
+      "type": "boolean",
+      "title": "Log pruning decisions",
+      "description": "Log skip reasons, source and hook-returned character counts, request counts, and elapsed time. Does not include commands or output content. Hook counts are not final model-visible token counts.",
+      "default": false
+    },
+    "keepThreshold": {
+      "type": "number",
+      "title": "Keep threshold",
+      "description": "Minimum Jev probability for a Bash output chunk to stay visible.",
+      "default": 0.5
+    },
+    "maxStateTokens": {
+      "type": "number",
+      "title": "Maximum Jev state tokens",
+      "description": "Estimated token budget for the Bash output state sent to Jev.",
+      "default": 25000
+    },
+    "maxScoringRequests": {
+      "type": "number",
+      "title": "Maximum additional scoring requests",
+      "description": "Additional Jev calls beyond the first, shared by scoring, retries and refinement. The hook also limits total calls to one per 192 visible preview characters, rounded up. 0 permits only the initial call.",
+      "default": 11
+    },
+    "model": {
+      "type": "string",
+      "title": "Jev model",
+      "description": "TypeSafe Jev model name.",
+      "default": "jev-latest"
+    }
+  }
+}

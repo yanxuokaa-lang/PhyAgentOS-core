@@ -1,0 +1,67 @@
+{
+  "current": {
+    "n": 256,
+    "correct": 142,
+    "accuracy": 0.5546875,
+    "delta": 0.0,
+    "paired_95_ci": [
+      0.0,
+      0.0
+    ],
+    "mean_label_mass": 0.8720656797383863,
+    "mean_input_tokens": 264.87109375,
+    "predicted_A": 58
+  },
+  "plain": {
+    "n": 256,
+    "correct": 148,
+    "accuracy": 0.578125,
+    "delta": 0.0234375,
+    "paired_95_ci": [
+      -0.0234375,
+      0.06640625
+    ],
+    "mean_label_mass": 0.9050367202301716,
+    "mean_input_tokens": 220.875,
+    "predicted_A": 67
+  },
+  "json": {
+    "n": 256,
+    "correct": 153,
+    "accuracy": 0.59765625,
+    "delta": 0.04296875,
+    "paired_95_ci": [
+      0.0,
+      0.0859375
+    ],
+    "mean_label_mass": 0.9991662911140724,
+    "mean_input_tokens": 228.875,
+    "predicted_A": 59
+  },
+  "five_shot": {
+    "n": 256,
+    "correct": 152,
+    "accuracy": 0.59375,
+    "delta": 0.0390625,
+    "paired_95_ci": [
+      -0.00390625,
+      0.078125
+    ],
+    "mean_label_mass": 0.9993993650880855,
+    "mean_input_tokens": 1004.02734375,
+    "predicted_A": 57
+  },
+  "five_shot_rationales": {
+    "n": 256,
+    "correct": 147,
+    "accuracy": 0.57421875,
+    "delta": 0.01953125,
+    "paired_95_ci": [
+      -0.01953125,
+      0.05859375
+    ],
+    "mean_label_mass": 0.948700660511997,
+    "mean_input_tokens": 1477.4375,
+    "predicted_A": 78
+  }
+}

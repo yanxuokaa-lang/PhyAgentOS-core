@@ -1,0 +1,36 @@
+name: release-check
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  check:
+    runs-on: macos-14  # Apple Silicon runner (MLX requires arm64 macOS)
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.15"
+          enable-cache: true
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Twine check
+        run: uv tool run twine check dist/*
+
+      - name: Install Python and the built wheel in a clean venv
+        run: |
+          uv python install 3.12
+          uv venv --python 3.12 .release-venv
+          uv pip install --python .release-venv/bin/python dist/*.whl
+
+      - name: Smoke test the installed wheel
+        run: |
+          .release-venv/bin/jevmlx --version
+          .release-venv/bin/jevmlx doctor --json
+          .release-venv/bin/python -c "import jevmlx.evalmetrics"

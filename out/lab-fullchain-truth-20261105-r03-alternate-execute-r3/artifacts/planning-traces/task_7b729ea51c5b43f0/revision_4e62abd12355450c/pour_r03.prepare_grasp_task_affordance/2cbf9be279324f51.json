@@ -1,0 +1,50 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.prepare_grasp_task_affordance"
+  ],
+  "context_digest": "0ab22a1c33759d0504fed1615865abdf61a2807f42e60473e15a8afdba286415",
+  "created_at": "2026-11-05T12:03:38.637282Z",
+  "decision_reason": "本次 Query 返回两个同集合组合，排除排序首位，将实际返回的非首位组合送交 preparation 验证。不得固定候选编号；需保持新鲜度、夹爪开口、workspace、IK连续性、碰撞、payload、接触、力闭合、possession 检查，并核验与首位不同方向的另一侧接近要求。",
+  "evidence_refs": [
+    "tool:tool_a018654e3f87434b",
+    "observation://labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0/tabletop_third_person",
+    "tool:tool_9814d5b8bc934751",
+    "tool:tool_033ea79ba9fd4d5a"
+  ],
+  "input_binding_digest": "516d1c44318256ba5b771933d1be5bf1e52ea8a4fd0b902eaf99b299e702c109",
+  "node_id": "pour_r03.prepare_grasp_task_affordance",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7b729ea51c5b43f0/revision_4e62abd12355450c/pour_r03.prepare_grasp_task_affordance/2cbf9be279324f51",
+      "input_binding_digest": "516d1c44318256ba5b771933d1be5bf1e52ea8a4fd0b902eaf99b299e702c109",
+      "node_digest": "f333a8569e0e21f73dbece34f3dce450890d699d9c04191161290daaad0f1da4",
+      "node_id": "pour_r03.prepare_grasp_task_affordance",
+      "obligation_id": "pour_r03-task-affordance-preparation",
+      "revision_id": "revision_4e62abd12355450c"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/253e43b82c3645f5ac57bcf1f69b5bcc.json",
+      "candidate_set_ref": "grasp-affordance-set://635374f9984e4ae0aef90fd103b83454",
+      "entity_refs": [
+        "entity://simulator-truth-R03",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 478,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0/tabletop_third_person",
+      "operation": "pour",
+      "process_feature_candidate_set_ref": "process-feature-set://4ae6d6f2712a4db49b61cde7702aa1fe",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0",
+      "selected_combination_ref": "grasp-affordance://a20ec5c1842d44c786badb7ca62d42dd"
+    },
+    "tool_id": "manipulation.prepare_grasp_task_affordance"
+  },
+  "revision_id": "revision_4e62abd12355450c",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.prepare_grasp_task_affordance",
+  "task_id": "task_7b729ea51c5b43f0"
+}

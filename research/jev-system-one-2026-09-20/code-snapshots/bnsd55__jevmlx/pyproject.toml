@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jevmlx"
+version = "0.1.0"
+description = "Parallel constrained structured decisions on Apple Silicon (MLX)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Ben Shaharizad", email = "bnsd55@gmail.com" }]
+keywords = [
+    "mlx",
+    "apple-silicon",
+    "constrained-decoding",
+    "structured-output",
+    "local-llm",
+    "classification",
+    "schema",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = ["mlx-lm>=0.31.3", "pydantic>=2.5"]
+
+[project.urls]
+Homepage = "https://github.com/bnsd55/jevmlx"
+Documentation = "https://github.com/bnsd55/jevmlx#readme"
+Repository = "https://github.com/bnsd55/jevmlx"
+Issues = "https://github.com/bnsd55/jevmlx/issues"
+Changelog = "https://github.com/bnsd55/jevmlx/blob/main/CHANGELOG.md"
+
+[project.scripts]
+jevmlx = "jevmlx.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "twine"]
+# `jevmlx bench --datasets typed-decisions` reads Hugging Face parquet shards.
+bench = ["huggingface_hub", "pyarrow"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: loads a real model via mlx-lm (deselect with -m 'not slow')",
+    "network: reaches the Hugging Face Hub (deselect with -m 'not network')",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["jevmlx"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"jevmlx/data/bucket_edges.json" = "jevmlx/data/bucket_edges.json"

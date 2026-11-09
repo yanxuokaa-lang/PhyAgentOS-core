@@ -1,0 +1,41 @@
+{
+  "auth": true,
+  "cost_basis": "public_tariff",
+  "endpoint_kind": "api",
+  "finished_utc": "2026-09-19T17:22:08.803621+00:00",
+  "jevbench_commit": "69b922bf2b890ce9809d239c6e2c583b7b080e5d",
+  "model": "jev-latest",
+  "name": "jev",
+  "note": "client on a laptop in North America.",
+  "price_in_per_m": 0.042,
+  "price_note": "public tariff, output not billed.",
+  "price_out_per_m": 0.0,
+  "started_utc": "2026-09-19T17:21:11.113480+00:00",
+  "tiers": {
+    "easy": {
+      "dataset_hash": "3cbd0e951fa8059741955ef2bd3273b0bb60aecae8f4a68b89872f55f7376b3d",
+      "n_attempted": 48,
+      "n_planned": 48,
+      "resolved_models": [
+        "jev-1.13.0"
+      ]
+    },
+    "hard": {
+      "dataset_hash": "e816e106f562dec75a8da12e69b75e957a4bbd9f6300f1145fc71837327a3c61",
+      "n_attempted": 111,
+      "n_planned": 111,
+      "resolved_models": [
+        "jev-1.13.0"
+      ]
+    },
+    "standard": {
+      "dataset_hash": "914276022fa5f0ea70e4231f2af98e68c67b274b61bea8c440b33890401cd2f9",
+      "n_attempted": 72,
+      "n_planned": 72,
+      "resolved_models": [
+        "jev-1.13.0"
+      ]
+    }
+  },
+  "url": "https://api.typesafe.ai"
+}

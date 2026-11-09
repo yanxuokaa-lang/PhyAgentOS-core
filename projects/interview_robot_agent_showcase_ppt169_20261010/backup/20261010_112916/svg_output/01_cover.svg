@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect width="1280" height="720" fill="#F3F7FB"/>
+<rect x="0" y="0" width="1280" height="8" fill="#2471B4"/>
+<rect x="0" y="8" width="760" height="712" fill="#FFFFFF"/>
+<rect x="760" y="8" width="520" height="712" fill="#17324D"/>
+<rect x="760" y="8" width="12" height="712" fill="#5B9BD5"/>
+<text x="78" y="100" font-family="Microsoft YaHei, Arial, sans-serif" font-size="19" font-weight="bold" fill="#2471B4">项目面试展示</text>
+<line x1="78" y1="126" x2="680" y2="126" stroke="#C9D9E8" stroke-width="2"/>
+<text x="78" y="220" font-family="Microsoft YaHei, Arial, sans-serif" font-size="54" font-weight="bold" fill="#17324D">从真实机器人执行，</text>
+<text x="78" y="286" font-family="Microsoft YaHei, Arial, sans-serif" font-size="54" font-weight="bold" fill="#17324D">到 Agent 驱动的</text>
+<text x="78" y="352" font-family="Microsoft YaHei, Arial, sans-serif" font-size="54" font-weight="bold" fill="#17324D">长程任务规划</text>
+<text x="82" y="410" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#62788E">比赛现场系统 · PhyAgentOS 工具化执行</text>
+<rect x="78" y="474" width="570" height="76" fill="#E8F1F9"/>
+<text x="104" y="506" font-family="Microsoft YaHei, Arial, sans-serif" font-size="17" fill="#2471B4">一条贯穿两段经历的工程闭环</text>
+<text x="104" y="534" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#17324D">感知 → 调用 → 执行 → 验证 → 恢复</text>
+<text x="82" y="658" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#62788E">颜旭 · 中国科学院大学 · 硕士</text>
+<text x="818" y="116" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#C6DDF1">TECHNICAL WALKTHROUGH</text>
+<text x="818" y="170" font-family="Consolas, Courier New, monospace" font-size="22" fill="#FFFFFF">REAL ROBOT → AGENT LOOP</text>
+<line x1="818" y1="204" x2="1206" y2="204" stroke="#184CA0" stroke-width="2"/>
+<circle cx="850" cy="286" r="13" fill="#5B9BD5"/><circle cx="850" cy="376" r="13" fill="#2471B4"/><circle cx="850" cy="466" r="13" fill="#5B9BD5"/><circle cx="850" cy="556" r="13" fill="#2471B4"/>
+<line x1="850" y1="299" x2="850" y2="363" stroke="#C6DDF1" stroke-width="2"/><line x1="850" y1="389" x2="850" y2="453" stroke="#C6DDF1" stroke-width="2"/><line x1="850" y1="479" x2="850" y2="543" stroke="#C6DDF1" stroke-width="2"/>
+<text x="888" y="294" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#FFFFFF">比赛：双臂机器人在现场完成操作</text>
+<text x="888" y="384" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#FFFFFF">PAOS：感知算法封装为可调用工具</text>
+<text x="888" y="474" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#FFFFFF">任务：状态驱动的长程规划</text>
+<text x="888" y="564" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#FFFFFF">结果：证据进入验证与恢复</text>
+<text x="818" y="660" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#C6DDF1">Interview project showcase · 2026.10</text>
+</svg>

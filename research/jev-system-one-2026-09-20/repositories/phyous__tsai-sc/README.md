@@ -1,0 +1,318 @@
+# Jev plays StarCraft shareware
+
+A TypeSafe System One harness for **Strongarm, the first combat mission in the
+original StarCraft shareware campaign**, with a game recording and Jev's actual
+action probabilities. Inspired by [TypeSafe's Doom demo](https://typesafe.ai/blog/introducing-system-one-models-and-jev).
+
+**Jev completed Strongarm.** Development attempt 16 reached the original game's
+committed victory outcome, and the captured “Congratulations! You are victorious!”
+screen was visually reviewed. The evidence verifier passed. Earlier development
+attempts included interrupted runs and runtime faults; “attempt 16” does not mean
+sixteen completed matches or sixteen model defeats.
+
+The original 1998 Windows executable runs inside [BottleShip](https://github.com/jenissimo/bottleship).
+The harness observes structured game state, asks `jev-latest` to choose a command,
+and executes that choice through ordinary mouse and keyboard inputs. The game is
+paused during state reads and inference. This independently implements the
+structured-state decision pattern shown in the Doom demonstration; it does not
+use TypeSafe's Doom harness code. Screenshots are recorded for viewers, while
+the model receives structured observations. This is a bounded mission experiment,
+not a benchmark of real-time competitive play.
+
+## Verified run
+
+The winning run used source [d055e37](https://github.com/phyous/tsai-sc/commit/d055e37)
+with separate Economy and Army decision opportunities. See the
+[verification report](docs/verified-run.json), [runtime details](docs/run-environment.json),
+and [visual review](docs/visual-review.json).
+
+| Recorded measure | Result |
+| --- | --- |
+| Actual model | `jev-1.13.0` (requested as `jev-latest`) |
+| Model decisions | 421 |
+| Elapsed wall time | 17 min 37.88 sec |
+| API attempts | 424, including 3 rejected responses |
+| Accounted input tokens | 9,445,640, including rejected responses |
+| Median API latency | 382.95 ms |
+| Captured game frames | 3,867 |
+| Outcome | Original engine victory and visually reviewed victory screen |
+
+Video and evidence from release `v0.1.0`:
+
+- [8× video, about 2 min 15 sec](https://github.com/phyous/tsai-sc/releases/download/v0.1.0/jev-starcraft-strongarm.mp4): continuous playback with the actual probability overlay and a final hold.
+- [Full 1× video](https://github.com/phyous/tsai-sc/releases/download/v0.1.0/jev-starcraft-strongarm-full.mp4): continuous playback, including decision pauses.
+- [Original victory screen](https://github.com/phyous/tsai-sc/releases/download/v0.1.0/victory-screen.png).
+- [Reproducible evidence bundle](https://github.com/phyous/tsai-sc/releases/download/v0.1.0/strongarm-16-evidence.tar.gz): manifest, decisions, trace, referenced game frames, result, and verification report.
+
+![Original StarCraft Victory dialog](https://github.com/phyous/tsai-sc/releases/download/v0.1.0/victory-screen.png)
+
+The model received structured owned/visible state and issued ordinary mouse and
+keyboard commands, with inference paused. Displayed values are actual action
+probabilities, not chances of winning. This single successful development run
+does not establish a win rate.
+
+## The mission
+
+Strongarm's briefing orders the player to **destroy the rebel base** on Chau Sara.
+The original 96×64-tile map contains enemy forces, combat encounters, and scripted
+reinforcements. The player begins with eight Marines, four SCVs, two Barracks,
+a Command Center, four Supply Depots, a Refinery, and an Engineering Bay.
+
+Jev directs combat squads, exploration, mineral gathering, reinforcement
+production, and an infantry weapons upgrade. Enemy locations enter its observations only when visible to the
+player. The original executable runs the opposing forces and mission triggers.
+Success requires its committed victory outcome **and a captured, visually checked
+original victory dialog**. The recorder continues after the outcome changes so
+the game's result screen can appear.
+
+Boot Camp remains available as an optional economy/input-adapter test mission.
+The default run target is Strongarm.
+
+[Development notes](docs/development-notes.md) document failed attempts,
+verified input defects, and the strategy changes being tested.
+
+## Run it
+
+Requires Python 3.11+, Git, Node/npm, Chrome with WebGPU, and FFmpeg. Setup installs
+Bun locally if it is absent. Tested on macOS Apple Silicon.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+scripts/setup-runtime.sh
+scripts/start-runtime.sh
+```
+
+Leave the runtime terminal open. In a second terminal:
+
+```sh
+source .venv/bin/activate
+python -m tsai_sc.boot --mission strongarm
+
+# Save your own key in a private file outside the repository; chmod 600 it.
+# The file contains a single TYPESAFE_API_KEY=... assignment.
+python -m tsai_sc.run \
+  --env-file "$HOME/.config/tsai-sc/env" \
+  --run-dir runs/my-attempt \
+  --max-requests 2000 --max-seconds 3600 \
+  --decision-seconds 3 --combat-decision-seconds 0.5 \
+  --separate-economy --capture-fps 5
+
+python -m tsai_sc.render runs/my-attempt \
+  --output recordings/strongarm.mp4 --speed 4 --fps 30
+python -m tsai_sc.verify runs/my-attempt
+```
+
+Inspect `runs/my-attempt/victory-screen.png` for the original victory dialog
+before publishing a winning-run claim. To restart a stopped controller's current
+mission through the game menus, use `python -m tsai_sc.boot --restart`.
+
+Alternatively, provide `TYPESAFE_API_KEY` in the environment. Requests go only to
+TypeSafe's fixed HTTPS API endpoint. Request limits include retry attempts, and
+there is no substitute policy or fabricated response if the API fails.
+The optional combat interval applies when a visible hostile is within 512 pixels
+of an owned combat unit before or after a command. It shortens the next wait;
+selection and input execution still advance the game. Both intervals and actual
+decision timing are recorded. Omit the flag to use one fixed interval.
+The opt-in `--separate-economy` schedule alternates an Economy model call with
+an Army model call; omit it to retain one combined command menu per observation.
+Each call uses a fresh observation and can select one command or Continue.
+There is no additional observation wait after Economy; the configured baseline
+or combat wait follows Army. Ordinary input execution still advances the game.
+
+Setup downloads a pinned BottleShip revision and verifies the demo bundle's
+SHA-256. It keeps the runtime, game data, logs, and an isolated browser profile
+under ignored `.runtime/`. It does not attach to your personal browser. See
+[runtime details](engine/README.md) for setup and the local bridge API.
+
+## How decisions work
+
+```text
+Original game memory (read only)
+          ↓
+Own units + visible enemies/resources + economy + recent observed positions
+          ↓
+Bounded candidate commands and recent execution feedback
+          ↓
+TypeSafe Jev: category + per-category command distributions
+          ↓
+Deterministic selection / camera / mouse / hotkey adapter
+          ↓
+Original StarCraft simulation and mission triggers
+```
+
+Each combat request evaluates a small decision graph. An `intent` Choice selects
+among the available **Economy, Engage, Explore, Reposition, and Continue**
+categories. Independent `action_<category>` Choice questions choose concrete
+commands within each category. The API evaluates those questions together from
+the same observation; code routes the selected category to its selected command.
+A category with one available command needs no second model question.
+
+With `--separate-economy`, the same graph operates on filtered candidates in two
+separate API calls. Economy offers gathering, production, construction, research,
+and Continue; Army offers combat, exploration, repositioning, and Continue.
+The Army observation is refreshed after the Economy command, and only the
+selected command from each response can execute. If a lane has only Continue,
+it needs no API call. This gives economic decisions regular opportunities
+without automatically building or training anything. Each actual call retains
+its own request, graph, probabilities, and input result; the video labels it
+**Economy decision** or **Army decision**. This schedule remains experimental.
+
+The visualizer shows the actual category distribution and the selected branch's
+action distribution separately. It never multiplies them into a claimed API
+probability. Other branch answers remain in the log. This avoids splitting one
+category's support across many concrete options in a single flat comparison.
+All questions in a request are independent: a judgment that depends on another
+answer would instead require a later request, as described in the
+[TypeSafe API documentation](https://docs.typesafe.ai/primitives#when-one-question-depends-on-another).
+
+The prompt includes ordinary StarCraft guidance: establish mineral income,
+produce affordable reinforcements while other orders continue, assemble roughly
+eight to twelve Marines together before an unsupported push, rebuild after
+losses, and explore for remaining enemies. A measured core of at least eight
+combat units within 192 pixels of one member explicitly marks assembly complete;
+the prompt distinguishes reinforcing small groups from withdrawing a formed
+force, and allows pathfinding detours. It also reports nearby visible defenders'
+composition, HP, and known base ranges, distinguishing armed units, attack-capable
+workers, and unarmed buildings. Guidance addresses immediate defenders and
+short-range Firebat splash; formation size alone does not establish sufficient
+strength. These observations do not predict combat outcomes. The instructions
+contain no enemy-base coordinates or predetermined mission route.
+
+| Model choice | Candidate supplied by the harness | Original game controls |
+| --- | --- | --- |
+| Focus fire | A currently visible hostile unit or building | Select squad, `A`, click target |
+| Attack toward enemies | A visible enemy group's position or a previously seen structure location | Select squad, `A`, click destination on minimap |
+| Explore | A bounded north/east/south/west advance from the squad | Select squad, `A`, click destination on minimap |
+| Retreat or regroup | A point away from a visible threat, an observed friendly base for assembling replacements, or the friendly force's center | Select squad, `M`, click ground |
+| Gather minerals | An available SCV and an observed mineral field | Select SCV, right-click minerals |
+| Train Marine or SCV | An idle compatible producer with sufficient minerals and supply | Select Barracks or Command Center, `M` or `S` |
+| Build Supply Depot or Barracks | An available SCV and an open candidate site near the friendly base | Select SCV, `B`, then `S` or `B`, click placement |
+| Upgrade infantry weapons | A completed Engineering Bay and 100 minerals / 100 gas | Select Engineering Bay, `W`; research takes time |
+| Continue current orders | Keep persistent orders in progress | No new input |
+
+The deterministic adapter groups nearby selectable combat units into squads of
+at most twelve, selects them with ordinary clicks, Shift-clicks, and a small
+selection-box fallback for obscured units, pans the
+camera, and requires the full surviving selectable squad to be selected before
+issuing its order. Mouse clicks are queued against paused position snapshots;
+each click's resulting selection is checked. It supplies up to eight
+squads, four nearest visible focus targets per squad, known costs, prerequisites,
+and tile-aligned construction candidates. Economy commands likewise require the
+exact requested actor after a paused 1 ms selection tap; an obscured SCV can be
+recovered with a small selection box, followed by the same exact-actor check.
+Squad selection also checks identity generations to reject reused unit slots.
+Selection acknowledgment starts after 20 ms of running time and retries in
+40 ms intervals, up to 220 ms per click; recording and readback occur paused.
+Separate live checks reduced selection from 55 to 27 game frames for eight
+Marines and from 86 to 40 for twelve, with exact selections retained.
+Ground attack orders
+use the minimap to avoid turning a ground destination into a click on a building
+sprite; focus fire arms `A`, then refreshes the target's visibility, identity,
+and screen position before a paused 1 ms click. An unavailable target cancels
+that armed cursor. This refresh has regression coverage; the timing checks do
+not isolate its effect on combat accuracy. Exploration geometry uses the squad's
+observed position and map bounds; the game determines terrain passability.
+Recent observed friendly positions help Jev track where it has already moved.
+Persistent 256-pixel visitation cells retain sampled owned combat positions
+throughout the run. Scout choices disclose prior visitation and current
+presence. These samples are not fog coverage or terrain information, and
+revisiting a cell remains available for transit or tactics.
+The harness also remembers up to thirty-two enemy structures actually seen in
+earlier observations and offers up to four recent locations per squad as
+attack-move destinations. Stale sightings are explicitly uncertain, and focus
+fire still requires current visibility. Movement history distinguishes new
+units from dead units whose slots the original game reuses.
+
+Compact battle memory retains up to four recent encounters where owned combat
+identities disappeared near then-visible hostiles. It records observed losses
+and a previously observed defender composition, with workers counted separately.
+Disappearance does not establish its cause, and past sightings do not establish
+current enemy positions or strength. This feedback lets Jev reconsider an
+approach without receiving hidden map knowledge.
+
+Economy options cap the offered workforce at twelve SCVs and the Marine force
+at seventy-two, with one queued unit per producer. Depots are offered near the
+supply limit, with one unfinished depot at a time.
+Barracks can be rebuilt or expanded to three, with one under construction at a
+time, for the original cost of 150 minerals each. Placement search covers a
+bounded area in every direction around the observed base, avoiding observed
+obstacles and temporarily excluding recently rejected sites. The game validates
+terrain. Active SCV build orders count as pending construction before the
+building appears, preventing duplicate assignments. Infantry weapons level 1
+costs 100 minerals and 100 gas; after one
+issued upgrade order is accepted, it is no longer offered during that run.
+Acceptance confirms research started, not that it finished. Workers inside refineries,
+unfinished units, and workers already constructing cannot be retasked through
+these options. This action-space design is part of the experiment: Jev selects
+a category and its supplied command, and the adapter translates that selection into input.
+
+The adapter records dispatch, actual selected units, and observed order acceptance
+separately. Acceptance is evidence of an order in progress, not proof of arrival
+or tactical success. Guest memory is read only; resources, units, damage, movement,
+and victory remain under the original game's control. There is no substitute
+policy that overrides Jev's selected command.
+
+## Recording and evidence
+
+Each attempt contains:
+
+- `manifest.json`: runtime, model, limits, pacing, and initial game state.
+- `decisions.jsonl`: actual requests, validated model responses, selected actions,
+  normal input events, and observed command results.
+- `trace.jsonl` and `frames/`: timestamped game-only frames and the last observed
+  decision/state used by the visualizer.
+- `victory-screen.png`: the original game's result presentation after the outcome
+  transition, retained for visual inspection.
+- `result.json`: original engine outcome, final state, counts, trace/decision
+  hashes, and the retained result-screen image's path and hash.
+
+Interrupted or failed runs instead receive `incomplete.json`.
+
+The verifier checks the exact supported mission, committed outcome, trace and
+decision integrity, agreement between selected commands and model choices, and
+the ordinary-input allowlist. For Strongarm it also requires a result-screen
+image confined to the run directory with a matching hash. It does **not** recognize
+victory text in pixels; a person must inspect the original screen before the run
+is presented as a visible victory.
+
+The video shows **action probabilities**, not estimated chances of winning. It
+labels playback speed and decision pauses. Model probabilities are preserved
+unchanged. Frames contain only the 640×480 game canvas, with an independently
+rendered dashboard. Capture reads the original DirectDraw CPU pixels and palette,
+so recording does not depend on GPU readback. The pinned runtime also receives a
+temporary GPU upload-buffer cleanup patch. No desktop, login screen, microphone,
+or API key is recorded. The recorder rejects a blank first gameplay frame and
+stops on sustained black captures.
+
+Observed API compatibility issue: some large Choice replies from `jev-1.13.0`
+return every option but round values to whole percentage points totaling 99%.
+The client permits only a 99% or 101% total when every value has that precision;
+it preserves the returned values and the video labels the reported total.
+Other malformed responses receive bounded retries and are never executed.
+
+## Verify
+
+```sh
+python -m unittest discover -s tests -v
+# Optional live protocol checks, with the runtime running:
+TSAI_TEST_BRIDGE_URL=http://127.0.0.1:3917 \
+  python -m unittest discover -s tests -p test_bridge_protocol.py -v
+
+# Stage only intended source files, then check the exact staged content:
+python scripts/audit_public.py
+```
+
+Tests cover malformed model responses, retry/request limits, credential handling,
+original-game memory decoding, visibility and win detection, command prerequisites,
+squad selection, modifier release, mission-specific camera geometry, placement
+coordinates, evidence integrity, and real FFmpeg output timing/format. Runtime boot and
+gameplay also require integration verification against the pinned demo executable.
+
+## Credits and rights
+
+This repository's harness code is MIT licensed. BottleShip is Apache-2.0 with its
+own third-party notices. StarCraft and the shareware assets are Blizzard
+Entertainment's property and are not included in this repository or relicensed.
+See [references](docs/references.md) for the original Doom video and API docs.

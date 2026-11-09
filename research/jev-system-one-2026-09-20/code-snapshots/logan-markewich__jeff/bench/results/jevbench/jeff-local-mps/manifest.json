@@ -1,0 +1,41 @@
+{
+  "auth": false,
+  "cost_basis": "no_billable_account_laptop",
+  "endpoint_kind": "cpu",
+  "finished_utc": "2026-09-19T17:24:27.506948+00:00",
+  "jevbench_commit": "69b922bf2b890ce9809d239c6e2c583b7b080e5d",
+  "model": "jev-latest",
+  "name": "jeff-local-mps",
+  "note": "uv run jeff on an M2 Max (MPS, fp32), defaults; no price (laptop).",
+  "price_in_per_m": null,
+  "price_note": null,
+  "price_out_per_m": 0.0,
+  "started_utc": "2026-09-19T17:20:27.802643+00:00",
+  "tiers": {
+    "easy": {
+      "dataset_hash": "3cbd0e951fa8059741955ef2bd3273b0bb60aecae8f4a68b89872f55f7376b3d",
+      "n_attempted": 48,
+      "n_planned": 48,
+      "resolved_models": [
+        "gliformer-large-v1"
+      ]
+    },
+    "hard": {
+      "dataset_hash": "e816e106f562dec75a8da12e69b75e957a4bbd9f6300f1145fc71837327a3c61",
+      "n_attempted": 111,
+      "n_planned": 111,
+      "resolved_models": [
+        "gliformer-large-v1"
+      ]
+    },
+    "standard": {
+      "dataset_hash": "914276022fa5f0ea70e4231f2af98e68c67b274b61bea8c440b33890401cd2f9",
+      "n_attempted": 72,
+      "n_planned": 72,
+      "resolved_models": [
+        "gliformer-large-v1"
+      ]
+    }
+  },
+  "url": "http://localhost:8000"
+}

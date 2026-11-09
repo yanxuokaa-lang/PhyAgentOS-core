@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect width="1280" height="720" fill="#F4F7F8"/>
+<rect x="0" y="0" width="18" height="720" fill="#F28C28"/>
+<rect x="18" y="0" width="8" height="720" fill="#1C7C7A"/>
+<path d="M760 0H1280V720H930C930 720 1010 550 900 380C820 250 760 160 760 0Z" fill="#0B1F2A"/>
+<text x="78" y="118" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#F28C28">INTERVIEW PROJECT SHOWCASE / 2026</text>
+<text x="78" y="232" font-family="Microsoft YaHei, Arial, sans-serif" font-size="68" font-weight="bold" fill="#0B1F2A">从真实机器人执行，</text>
+<text x="78" y="316" font-family="Microsoft YaHei, Arial, sans-serif" font-size="68" font-weight="bold" fill="#0B1F2A">到 Agent 驱动的长程任务规划</text>
+<text x="82" y="380" font-family="Microsoft YaHei, Arial, sans-serif" font-size="25" fill="#60727A">颜旭  ·  中国科学院大学硕士  ·  具身智能 / VLA / Agentic Robotics</text>
+<line x1="82" y1="444" x2="675" y2="444" stroke="#D6E0E3" stroke-width="2"/>
+<text x="82" y="486" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#26343A">真实比赛系统</text>
+<circle cx="240" cy="479" r="6" fill="#F28C28"/>
+<text x="258" y="486" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#26343A">VLA 双臂机器人</text>
+<circle cx="454" cy="479" r="6" fill="#1C7C7A"/>
+<text x="472" y="486" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#26343A">PhyAgentOS</text>
+<text x="82" y="548" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#60727A">Perception → Tool Calling → Execution → Verification → Recovery</text>
+<rect x="810" y="122" width="360" height="180" fill="#FFFFFF" stroke="#1C7C7A" stroke-width="2"/>
+<text x="840" y="166" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1C7C7A">两条主线</text>
+<text x="840" y="214" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#0B1F2A">真实机器人稳定执行</text>
+<text x="840" y="254" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" fill="#0B1F2A">Agent 组织感知与执行</text>
+<rect x="810" y="350" width="360" height="184" fill="#0B1F2A"/>
+<text x="840" y="397" font-family="Consolas, Courier New, monospace" font-size="17" fill="#8CC9C4">PAOS / PICK-PLACE WORKFLOW</text>
+<text x="840" y="446" font-family="Consolas, Courier New, monospace" font-size="18" fill="#FFFFFF">scene.observe</text>
+<text x="840" y="478" font-family="Consolas, Courier New, monospace" font-size="18" fill="#FFFFFF">→ scene.understand</text>
+<text x="840" y="510" font-family="Consolas, Courier New, monospace" font-size="18" fill="#FFFFFF">→ object.place</text>
+<text x="78" y="670" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#8A9AA1">面试项目展示 · 视频与图片素材将在后续替换占位</text>
+</svg>

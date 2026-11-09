@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "3.0.31"
+version: "3.0.33"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -15,10 +15,6 @@ required_tools:
   - manipulation.staging
   - grasp.propose
   - manipulation.prepare
-  - manipulation.process_features
-  - manipulation.prepare_process_features
-  - manipulation.grasp_task_affordances
-  - manipulation.prepare_grasp_task_affordance
   - object.acquire
   - object.place
 profiles:

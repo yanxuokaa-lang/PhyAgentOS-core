@@ -1,0 +1,5 @@
+# Versions actually used on capyubara-0, Python 3.14.4 / A100 80GB.
+torch==2.14.0
+transformers==5.17.0
+safetensors==0.8.0
+numpy==2.5.3

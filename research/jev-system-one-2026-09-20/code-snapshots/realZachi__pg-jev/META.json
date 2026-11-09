@@ -1,0 +1,51 @@
+{
+  "name": "jev",
+  "abstract": "Ask your Postgres tables questions in plain language: filter, rank and classify rows with TypeSafe's Jev model",
+  "description": "jev(table, 'condition') judges every row of a table with TypeSafe's System One model and returns a boolean, a probability, a rubric score or a class. The table is streamed in physical order and judged in small parallel API requests over persistent connections; answers are cached per session. No index required.",
+  "version": "0.2.0",
+  "maintainer": [
+    "Zachi <me@zachi.dev>"
+  ],
+  "license": "postgresql",
+  "provides": {
+    "jev": {
+      "abstract": "Plain-language predicates for PostgreSQL",
+      "file": "sql/jev--0.2.0.sql",
+      "docfile": "README.md",
+      "version": "0.2.0"
+    }
+  },
+  "prereqs": {
+    "runtime": {
+      "requires": {
+        "PostgreSQL": "14.0.0",
+        "plpython3u": 0
+      }
+    }
+  },
+  "resources": {
+    "homepage": "https://github.com/realZachi/pg-jev",
+    "bugtracker": {
+      "web": "https://github.com/realZachi/pg-jev/issues"
+    },
+    "repository": {
+      "url": "https://github.com/realZachi/pg-jev.git",
+      "web": "https://github.com/realZachi/pg-jev",
+      "type": "git"
+    }
+  },
+  "generated_by": "Zachi",
+  "meta-spec": {
+    "version": "1.0.0",
+    "url": "https://pgxn.org/meta/spec.txt"
+  },
+  "tags": [
+    "ai",
+    "llm",
+    "semantic search",
+    "fuzzy",
+    "classification",
+    "typesafe",
+    "plpython"
+  ]
+}

@@ -1,0 +1,9 @@
+preset = "strict"
+project-includes = [
+    "src",
+    "tests",
+]
+# Negative fixtures are checked by pytest with --expectations.
+project-excludes = ["tests/typing/negative"]
+python-version = "3.10"
+search-path = ["src", "."]

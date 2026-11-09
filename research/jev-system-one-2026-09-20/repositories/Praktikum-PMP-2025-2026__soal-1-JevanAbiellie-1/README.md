@@ -1,0 +1,14 @@
+# EL2008 Modul 3 - Senin - Soal 1 (Scoring per test case)
+
+Kerjakan file `soal1.c`.
+
+Repo template ini memakai **GitHub Classroom custom workflow** melalui file:
+- `.github/workflows/classroom.yml`
+
+Setiap test case memiliki skor sendiri, sehingga di GitHub Classroom akan muncul skor parsial.
+
+## Aturan untuk mahasiswa
+- Baca input dari standard input
+- Tulis output ke standard output
+- Jangan menambahkan prompt
+- Nama file jangan diubah

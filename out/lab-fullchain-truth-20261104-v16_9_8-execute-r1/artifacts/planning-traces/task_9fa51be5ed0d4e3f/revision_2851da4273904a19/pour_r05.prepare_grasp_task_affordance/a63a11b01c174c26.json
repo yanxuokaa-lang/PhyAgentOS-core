@@ -1,0 +1,50 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.prepare_grasp_task_affordance"
+  ],
+  "context_digest": "7d5fdd33979bd1b55421d0f41edf863767e50444143563c1137ab0a932348a36",
+  "created_at": "2026-11-04T01:13:58.982176Z",
+  "decision_reason": "选择直接前驱唯一返回的任务资格组合并重新验证，同集合 opaque 引用不替换为原始抓取。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0/tabletop_third_person",
+    "tool:tool_49fc43bfcc194a6f",
+    "tool:tool_b5ac80f03f7d499b",
+    "tool:tool_467efafd382045f5"
+  ],
+  "input_binding_digest": "394b22ffb5cc05e402f87aa687a8da8d9543aa5450ff2832e9d9e8a6fd59f5de",
+  "node_id": "pour_r05.prepare_grasp_task_affordance",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_9fa51be5ed0d4e3f/revision_2851da4273904a19/pour_r05.prepare_grasp_task_affordance/a63a11b01c174c26",
+      "input_binding_digest": "394b22ffb5cc05e402f87aa687a8da8d9543aa5450ff2832e9d9e8a6fd59f5de",
+      "node_digest": "d10c4a2168fb07ac03d6d39d49972450d0634f1a86f1a8311e55ced9efb293e8",
+      "node_id": "pour_r05.prepare_grasp_task_affordance",
+      "obligation_id": "pour_r05-task-affordance-preparation",
+      "revision_id": "revision_2851da4273904a19"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/8c07f0523ddd4ccb9b212bf097f7c281.json",
+      "candidate_set_ref": "grasp-affordance-set://a96ee79d16674cff8cdfa629f52465e1",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 549,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0/tabletop_third_person",
+      "operation": "pour",
+      "process_feature_candidate_set_ref": "process-feature-set://bd532fae90b24cb9b03f858098b330e7",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0",
+      "selected_combination_ref": "grasp-affordance://53673887e62e4f01ace64c9f2d4de093"
+    },
+    "tool_id": "manipulation.prepare_grasp_task_affordance"
+  },
+  "revision_id": "revision_2851da4273904a19",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.prepare_grasp_task_affordance",
+  "task_id": "task_9fa51be5ed0d4e3f"
+}

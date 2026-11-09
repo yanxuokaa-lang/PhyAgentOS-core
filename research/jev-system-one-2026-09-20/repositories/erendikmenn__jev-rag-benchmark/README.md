@@ -1,0 +1,136 @@
+# jev-rag-benchmark
+
+Reproducible, vendor-neutral experiments for measuring whether TypeSafe Jev improves a
+small RAG system. “Jev wins” is not an assumption: quality, latency, and cost can improve,
+stay flat, or get worse.
+
+The project is based on LlamaIndex's MIT-licensed local FastAPI/Ollama RAG example at
+commit `f475afd8a9bbda84f252567e045d89d07b5701b3`; see
+[`docs/architecture.md`](docs/architecture.md) and [`NOTICE`](NOTICE).
+The capped three-candidate comparison is in
+[`docs/candidate-review.md`](docs/candidate-review.md).
+
+## Install
+
+Requirements: macOS/Linux, Python 3.11–3.13, `uv`, and an OpenRouter API key.
+
+```bash
+uv sync --extra dev --extra cross-encoder
+cp .env.example .env
+uv run jev-rag doctor
+```
+
+Optional FastAPI surface, retained from the selected upstream app shape:
+
+```bash
+uv run uvicorn jev_rag_benchmark.app:app --host 127.0.0.1 --port 8000
+```
+
+Jev is called through OpenRouter's Decisions endpoint with `OPENROUTER_API_KEY`.
+Credentials remain server-side/environment-only. The CLI reports whether a key exists but
+never prints it.
+
+## Reproduce
+
+```bash
+# Download SciFact and XQuAD EN/TR, then normalize without committing raw data
+uv run jev-rag data prepare
+
+# Validate/materialize the deterministic index
+uv run jev-rag index --dataset scifact
+
+# One sourced baseline question through the capped OpenRouter config
+uv run jev-rag ask "Türkiye'nin başkenti neresidir?" --dataset xquad-tr --branch A \
+  --config-path configs/openrouter-smoke.yaml
+
+# 25-query infrastructure smoke. Jev fixture is visibly marked; no paid calls.
+uv run jev-rag benchmark smoke --dataset scifact --branches A,B,D --fixture-jev --skip-generation
+
+# Preflight cost from the real top-20 candidate texts; makes zero API calls.
+uv run jev-rag estimate --dataset scifact --jev-branches 1
+
+# QA smoke with OpenRouter answer generation
+uv run jev-rag benchmark full --dataset xquad-tr --branches A,D --limit 5 \
+  --no-fixture-jev --no-skip-generation --config-path configs/openrouter-smoke.yaml
+
+# Every unique XQuAD-TR test question (1,044 paired A/D questions)
+uv run jev-rag benchmark full --dataset xquad-tr --branches A,D \
+  --no-fixture-jev --no-skip-generation --config-path configs/openrouter-full.yaml
+uv run jev-rag report results/xquad-tr-a-d.jsonl \
+  --output-dir reports/generated/xquad-tr-openrouter-jev
+uv run python scripts/analyze_full_results.py \
+  results/xquad-tr-a-d.jsonl data/processed/xquad-tr/documents.jsonl \
+  reports/generated/xquad-tr-openrouter-jev/detailed-analysis.tr.md
+
+# Controlled third arm: replay Gemini over the exact frozen Jev contexts from D.
+# Existing successful rows are resumable; no Jev request is repeated.
+uv run python scripts/replay_generator.py \
+  results/xquad-tr-a-d.jsonl data/processed/xquad-tr/documents.jsonl \
+  configs/openrouter-gemini-3.8-flash.yaml results/xquad-tr-a-d-g.jsonl
+uv run jev-rag report results/xquad-tr-a-d-g.jsonl \
+  --output-dir reports/generated/xquad-tr-openrouter-three-way --seed 20260919
+uv run python scripts/analyze_three_way.py \
+  results/xquad-tr-a-d-g.jsonl \
+  reports/generated/xquad-tr-openrouter-three-way/detailed-analysis.tr.md
+
+# Real 25-query Jev smoke through OpenRouter, capped at $0.02.
+uv run jev-rag benchmark smoke --dataset scifact --branches A,B,D \
+  --no-fixture-jev --skip-generation --config-path configs/openrouter-smoke.yaml
+
+# Larger real Jev run: first set an explicit positive max_budget_usd in a copied config.
+# The default of 0 blocks every paid call.
+cp configs/paid.example.yaml configs/paid.yaml
+uv run jev-rag benchmark full --dataset scifact --branches A,B,D --config-path configs/paid.yaml
+
+# Generate CSV/JSONL-derived Turkish report and SVG
+uv run jev-rag report results/scifact-a-b-d.jsonl
+```
+
+`benchmark full` uses every selected test query unless `--limit` is passed. A/B/D use the
+same frozen top-20 candidates and exactly five context documents. E applies the dev-selected
+threshold and is intentionally separate. E is configuration-locked until
+`threshold_source: dev` is recorded after calibration. Every generator prompt also has the
+same 6,000-character maximum context budget.
+
+## Tests
+
+```bash
+uv run pytest
+uv run ruff check .
+```
+
+Tests cover retrieval metrics, EM/F1 citation handling, paired bootstrap reproducibility,
+Jev's documented Noul response schema, resolved-model logging, fallback behavior, and the
+zero-budget safety gate.
+
+## Results and costs
+
+Each run writes JSONL, a downloadable flat CSV, and a manifest containing commit,
+dependency versions, dataset hashes, requested models, price date, seed, prompt versions,
+cache mode, and concurrency. Reports separate retrieval, reranking, generation, and
+end-to-end latency; Jev, generator, retry/fallback, and local compute are not conflated.
+Qwen generation is capped at 128 output tokens. The Gemini reasoning replay records an
+adaptive 512/1,024/2,048/4,096-token retry policy in its manifest so hidden reasoning does
+not truncate the visible answer or its citation.
+
+Mock/fixture output has `run_kind=fixture` and must never be cited as a real benchmark.
+Local models have zero API price but non-zero measured runtime; the report calls this out.
+SciFact qrels measure retrieval only. XQuAD EN/TR answer references measure end-to-end EM/F1,
+and languages are reported separately.
+
+## Data licenses
+
+Downloaded data is ignored by Git and regenerated by scripts:
+
+- SciFact claims/evidence annotations: CC BY 4.0; abstracts: ODC-By 1.0.
+- XQuAD: CC BY-SA 4.0.
+
+The project source is MIT. Upstream attributions are in [`NOTICE`](NOTICE).
+
+## Current limitations
+
+- Jev 1.13 is strongest in English; Turkish must be evaluated rather than assumed.
+- Its documented prompt-injection susceptibility means passage instructions are treated as
+  data, but this is not a complete security boundary.
+- The first smoke run is only plumbing validation. Hundreds of locked test queries and
+  confidence intervals are required before drawing conclusions.

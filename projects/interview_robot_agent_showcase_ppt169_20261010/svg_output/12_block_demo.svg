@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="#F3F7FB"/>
+<rect width="1280" height="8" fill="#2471B4"/>
+<text x="58" y="62" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="bold" fill="#17324D">Agent 演示｜方块排列任务的运行画面</text>
+<text x="58" y="100" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#62788E">双臂相机画面已提供；Agent 节点状态单独核对运行记录</text>
+<rect x="58" y="142" width="700" height="430" fill="#17324D"/>
+<rect x="82" y="168" width="652" height="378" fill="#17324D" stroke="#2471B4" stroke-width="2"/>
+<image x="82" y="168" width="652" height="378" href="../images/paos_block_task_poster.jpg" preserveAspectRatio="xMidYMid meet"/>
+<rect x="804" y="142" width="418" height="430" fill="#FFFFFF" stroke="#C9D9E8" stroke-width="2"/>
+<text x="838" y="192" font-family="Microsoft YaHei, Arial, sans-serif" font-size="21" font-weight="bold" fill="#2471B4">视频内容</text>
+<text x="838" y="238" font-family="Consolas, Courier New, monospace" font-size="16" fill="#17324D">双臂 Observer camera</text>
+<text x="838" y="276" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#62788E">三色方块操作场景</text>
+<line x1="838" y1="300" x2="1188" y2="300" stroke="#C9D9E8" stroke-width="2"/>
+<text x="838" y="344" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="bold" fill="#17324D">Agent 状态记录</text>
+<text x="838" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#62788E">当前节点、任务与计划修订</text>
+<text x="838" y="428" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#62788E">证据引用与后续节点</text>
+<rect x="838" y="472" width="350" height="58" fill="#E8F1F9"/>
+<text x="856" y="497" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#2471B4">真实 Agent 运行状态截图</text>
+<text x="856" y="519" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#62788E">待提供；不以编辑占位页代替</text>
+</svg>

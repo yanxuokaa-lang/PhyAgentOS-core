@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "f8f0e872270d09d04bdde1ae2988671f206df22c54d7ae28d49659889efd837d",
+  "created_at": "2026-11-05T11:39:10.040196Z",
+  "decision_reason": "Explicitly copy current task frozen post-reset observation inputs for the root read-only Query.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:e62ef924152543b99919aeb168fa558f:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "d80f53e4fa6e288cb578481e11c7191dcf7b4496589461978be444b561bfbed6",
+  "node_id": "pour_r03.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_ae7b2761a13140b6/revision_cc9b2e6045c740d5/pour_r03.process_features/9e47817bb6b24676",
+      "input_binding_digest": "d80f53e4fa6e288cb578481e11c7191dcf7b4496589461978be444b561bfbed6",
+      "node_digest": "888cb4975f6c1b1dd5a3b3185f58fdc6f925bfb567904986e04df64b61476202",
+      "node_id": "pour_r03.process_features",
+      "obligation_id": "pour_r03-process-features",
+      "revision_id": "revision_cc9b2e6045c740d5"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/bad0ca7b98ab4db4a11e00dd572c57b1.json",
+      "entity_refs": [
+        "entity://simulator-truth-R03",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 467,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:e62ef924152543b99919aeb168fa558f:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:e62ef924152543b99919aeb168fa558f:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_cc9b2e6045c740d5",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:e62ef924152543b99919aeb168fa558f:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_ae7b2761a13140b6"
+}

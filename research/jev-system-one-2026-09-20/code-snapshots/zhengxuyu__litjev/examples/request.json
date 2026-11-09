@@ -1,0 +1,16 @@
+{
+  "model": "litjev",
+  "state": "Answer each question using its listed options.",
+  "questions": {
+    "q1": {"type": "choice", "instructions": "What is 7 + 8?", "criteria": {"A": "14", "B": "15", "C": "16"}},
+    "q2": {"type": "choice", "instructions": "Which planet is known as the Red Planet?", "criteria": {"A": "Mars", "B": "Venus", "C": "Jupiter"}},
+    "q3": {"type": "choice", "instructions": "How many sides does a triangle have?", "criteria": {"A": "4", "B": "5", "C": "3"}},
+    "q4": {"type": "choice", "instructions": "Which animal is a mammal?", "criteria": {"A": "Shark", "B": "Dolphin", "C": "Octopus"}},
+    "q5": {"type": "choice", "instructions": "What is the capital of France?", "criteria": {"A": "Paris", "B": "Rome", "C": "Madrid"}},
+    "q6": {"type": "choice", "instructions": "What is 6 multiplied by 4?", "criteria": {"A": "20", "B": "22", "C": "24"}},
+    "q7": {"type": "choice", "instructions": "Which gas do plants absorb during photosynthesis?", "criteria": {"A": "Oxygen", "B": "Carbon dioxide", "C": "Helium"}},
+    "q8": {"type": "choice", "instructions": "Which is the largest ocean on Earth?", "criteria": {"A": "Pacific Ocean", "B": "Atlantic Ocean", "C": "Indian Ocean"}},
+    "q9": {"type": "choice", "instructions": "How many minutes are there in two hours?", "criteria": {"A": "90", "B": "100", "C": "120"}},
+    "q10": {"type": "choice", "instructions": "Which part of a plant usually absorbs water from the soil?", "criteria": {"A": "Flower", "B": "Root", "C": "Leaf"}}
+  }
+}

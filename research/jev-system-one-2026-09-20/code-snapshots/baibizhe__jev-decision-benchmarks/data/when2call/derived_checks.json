@@ -1,0 +1,307 @@
+{
+  "source_hashes_verified": 32,
+  "label_order": [
+    "direct",
+    "tool_call",
+    "request_for_info",
+    "cannot_answer"
+  ],
+  "accepted_tables": [
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "appendix_matrices": {
+    "13": {
+      "caption": "Confusion matrix on When2Call for Llama 3.1 70B Instruct.",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1287,
+          5,
+          0
+        ],
+        [
+          4,
+          1009,
+          44,
+          5
+        ],
+        [
+          100,
+          1030,
+          115,
+          50
+        ]
+      ],
+      "n": 3649,
+      "correct": 1381,
+      "accuracy_pct": 37.845985201425044,
+      "macro_f1_0_100": 17.58090908374888,
+      "class_support": [
+        0,
+        1292,
+        1062,
+        1295
+      ]
+    },
+    "14": {
+      "caption": "Confusion matrix on When2Call for Qwen 2.5 7B Instruct",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          14,
+          1078,
+          201,
+          2
+        ],
+        [
+          16,
+          410,
+          634,
+          2
+        ],
+        [
+          119,
+          453,
+          645,
+          78
+        ]
+      ],
+      "n": 3652,
+      "correct": 1790,
+      "accuracy_pct": 49.01423877327492,
+      "macro_f1_0_100": 31.95910556522043,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    },
+    "15": {
+      "caption": "Confusion matrix on When2Call for Qwen 2.5 72B Instruct",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          11,
+          1116,
+          167,
+          1
+        ],
+        [
+          12,
+          365,
+          684,
+          1
+        ],
+        [
+          162,
+          478,
+          599,
+          56
+        ]
+      ],
+      "n": 3652,
+      "correct": 1856,
+      "accuracy_pct": 50.82146768893757,
+      "macro_f1_0_100": 32.832250305878205,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    },
+    "16": {
+      "caption": "Confusion matrix on When2Call for xLAM 7B FC-R",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          133,
+          756,
+          393,
+          13
+        ],
+        [
+          63,
+          332,
+          640,
+          27
+        ],
+        [
+          249,
+          314,
+          568,
+          164
+        ]
+      ],
+      "n": 3652,
+      "correct": 1560,
+      "accuracy_pct": 42.71631982475356,
+      "macro_f1_0_100": 31.502409119831764,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    },
+    "17": {
+      "caption": "Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B SFT (baseline)",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          7,
+          1261,
+          20,
+          7
+        ],
+        [
+          18,
+          738,
+          288,
+          18
+        ],
+        [
+          181,
+          537,
+          359,
+          218
+        ]
+      ],
+      "n": 3652,
+      "correct": 1767,
+      "accuracy_pct": 48.38444687842278,
+      "macro_f1_0_100": 31.873483634498484,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    },
+    "18": {
+      "caption": "Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B SFT with When2Call",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          11,
+          1143,
+          132,
+          9
+        ],
+        [
+          12,
+          284,
+          752,
+          14
+        ],
+        [
+          121,
+          282,
+          372,
+          520
+        ]
+      ],
+      "n": 3652,
+      "correct": 2415,
+      "accuracy_pct": 66.12814895947426,
+      "macro_f1_0_100": 49.39132455436122,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    },
+    "19": {
+      "caption": "Confusion matrix on When2Call for Mistral-NeMo-Minitron 8B RPO with When2Call",
+      "matrix": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          17,
+          992,
+          148,
+          138
+        ],
+        [
+          15,
+          259,
+          681,
+          107
+        ],
+        [
+          90,
+          106,
+          249,
+          850
+        ]
+      ],
+      "n": 3652,
+      "correct": 2523,
+      "accuracy_pct": 69.08543263964951,
+      "macro_f1_0_100": 52.39650749320299,
+      "class_support": [
+        0,
+        1295,
+        1062,
+        1295
+      ]
+    }
+  },
+  "accepted_matrices_match_published_f1_at_one_decimal": true,
+  "excluded_table_13_reason": "N=3649; four-class F1=17.58 disagrees with caption model's published F1=37.8",
+  "jev_confusion_matrix_crosscheck": {
+    "n": 3652,
+    "correct": 2733,
+    "accuracy_pct": 74.83570646221249,
+    "macro_f1_0_100": 56.54776944305912,
+    "class_support": [
+      0,
+      1295,
+      1062,
+      1295
+    ]
+  },
+  "model_requests_made_by_this_script": 0
+}

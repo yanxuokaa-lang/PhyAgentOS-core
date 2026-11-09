@@ -1,0 +1,66 @@
+name: Sync Model Card to Hugging Face
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "README.md"
+      - "checkpoints/von-modernbert-rlcd/README.md"
+      - "assets/**"
+  workflow_dispatch:
+
+jobs:
+  sync-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+
+      - name: Sync model card and assets to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - << 'EOF'
+          import os
+          from huggingface_hub import HfApi
+
+          token = os.environ.get("HF_TOKEN")
+          if not token:
+              raise RuntimeError("Missing HF_TOKEN secret!")
+
+          api = HfApi(token=token)
+          repo_id = "wfzyx/von-1.0"
+
+          # Upload updated model card
+          card_path = "checkpoints/von-modernbert-rlcd/README.md" if os.path.exists("checkpoints/von-modernbert-rlcd/README.md") else "README.md"
+          if os.path.exists(card_path):
+              print(f"Uploading {card_path} to {repo_id}...")
+              api.upload_file(
+                  path_or_fileobj=card_path,
+                  path_in_repo="README.md",
+                  repo_id=repo_id,
+                  repo_type="model",
+              )
+
+          # Upload benchmark image if present
+          img_path = "assets/benchmark_comparison.png"
+          if os.path.exists(img_path):
+              print(f"Uploading {img_path} to {repo_id}...")
+              api.upload_file(
+                  path_or_fileobj=img_path,
+                  path_in_repo="assets/benchmark_comparison.png",
+                  repo_id=repo_id,
+                  repo_type="model",
+              )
+
+          print("Successfully synced model card and assets to Hugging Face Hub!")
+          EOF

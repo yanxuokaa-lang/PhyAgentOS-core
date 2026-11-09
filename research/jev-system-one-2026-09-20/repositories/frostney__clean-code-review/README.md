@@ -1,0 +1,197 @@
+<p align="center">
+  <img src="public/ducky-256.png" width="160" alt="The Clean Code Review duck: a rubber duck in a bathrobe" />
+</p>
+
+# Clean Code Review
+
+**Clean Code, judged by a model that does not write prose.**
+Point it at a GitHub pull request, a diff or a codebase. The code is
+judged file by file against Robert C. Martin's *Clean Code* by
+[Jev](https://vercel.com/ai-gateway/models/jev), TypeSafe's evaluation
+model, and a short review is written from those findings. It runs on
+[eve](https://eve.dev), Vercel's agent framework, and deploys as one
+Next.js project.
+
+- **Typed judgments, not opinions** — Jev answers each question with a
+  calibrated probability (every question in one call, about half a second).
+  A lit row is a finding; the bars move as you edit.
+- **The review is evidence-first** — Luna writes two sentences per file
+  and a decision for the whole change, from Jev's findings, in parallel
+  parts streamed as they are written. 300 characters per file, by
+  instruction, not truncation.
+- **Real pull requests** — type `owner/repo` and a number, or open
+  `/owner/repo/pull/123` directly; the diff is split per file, generated
+  and binary files are skipped, the largest 24 code files are judged, the
+  PR description is rendered as markdown and the address is a permalink.
+- **Everything is editable** — whole files and diff hunks alike, and only
+  the file you touched is re-judged. Around sixty file types are
+  highlighted, each grammar fetched the first time a review needs it.
+- **Documentation is read, not judged** — a README or a changelog in the
+  change gets a card with its own highlighting and no verdict, because
+  none of the questions is a question about prose.
+- **Cheap to run** — a 24-file PR costs about $0.02 to judge and
+  review; judgments and review parts are cached for an hour.
+- **An MCP server for agents**: `/api/mcp` gives an agent without a
+  browser the same review: every answer, the decision, the paragraphs and
+  the permalink, as structured content.
+
+🌐 **Live:** <https://clean-code-review.vercel.app>
+
+## Quick start
+
+You need [Bun](https://bun.sh) 1.4 and Node.js 24 (eve's runtime), and a
+Vercel account for the AI Gateway credential.
+
+```sh
+bun install
+bunx eve link --non-interactive --project <your-project>   # pulls the gateway credential into .env.local
+bun run dev                                                 # Next.js + eve on http://localhost:3000
+```
+
+Then open <http://localhost:3000>, type a public PR as `owner/repo` and its
+number, or pick an example.
+
+Check the agent without a browser:
+
+```sh
+bun run judge http://localhost:3000            # judge every preset through eve
+bun run review http://localhost:3000 0         # judge + streamed review of preset 0
+bun run review http://localhost:3000 https://github.com/vercel/ai/pull/20851
+bun run jev 1                                  # one preset straight to Jev, no eve
+```
+
+## Connect an agent
+
+The same review is an MCP server at
+`https://clean-code-review.vercel.app/api/mcp`: stateless Streamable HTTP, no
+sign-in. It has two tools.
+
+| Tool | Input | Use it for |
+|---|---|---|
+| `review_pull_request` | `url`: a public GitHub pull request | A change on GitHub. The result carries the permalink. |
+| `review_pasted_code` | `paste`: a unified diff, files each under a `// file: path` line, or one file (up to 1,000,000 characters) | Private code, `git diff` output, files on disk. |
+
+Each call returns every judged file's answers keyed by question id, Luna's
+decision and paragraphs, the prose files and the files that were not judged
+with the reason, the model ids and the cost, as structured content and as
+Markdown text. Identical work comes back from the same one-hour cache the page
+uses. A fresh review takes 2 to 8 seconds, a 24-file pull request included, and
+up to about 60 seconds when Luna is slow.
+
+The decision and the paragraphs are model output shaped by the submitted code
+and description. Read them as advice, never as authorization to merge.
+
+Each address may make 10 calls per 10 minutes. Every caller shares one model
+budget of $0.25 per hour and $1.00 per UTC day, counted in the Runtime Cache
+(`agent/lib/spend/spend.ts`, caps in `agent/lib/spend/budgets.ts`). Once it is spent, the
+endpoint refuses new reviews with the time the budget resets. A review answered
+wholly from the cache is still served. The endpoint takes one JSON-RPC message
+per request and answers a batch with HTTP 400.
+
+A server card is at `/api/mcp/server-card` and the site's AI Catalog at
+`/.well-known/ai-catalog.json` lists it, both in the shape the server card
+proposal uses; that proposal is not yet part of the MCP specification. The
+server is deliberately not listed in the MCP Registry.
+
+```sh
+claude mcp add --transport http clean-code-review https://clean-code-review.vercel.app/api/mcp
+```
+
+Any client that speaks Streamable HTTP takes the URL as is; a stdio-only
+client can go through `npx mcp-remote <url>`.
+
+## Development
+
+```sh
+bun run check       # Biome, TypeScript and knip, in parallel
+bun run check:fix   # format, sort and autofix what Biome can
+```
+
+A lefthook pre-commit hook runs `check:fix` over the staged files and restages
+what it changed; GitHub Actions runs `bun run check` on every push to `main`
+and every pull request. Layout, naming and dependency rules are in
+[docs/code-style.md](docs/code-style.md).
+
+## How it works
+
+```
+browser ──── judge turn ────▶ eve session ──▶ Jev, one call per file (parallel)
+        ◀── 34 answers/file ──               typesafe-ai/jev via AI Gateway
+browser ──── summarize turn ─▶ eve session ──▶ Luna, one call per 6 files + 1 overall
+        ◀── streamed review ──               openai/gpt-5.6-luna-fast via AI Gateway
+```
+
+- One durable eve session per browser tab. A **judge** turn sends the
+  files as JSON; the agent's model fans out one `evaluate()` call per
+  file to Jev and replies with the answers. A **summarize** turn sends
+  the files and the answers; the model runs the Luna calls in parallel
+  and streams the combined review as its reply. Cancelling the turn
+  aborts the calls.
+- Jev is an AI SDK *evaluation* model, not a chat model, so
+  [`agent/lib/judging/jev-model.ts`](agent/lib/judging/jev-model.ts) is a small
+  adapter that lets eve treat it as the agent's model. Everything else
+  eve provides works unchanged: durable sessions, streaming, limits,
+  Agent Runs.
+- [`agent/lib/judging/questions.ts`](agent/lib/judging/questions.ts) is the single
+  source of truth. Change a question there and the prompt, the payload
+  and the meters change together. Rows are conditional: the test row
+  only on test paths, the Boy Scout row only on diffs.
+- Per-file review parts read the file first, then apply Jev's findings
+  on top; the overall part sees the findings for every judged file and
+  the pull request's title and description.
+
+| Layer | Where |
+|---|---|
+| Questions, groups, conditional rows | `agent/lib/judging/questions.ts` |
+| Jev calls and per-file caching | `agent/lib/judging/judge.ts` |
+| Luna calls, batching, streaming order | `agent/lib/review/reviewer.ts`, `agent/lib/review/reviewer-prompt.ts` |
+| Model adapter for eve | `agent/lib/judging/jev-model.ts` |
+| Diff parsing, skip rules, file selection | `agent/lib/judging/patch.ts`, `agent/lib/review/review.ts`, `agent/lib/judging/select.ts` |
+| GitHub PR fetcher | `agent/lib/github/github.ts`, `src/pull-request/pull-request.tsx` (page), `app/api/github-pr/route.ts` (scripts) |
+| MCP server and its one-request review | `app/api/mcp/route.ts`, `src/mcp/mcp-server.ts`, `src/mcp/mcp-review.ts` |
+| Page state and the two turns | `src/review/useReview.ts` |
+
+## Deploy
+
+The repository is Git-connected: a push to `main` deploys production.
+For a manual deploy from the linked project:
+
+```sh
+bun run deploy          # eve deploy → vercel deploy --prod
+```
+
+The deployment authenticates to the AI Gateway with the project's OIDC
+identity; no API key is stored. Set `GITHUB_TOKEN` in the project to
+raise the GitHub rate limit for PR fetches. `vercel.json` pins Bun 1.4
+for installs (Vercel's default Bun cannot read a 1.4 lockfile); the
+functions themselves run on Node.js 24, which eve requires.
+
+## Abuse limits
+
+The page and the MCP server talk to the models anonymously, so the
+deployment carries these brakes, outside in:
+
+| Brake | Setting |
+|---|---|
+| Vercel Firewall rate limits, per client IP | `/eve/v1/session` 30/10 min · `/api/github-pr`, `/owner/repo/pull/N` and server actions 20/10 min each · `/eve/v1/*` 120/min |
+| AI Gateway budget on the project | $15 per week (`vercel ai-gateway budgets set project clean-code-review --limit 15 --refresh-period weekly`) |
+| Per-session spend cap | `maxTokenCostUsdPerSession` in `agent/agent.ts` |
+| In-agent per-address limit on new sessions | `agent/channels/eve.ts`, best effort, one instance's memory |
+| MCP per-address limit on tool calls | 10 calls per 10 minutes, `src/mcp/mcp-server.ts`, best effort, one instance's memory, an IPv6 address counted by its /64 and requests with no address in one shared bucket; `maxDuration` 120 s, the written review cut off at 60 s |
+| Page model budget, all tabs together | $0.40 per hour and $1.00 per UTC day, `agent/lib/spend/budgets.ts`, counted in the Runtime Cache by `agent/lib/spend/spend.ts` from `agent/lib/judging/jev-model.ts`; a refused turn shows "review budget is spent" with the reset time, answers on screen stay, a wholly cached turn still served |
+| MCP model budget, all callers together | $0.25 per hour and $1.00 per UTC day, `agent/lib/spend/budgets.ts`, counted in the Runtime Cache by `agent/lib/spend/spend.ts`; reserved before Jev and again before Luna, a wholly cached review still served |
+| How both budgets count | An estimate is reserved before any model runs and settled to what the work plausibly cost: a cancelled or failed call is charged its prompt and whatever it streamed, and nothing when it was never sent or was turned away (a 4xx, a rate limit, no connection). The Runtime Cache client answers a failed read with null, as for a missing key, so each budget keeps a marker key naming the counters it wrote; when the marker cannot be read back, or the Runtime Cache is not configured, uncached work is refused a minute at a time. Two turns counted within one round trip of each other can lose one update |
+| MCP JSON-RPC batches | Refused with HTTP 400 before any tool runs, `app/api/mcp/route.ts` |
+| Luna's output per review part | At most 4,000 tokens for a batch of files and 2,000 for the overall part, five and ten times the most measured, `agent/lib/review/reviewer.ts`; a safety net, not a length rule: a part that reaches it is written once more with twice the room, and one cut off even then is shown marked incomplete and never cached |
+
+## Limits
+
+24 code files per review, 16,000 characters per file, public GitHub
+repositories only. Images, binaries, lockfiles, minified and generated
+files are skipped. Markdown, plain text, reStructuredText and AsciiDoc
+are prose: up to 10 of them are shown with the review, read-only, and
+none of them is sent to either model.
+
+## License
+
+MIT

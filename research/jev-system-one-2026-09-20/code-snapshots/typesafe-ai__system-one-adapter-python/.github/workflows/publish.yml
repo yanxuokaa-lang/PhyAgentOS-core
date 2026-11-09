@@ -1,0 +1,114 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Release target
+        type: choice
+        options: [dry-run, testpypi, pypi]
+        default: dry-run
+
+concurrency:
+  group: publish-${{ github.event_name == 'push' && 'pypi' || inputs.target }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build public distributions
+    if: github.repository == 'typesafe-ai/system-one-adapter-python'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      title: ${{ steps.notes.outputs.title }}
+      tag: ${{ steps.notes.outputs.tag }}
+      target: ${{ github.event_name == 'push' && 'pypi' || inputs.target }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: false
+      - name: Validate release and extract changelog notes
+        id: notes
+        env:
+          TARGET: ${{ github.event_name == 'push' && 'pypi' || inputs.target }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          case "$TARGET" in
+            dry-run|testpypi|pypi) ;;
+            *) echo 'Unknown publishing target'; exit 1 ;;
+          esac
+          TAG="v$(uv version --short)"
+          if [ "$TARGET" != dry-run ]; then
+            test "$REPOSITORY_PRIVATE" = false || { echo 'Use dry-run until this repository is public'; exit 1; }
+            git merge-base --is-ancestor HEAD origin/main || { echo 'Publish only source merged into public main'; exit 1; }
+          fi
+          if [ "$TARGET" = pypi ]; then
+            test "$GITHUB_REF_TYPE" = tag || { echo 'Select a public version tag for PyPI'; exit 1; }
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then TAG="$GITHUB_REF_NAME"; fi
+          uv run --no-project .github/scripts/release_notes.py "$TAG" "$(uv version --short)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Build and test distributions
+        run: |
+          uv build
+          uv run --no-project .github/scripts/check_distributions.py dist "$(uv version --short)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: |
+            dist/
+            release-notes.md
+          if-no-files-found: error
+
+  publish:
+    name: Publish to ${{ needs.build.outputs.target }}
+    needs: build
+    if: needs.build.outputs.target != 'dry-run'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.build.outputs.target }}
+    permissions:
+      id-token: write # Trusted Publishing and attestations.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+      - name: Publish tested distributions
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: ${{ needs.build.outputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+
+  github-release:
+    name: GitHub release
+    needs: [build, publish]
+    if: needs.build.outputs.target == 'pypi'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TITLE: ${{ needs.build.outputs.title }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TITLE" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber

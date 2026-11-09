@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "f1e117284eaae282e1363ca35fd542da5c6dfd340f4ae7d5087a199132e042f8",
+  "created_at": "2026-11-03T12:37:14.454917Z",
+  "decision_reason": "使用当前计划中R05和BEAKER的同次观测绑定查询工艺特征。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:4625a5fcf13e40e48db5681686a79e14:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "f53ff1a7e16bea00b6fa6d991df546dcc7a77fea86a33ff7794b70854ce213ad",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_1336d861021e48b7/revision_bffd0ee0b6a84de4/pour_r05.process_features/d2bb17db28b5480f",
+      "input_binding_digest": "f53ff1a7e16bea00b6fa6d991df546dcc7a77fea86a33ff7794b70854ce213ad",
+      "node_digest": "3cf6fe418f232585559356d390ecf2035339acda3535d85bb107921f5227e399",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_bffd0ee0b6a84de4"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/6d0d1879a01945408d9024fc6be380ad.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 488,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:4625a5fcf13e40e48db5681686a79e14:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:4625a5fcf13e40e48db5681686a79e14:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_bffd0ee0b6a84de4",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:4625a5fcf13e40e48db5681686a79e14:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_1336d861021e48b7"
+}

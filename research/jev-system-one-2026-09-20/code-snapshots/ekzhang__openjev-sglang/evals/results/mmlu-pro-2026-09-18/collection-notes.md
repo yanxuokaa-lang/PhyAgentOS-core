@@ -1,0 +1,1 @@
+Collection used concurrency 16. The first segment saved 999 predictions; one other request returned HTTP 520 and stopped collection. Resuming collected only that missing question. One saved response also needed a retry after HTTP 529. All 1,000 sampled questions are included. Reported cost includes successful saved responses only.

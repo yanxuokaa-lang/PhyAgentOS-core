@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "defe23d68e44b1188f3b27662024f09b0a88577f9de757be74159fd3eac3f05a",
+  "created_at": "2026-11-04T01:12:17.356117Z",
+  "decision_reason": "使用当前节点冻结的同次观测标识和实体标签引用，仅提议工艺特征。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "583cc7d229485473d771cc551184b4179e01037e3132e3b1d10da64275ba91fa",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_9fa51be5ed0d4e3f/revision_2851da4273904a19/pour_r05.process_features/c838d646dd594c03",
+      "input_binding_digest": "583cc7d229485473d771cc551184b4179e01037e3132e3b1d10da64275ba91fa",
+      "node_digest": "021290dfb01b2fc5fe19559b2e5cb1507dd9c265d35f4cf113887021d4fbe92c",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_2851da4273904a19"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/8c07f0523ddd4ccb9b212bf097f7c281.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 549,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_2851da4273904a19",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:5b1cef7b99374ccdadd16ad31207a7c2:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_9fa51be5ed0d4e3f"
+}

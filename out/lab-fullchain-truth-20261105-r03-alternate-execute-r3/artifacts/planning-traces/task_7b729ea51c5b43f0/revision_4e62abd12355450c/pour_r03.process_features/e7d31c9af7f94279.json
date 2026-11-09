@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "8378a2df3be7671229c22609c8eb27ac9985ccb90a8dde0f62d9fc3f95c1e143",
+  "created_at": "2026-11-05T12:01:17.031234Z",
+  "decision_reason": "显式采用当前任务 process_features 节点冻结的新捕获绑定；查询不授权运动。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "97d4771fc0e005e317c729316d5341f5bf68a8b5edd8bfe01a2ad77d320ae949",
+  "node_id": "pour_r03.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7b729ea51c5b43f0/revision_4e62abd12355450c/pour_r03.process_features/e7d31c9af7f94279",
+      "input_binding_digest": "97d4771fc0e005e317c729316d5341f5bf68a8b5edd8bfe01a2ad77d320ae949",
+      "node_digest": "bff49ce5d80739203eec04fae0b3684be9849693a8a6ff006b912d0159ffc540",
+      "node_id": "pour_r03.process_features",
+      "obligation_id": "pour_r03-process-features",
+      "revision_id": "revision_4e62abd12355450c"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/253e43b82c3645f5ac57bcf1f69b5bcc.json",
+      "entity_refs": [
+        "entity://simulator-truth-R03",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 478,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_4e62abd12355450c",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:c6db863dfbff45509763a181d61a0333:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_7b729ea51c5b43f0"
+}

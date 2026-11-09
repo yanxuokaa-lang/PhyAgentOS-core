@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test film.test.mjs playground.test.mjs"},
+  "dependencies": {"playwright": "1.63.0"}
+}

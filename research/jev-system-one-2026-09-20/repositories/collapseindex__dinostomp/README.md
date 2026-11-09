@@ -1,0 +1,1001 @@
+<!-- pixel-banner:start -->
+![A mint pixel dinosaur stomps beside DinoStomp's name while evidence checkpoints light up.](data/exports/readme/20260915_120000_readme_pixel-dino_1200x360_s42.gif)
+
+[View the still banner](data/exports/readme/20260915_120000_readme_pixel-dino_1200x360_s42.png)
+<!-- pixel-banner:end -->
+
+# 🦖 dinostomp
+
+**Stomp the eval. Trust the evidence.**
+
+<sub>v0.63.0 · Apache-2.0 · engine `203b45ecbf3cceee` · [what it found](FINDINGS.md) · [how it works](METHODOLOGY.md) · [writing evals](AUTHORING.md) · [security](SECURITY.md)</sub>
+
+**Find broken data, misleading scorers, and unsupported benchmark claims before you trust the score.**
+
+dinostomp is a local-first verification layer for AI evaluations. Audit a dataset
+with one command, or build an eval pod and check the evidence from inputs to
+final claim. Use it alongside your existing harness, or use its built-in runner.
+
+[Quick start](#quick-start) · [Architecture](#how-it-works) · [Real findings](#what-it-found) · [CI integration](#in-ci) · [Limits](#before-you-trust-it)
+
+<a href="https://www.youtube.com/watch?v=t9FGLue12UM"><img src="https://img.youtube.com/vi/t9FGLue12UM/maxresdefault.jpg" alt="A kid in a dinosaur onesie stomps through a city of collapsing EVALS, SCORES and CHECKS billboards. The official dinostomp music video." width="560"></a>
+
+<sub>The official music video: [*dinostomp stomp mydata csv*](https://www.youtube.com/watch?v=t9FGLue12UM). Trust the score? Nah. Trust the evidence.</sub>
+
+## Quick start
+
+Python 3.10+. From a local clone:
+
+```bash
+pip install -e .
+dinostomp stomp mydata.csv
+```
+
+The data audit runs locally, with no API key or model calls. Start with your own
+CSV or JSONL file. See [installation](#install) for package and optional extras.
+
+**Using TypeSafe's Jev?** Test a question the way you would test an if-statement,
+with your own key (about 30 seconds and a fraction of a cent):
+
+```bash
+export TYPESAFE_API_KEY=...        # or OPENROUTER_API_KEY
+dinostomp jev examples/jev-question/refund.jev.yaml
+```
+
+It reports accuracy, where to cut p(yes), calibration, what the question answers
+with no input at all, and which examples to reread. See
+[A Jev question, tested like an if-statement](#a-jev-question-tested-like-an-if-statement).
+
+| Bring | Get back |
+|---|---|
+| A dataset | Findings about duplicates, leakage, key bias, and other data defects |
+| An eval pod with run evidence | Checks on scorers, records, noise, and claims |
+| A CI pipeline | A machine-readable report and a failing exit code for gated findings |
+
+**Coverage travels with the verdict.** Skipped or unavailable checks stay visible.
+A mechanically sound result does not establish that an eval measures what you intended.
+
+## How it works
+
+![Six dinosaur checkpoints follow items, runner, records, scorer, aggregate, and claim. Each checks a different boundary; the final report includes findings, coverage, and a scoped verdict.](data/exports/readme/20260915_120000_readme_pixel-dino_architecture_1200x850_s42.png)
+
+Items flow through the runner into records, scoring, aggregation, and a claim.
+dinostomp checks each boundary: data defects, spend and coverage, record integrity,
+scorer witnesses, statistical noise, and whether the evidence supports the claim.
+Summaries are recomputed from records and verdicts are re-scored from recorded text.
+
+**One folder keeps the eval together:** its spec, items, and run receipts.
+See [the pod](#the-pod-one-folder-one-eval) and [authoring guide](AUTHORING.md).
+
+## Build an eval
+
+```bash
+dinostomp new my-eval
+dinostomp plan my-eval/eval.yaml    # preview power, cost, and witnesses
+dinostomp run my-eval/eval.yaml
+dinostomp stomp my-eval/eval.yaml
+```
+
+Configure your target before running. Live providers can make network calls and
+incur model costs; the plan previews the run before that happens.
+
+## What it found
+
+Across **31 benchmark pods**, five of them assessments written for people, three of
+those professional licensing examinations:
+
+- MMLU keys "Subtract. 2,396 − 1,709" over `['687', '687', '1,493', '1,695']`. The answer is on the option list twice, so a model that computes it correctly picks the wrong letter half the time ([F-002](FINDINGS.md#f-002))
+- A national pharmacist licensing exam offers the same drug twice in one five-option list, on 16 items ([F-025](FINDINGS.md#f-025))
+- An Iranian driving-licence test keys the longest option 45% of the time, where chance is 25%: you can beat it knowing no road law ([F-024](FINDINGS.md#f-024))
+- A numeric scorer scored a live model `0.000` whose real accuracy was `0.438`, and ranked it last in a fleet it led ([D-041](FINDINGS.md#d-041))
+- Two GSM8K models moved 78→90% and 81→92% on the random seed alone ([F-005](FINDINGS.md#f-005))
+
+Each of those is one entry in **[FINDINGS.md](FINDINGS.md)**, with the item id,
+the verbatim data and the command that reproduces it. Every `F` re-derives in
+seconds, offline, for free, using the reproduction command attached to each finding.
+
+**[FINDINGS.md](FINDINGS.md): 191 entries, all permanent, none deleted.**
+
+| series | count | what it records |
+|---|--:|---|
+| **F** | 52 | findings in other people's evals |
+| **D** | 100 | defects in dinostomp itself |
+| **N** | 39 | negative results, recorded rather than dropped |
+
+**One hundred of the 191 are against this tool**, which is the number to
+read first. A validator that only publishes other people's mistakes is telling
+you which mistakes it is willing to look for. Included there: the entry it
+retracted after its own killer control killed it ([N-013](FINDINGS.md#n-013)),
+the loader bug that manufactured a finding about a driving test
+([D-039](FINDINGS.md#d-039)), and a defect in the findings feed itself
+([D-040](FINDINGS.md#d-040)).
+
+One caveat belongs up here rather than at the bottom: **three entries were
+graded against an answer key somebody outside this repo wrote**
+([N-012](FINDINGS.md#n-012) against MMLU-Redux, [N-017](FINDINGS.md#n-017)
+against ciFAIR's hand-annotated CIFAR-10 duplicates, and
+[N-019](FINDINGS.md#n-019) against MT-Bench's human preference votes). All three
+produced the least flattering numbers in the file, which is the argument for
+more of them. One hundred self-found defects is still self-grading, and that
+number moves when an outsider runs it rather than when the total goes up.
+[Break it, please](CONTRIBUTING.md#break-it-please).
+
+The same ledger as data, versioned and validated against
+[`docs/findings.schema.json`](docs/findings.schema.json) before it is written:
+
+```bash
+jq '.findings[] | select(.series=="F" and .status_class=="confirmed") | .subject' findings.json
+```
+
+## What gets checked
+
+One invariant runs under all of it: **nothing becomes evidence merely because an
+earlier stage said it was.** Summaries are recomputed from records, verdicts are
+re-scored from recorded text, and the engine hashes itself into its own output.
+
+One hundred and two checks, each negative-tested to prove it fires, most invisible until
+something breaks. The ledger records concrete failures at these boundaries:
+
+| stage | what goes wrong there |
+|---|---|
+| **your data** | duplicate items, answers leaking into questions, an item with two correct options |
+| **your scorer** | a scorer that cannot fail; one that grades format instead of capability |
+| **your runs** | truncated answers credited, spend disagreeing with the ledger, a model that stopped reading the question |
+| **your number** | seed noise read as a result; a ranking that is really about prompt phrasing |
+| **your claim** | a published claim the evidence cannot support: a pod claiming 80% accuracy and a 20-point win, handed evidence for one model at 75%, goes `BROKEN` |
+| **this tool** | the auditor drifting, and nobody noticing: a `CLEAN` report computed over runs from two different engines |
+
+## Where it fits
+
+Keep the harness you like. dinostomp focuses on the integrity of the evaluation
+and its evidence, complementing tools used to run and track experiments.
+Its own runner is an option, not a requirement for a dataset audit.
+
+The repository includes a historical [cross-tool documentation audit](trials/CROSSTOOL.md).
+It is a dated comparison, not a statement of competitors' current capabilities.
+
+<details>
+<summary>Read the original comparison, rationale, and limitations</summary>
+
+<details>
+<summary>The M16 had this exact problem in 1964, and it is the clearest version of it</summary>
+
+When the 5.56mm M193 cartridge was adopted in September 1963, one propellant was
+approved for it: DuPont's IMR 4475. It could not be mass-produced inside the
+specification. Remington withdrew it in March 1964 and manufacturers balked at
+bidding under the existing pressure and velocity requirements, so on 28 April
+1964 the Army approved loading M193 with Olin Mathieson's **WC 846** ball powder
+instead.
+
+The ammunition specification did not change, and the propellant passed it. The
+rifle did not stay inside its own: WC 846 ran higher gas port pressure and left
+carbon fouling, gas port pressure is what drives the rifle's cyclic rate, and
+the Army's later test comparison recorded the ball-propellant lot as giving "a
+high port pressure, a higher cyclic rate, a greater malfunction rate, greater
+fouling" than the IMR lot. The propellant tests had not measured that variable
+at all: "Weapon cyclic rate was not considered in these tests," and it "was
+not measured at Aberdeen Proving Ground in the engineer design test of
+propellants conducted during this period." A property nobody was measuring
+moved, because it belonged to the *composition* rather than to either part.
+
+**The signal was not missed. It was explained away, and then waived.** Colt's
+representative told the Joint Technical Coordinating Committee on 24-25 March
+1964 that WC 846 "increased the cyclic rate above that required by
+specifications." In April, Colt's senior product engineer wrote in an internal
+report that the higher gas port pressures were "in no way harmful to the AR-15"
+and would lead to "more positive functioning of the rifle." In April and May
+1964 two Requests for Waivers went in to accept rifles with cyclic rates up to
+900 rounds per minute, and in June 1964 Colt requested and received one. The
+project manager, the Panel records, "felt that the cyclic rate problem was
+caused by rifle quality control." The Ichord Committee later recommended
+withdrawing WC 846 and chrome-lining chambers.
+
+That second part is why this repo keeps [a ledger of its own
+defects](FINDINGS.md) and records which *direction* each error ran in. "Higher
+port pressure means more positive functioning" is the same sentence as "the
+check passed, so the data is clean." Both are a real anomaly read in the
+direction that makes the system look fine, by the party with the incentive.
+
+An eval pipeline is the same shape. Your dataset is fine, your scorer is fine,
+your judge is fine, your model is fine, your aggregation is fine, and **the
+number they produce together is not therefore trustworthy**. That is the claim
+this tool exists to stop you from making by default.
+
+<sub>Sources, checked 2026-08-28 against the primary record. The 28 April 1964
+propellant change and the port-pressure/cyclic-rate relationship:
+[American Rifleman](https://www.americanrifleman.org/content/u-s-m16/). The
+test comparison of ball and IMR lots: *Report of the M16 Rifle Review Panel*
+(1968), [Vol. 7, Reliability](https://apps.dtic.mil/sti/tr/pdf/ADA953116.pdf),
+p. 6-79. "Weapon cyclic rate was not considered in these tests," the Aberdeen
+omission, the April-May 1964 waiver requests and the June 1964 waiver to 900
+rounds per minute: [Vol. 1, History](https://apps.dtic.mil/sti/tr/pdf/ADA953110.pdf),
+pp. D-2 and D-9. The 24-25 March 1964 notice to the JTCC and the project
+manager's view that the problem was rifle quality control: Vol. 1, the Panel's
+comments on Ichord Subcommittee findings 15 and 16. The Colt "in no way
+harmful" / "more positive functioning" quotation is from
+[Daniel Watters' commentary](https://www.thefirearmblog.com/blog/2015/01/09/jim-sullivan-m16-vietnam/),
+citing an internal April 1964 Colt report by Foster Sturtevant; it does not
+appear in the Panel volumes checked (1, 5, 7) and is carried here as a
+secondary-source quotation. One claim often repeated with this story remains
+deliberately absent because it has not been checked against a primary source:
+a specific ball-versus-stick round count for Vietnam. An earlier version of
+this note listed the omitted cyclic-rate measurement as unverified; it is now
+verified above.</sub>
+
+</details>
+
+Six tools were audited on one fixed rubric ([the full table, with per-cell
+citations](trials/CROSSTOOL.md)): lm-eval, openai/evals, Inspect, HELM,
+promptfoo and Braintrust. Their coverage concentrates in run mechanics,
+provenance and regression tracking, which they do well. The families about
+whether the benchmark itself measures anything are near-empty across **all six**:
+
+| gaps recorded in the documentation audit | what it looks like when it bites |
+|---|---|
+| duplicate / contradictory items | DROP ships 86 duplicated questions, 37 keyed to different accepted answers |
+| answers leaking into their own prompt | the question contains its own key |
+| MCQ key bias at rest | a licensing exam keys the longest option 45% of the time, chance is 25% |
+| shortcut / partial-input solvability | the benchmark is answerable without reading the question |
+| contamination | test items already sitting in a training split |
+| statistical floors and saturation | a "win" that is inside seed noise |
+| fleet key-error flags | an item every model gets identically wrong |
+
+That is the gap this fills, and it is not a criticism of those tools. They were
+built to run things, and reading the thing you are running is a different job.
+
+**What they do better than dinostomp**, because a survey run by the author of one
+of the tools is exactly where credit goes missing: lm-eval ships default standard
+errors and an unconditional provenance echo. Inspect has typed logs with a
+published schema and a per-sample cost limit enforced *before* the call. HELM
+offers radical artifact transparency and the only surfaced contamination
+registry. openai/evals PR-gates smoke evals on contributions. promptfoo has
+CI gating capabilities. Braintrust has immutable experiments and always-on
+dataset versioning. dinostomp does none of those, and it is a layer over your
+harness rather than a replacement for it.
+
+**Read that table with its limits.** It is a documentation audit done on one
+date, so a blank means *not found in the docs that day*, never *the tool cannot
+do this*. Docs lag code everywhere, including here. Two families are marked
+unaudited rather than scored, because an open question is not a low score.
+
+</details>
+
+## Two ways in
+
+**Thirty seconds, on data you already have.** No spec, no key, no spend:
+
+```bash
+dinostomp stomp mydata.csv
+```
+
+```
+DATASET AUDIT: mmlu.jsonl  (3000 items from 3000 rows)
+  input    <- question      target <- answer      choices <- choices
+
+  [FAIL] dup-questions     questions are unique        90 duplicated question(s) among 3000
+  [FAIL] dup-options       no option offered twice     3 item(s) offer a duplicate option
+           - mmlu-02178
+
+BROKEN AT DATA SCOPE: 2 gated finding(s) in the dataset itself
+```
+
+That is a real run against the real MMLU test split, and `mmlu-02178` is the
+subtraction item above: the answer is on its option list twice, so a model that
+computes it correctly picks the wrong letter half the time. Thirty-six of the
+one hundred and two checks read data at rest, which is why this costs nothing.
+
+**Five minutes, for the other sixty-six.** They need evidence: outputs, a
+scorer, a ledger, a claim.
+
+```bash
+dinostomp new my-eval               # scaffold a pod
+dinostomp plan  my-eval/eval.yaml   # power, cost, witness preview BEFORE money
+dinostomp run   my-eval/eval.yaml
+dinostomp stomp my-eval/eval.yaml
+```
+
+```
+  [FAIL] truncation-credit   9 truncated output(s) scored as pass
+  [warn] seed-stability      2 of 4 model(s) move between seeds by more than the item sample explains
+           - llama-3.1-8b: 78% at seed 11 vs 90% at seed 23 (spread 12%, vs 9% explainable by the sample)
+  [warn] engine-drift        12 of 12 run(s) were produced by a different engine than the one auditing them
+```
+
+That is the same command against a real 4-model GSM8K run. None of those three
+findings is visible in the dataset, and none of them is visible in an accuracy
+number.
+
+## Install
+
+```bash
+pip install git+https://github.com/collapseindex/dinostomp
+```
+
+Or from a clone, which is what you want if you intend to run the trials:
+
+```bash
+git clone https://github.com/collapseindex/dinostomp && cd dinostomp
+pip install -e '.[dev]'
+```
+
+On PyPI: `pip install dinostomp`. Also installable from git (above) or a clone. Python 3.10+, two
+dependencies: `jsonschema`, `PyYAML`.
+
+## The pod: one folder, one eval
+
+One folder is one eval: a spec, its items, and its receipts. Everything the run
+depended on is hashed into every manifest, including the engine itself, so
+editing any of it afterwards turns the verdict `BROKEN` until you re-run.
+
+**The spec is machine-authorable and mechanically verifiable.** The schemas are
+the contract and the validator returns every problem at once as a JSON path plus
+a sentence, so the loop is write / validate / fix / repeat with no prose in the
+way. That makes it comfortable for an LLM to author, which is the common case
+today, but the durable property is the verifiability rather than the producer.
+Point whoever is holding the keyboard at **[AUTHORING.md](AUTHORING.md)**.
+
+Four things then happen that you did not ask for, and they are the product:
+
+- **Your scorer has to prove it can fail.** Specs ship witness cases including
+  outputs the scorer must *reject*, executed before any real data. Stuck writing
+  them? `dinostomp suggest-witnesses <spec>` proposes cases and writes nothing,
+  then reports what your *own* witnesses catch separately from what the
+  suggestions catch, because a suite that only holds up with generated cases in
+  it is a suite nobody thought about.
+- **Numbers are compared against noise, not vibes.** A model moving 12 points
+  between seeds is a finding; another moving 11.5 points is not, if its sample
+  is smaller. The battery does that arithmetic so nobody has to eyeball it.
+- **Coverage is stated, always.** `MECHANICALLY SOUND: no integrity findings,
+  full coverage (35 of 35 ran; 67 n/a of 102 declared)` is a different claim from
+  a green tick, and the difference is printed every time.
+- **Nothing is trusted downstream of the run.** Summaries are recomputed from
+  records, verdicts are re-scored offline, and hand-editing either is a gated
+  finding.
+
+
+## Spreadsheets: the file most people actually have
+
+Point it at a spreadsheet that was never an eval. No question column, no answer
+key, no spec:
+
+```bash
+pip install 'dinostomp[xlsx]'
+dinostomp stomp orders.xlsx
+```
+
+```
+  [warn] category-collapse      no category column splits one label across spellings
+           - region: 7 labels collapse to 4 ('East' = 'EAST'; 'West' = 'west')
+  [warn] numeric-string         no digit-string column has leading zeros a conversion would destroy
+           - sku: 10 of 10 values keep a leading zero (e.g. 00123) -> converting to a number would change them
+  [warn] sentinel-values        no value stands in for missing without saying so
+           - qty: 999999 x3 (repeats in a numeric column; a sentinel, or real values?)
+  [FAIL] range-short            every column aggregate covers its own column
+           - Orders!E13 = =SUM(E2:E8) excludes populated E row(s) 9, 10, 11
+BROKEN AT DATA SCOPE: 1 gated finding(s) in the dataset itself
+```
+
+Two things there are worth separating.
+
+**The last one is invisible to every tool built on a dataframe.** `SUM(E2:E8)`
+in a column populated to row 11 is a total that presents itself as complete and
+is not. `pandas.read_excel` evaluates nothing, keeps the cached values and
+discards the formulas, the hidden rows, the merged ranges and the calculation
+state before a model or a human ever sees the file, so six of the checks below
+are structurally unreachable after that call no matter how good the reader is.
+The most expensive spreadsheet mistake in economics was this exact shape:
+Reinhart and Rogoff's 2010 growth-and-debt result averaged `L30:L44` in a column
+whose data ran to row 49, and the paper was cited in budget debates on two
+continents before anyone opened the formula. The `XL` series reads the workbook
+as a workbook, which is the only way to see it.
+
+**The others are proposals, not repairs**, and that is the harder half. A column
+of `00123` is a broken numeric column if it holds quantities and a CORRECT text
+column if it holds zip codes, SKUs or phone numbers, and nothing in the file
+says which. So `numeric-string` reports what a conversion would destroy and
+refuses to want it gone. `category-collapse` shows the merge it WOULD produce
+and the members that would merge. A cleaner that silently normalises those
+columns is not saving anyone time; it is destroying data confidently, which is
+the failure this whole repo exists to catch. The rule the table checks follow:
+
+> **The tool proposes. The human disposes.** Nothing here rewrites your file.
+
+Two checks in the series are the same phenomenon pointing opposite directions,
+which is the argument in executable form: auto-fixing "numbers stored as text"
+destroys the leading zeros that "digit-string column" exists to protect. Both
+ship, they disagree on purpose, and
+[a test asserts they disagree](tests/test_tabular.py).
+
+Twenty-eight checks read a table this way, split by what they need to see it:
+
+| series | reads | needs |
+|---|---|---|
+| **G1-G11** | the values: whitespace and invisible characters, duplicate and near-duplicate rows, identifier columns that repeat, leading zeros, mixed and locale-ambiguous dates, text in numeric columns, sentinels, split categories, mixed percent scales, currency formatting | nothing; works on `.csv`, `.tsv`, `.jsonl`, `.xlsx` |
+| **XL1-XL6** | the workbook: constants pasted over formulas, saved `#REF!`/`#DIV/0!`, hidden rows and columns and sheets, merged ranges, aggregates that stop short of their own column, formulas never calculated | `pip install 'dinostomp[xlsx]'`, and every check says UNAVAILABLE with the install line rather than passing quietly when it is absent |
+
+A table that is not an eval reports at **table scope**: the eval checks are
+`n/a` rather than missing, because a vendor list is not an incomplete eval, it
+is a complete table. A file too small to profile is still refused, from this
+front door as from the other one, so nothing collects a clean bill of health it
+did not earn.
+
+## Two tables: the join, before you perform it
+
+A join is the one operation that fails **silently and in the flattering
+direction**. An inner join that drops rows does not raise, does not warn, and
+leaves a smaller, tidier dataset behind, and nobody audits a number for being
+too clean.
+
+```bash
+dinostomp join villagers.csv music.csv
+```
+
+```
+  join key: Favorite Song <-> Name   (inferred)  (99% of left rows covered; the right column identifies 100% of its own rows)
+
+  [warn] orphan-rows            3 of 391 left row(s) (0.8%) have a key that is not in the right table
+           - 'To The Edge' x3
+  [FAIL] key-normalisation      3 row(s) across 1 key value(s) fail to join ONLY because of case or whitespace
+           - 'To The Edge' would match 'To the Edge'
+  [ok]   parent-key-unique      the right key is unique across 98 value(s)
+  [ok]   join-fanout            391 left row(s) become 388 after an inner join (0.99x)
+
+BROKEN JOIN: 1 gated finding(s). Do not join these two files until this is resolved.
+```
+
+That is a real public dataset and a real defect, and it is the one this series
+was built to catch. One capital letter between `To The Edge` and `To the Edge`.
+Three villagers drop out of every per-song analysis, no exception is raised
+anywhere, and the finding that comes out the other side is not merely
+imprecise: those villagers appear to favour nothing. It was found by hand once,
+in [a case study](https://collapseindex.org/case-studies/acnh.html). Now it is
+found in a second.
+
+Seven checks read the relationship rather than either file:
+
+| check | catches |
+|---|---|
+| `join-viable` | an inner join that returns **nothing at all**: arithmetic, so it gates |
+| `orphan-rows` | rows the join drops, counted, because some orphans are ordinary |
+| `key-normalisation` | keys that fail to match on **case or whitespace alone**, and would match if tidied. Gates: nobody writes it two ways on purpose |
+| `parent-key-unique` | a lookup key that repeats, so the join is not the one-to-one it looks like |
+| `join-fanout` | how many rows come out versus went in. Every total after a fan-out is multiplied and nothing says so |
+| `key-type-drift` | the same key stored as text on one side and a number on the other: both correct alone, never equal |
+| `totals-reconcile` | a parent total against the sum of its own children. Gates, because it is arithmetic |
+
+**The key is inferred, printed, and refused when it is not obvious.** A join
+performed on the wrong column does not error, it answers, so the tool ranks
+candidates by coverage **times** how well the right-hand column identifies its
+own rows, and when the best one is merely an overlap it names the candidates
+and stops. Pass `--left-key` and `--right-key` to decide yourself, and
+`--reconcile parent=child` to check a total against its detail.
+
+## More you can ask of a dataset
+
+The thirty-second audit does more than duplicates.
+
+**Take the repaired file, not just the verdict.**
+
+```bash
+dinostomp stomp items.jsonl --emit-fixes
+```
+
+```
+  fixes: 93 item(s) dropped, 2907 kept
+  wrote: mmlu.fixed.jsonl
+  wrote: mmlu.fixed.fixes.txt   (one line per dropped item, with the check that condemned it)
+```
+
+Repairs delete and deduplicate. Nothing invents an answer or rewrites a
+question, so the diff is checkable by eye, and anything a mechanical fix cannot
+touch is printed with the reason plus **"The repaired file is not a clean file."**
+
+**Check it against corpora you have.**
+
+```bash
+dinostomp stomp mine.jsonl --against mmlu.jsonl --against arc.jsonl
+```
+
+Verbatim and near-verbatim overlap: the contamination question for data that
+already exists, since a canary protects only what you are about to publish. The
+finding states its own limit: overlap is evidence about the corpora compared,
+and **finding none is not evidence about training data**.
+
+**Point it at a raw file and it works out the columns.** Options in one column,
+or split across `choice_1..4`, `ending0..3`, `answer_a..d`. An answer key given
+as the option text, a zero- or one-based index, a letter label, a single-element
+list, or the name of the column that holds the answer. The index base is decided
+over the whole file rather than per row, because a one-based key read as
+zero-based resolves three options in four to the wrong text while only the
+fourth falls out loudly.
+
+**The mapping it chose prints above the findings**, because every finding rests
+on it and you have to be able to disagree with it. When a file is genuinely
+ambiguous it refuses instead of picking: TruthfulQA ships both a `Best Answer`
+and a `Correct Answers` column, and choosing one silently would put every
+finding on a coin flip. Each refusal names the columns and the flag that settles
+it, so `--target-field` ends the argument in one flag.
+
+<details>
+<summary>Why it refuses instead of picking the column that scores best</summary>
+
+The tempting rule is to keep whichever target column makes the answers land
+inside the options. That selects the mapping with the cleanest verdict, which is
+exactly how a genuinely wrong answer key becomes invisible, so it is not used.
+
+Every guard here was written after a mapping error produced confident findings
+about the wrong columns ([D-057](FINDINGS.md#d-057),
+[D-064](FINDINGS.md#d-064), [D-065](FINDINGS.md#d-065),
+[D-066](FINDINGS.md#d-066)). The tell each time was a check firing on nearly
+every row: real defects are rare and clustered, mapping errors are total. So a
+`solution` column beside a `correct_option` one is refused, because that name is
+the answer in a maths dataset and a worked derivation in an exam dataset; a
+target holding objects is refused, because that is an extractive span and not a
+choice; and a question column whose values barely repeat is refused, because
+that is a category label.
+</details>
+
+## dinocorpus: a benchmark this tool cannot win
+
+`corpus/` is 1,956 small datasets across five scored splits (dev plus four
+withheld), each with exactly one planted defect, labelled with what was
+planted and where. Ground truth is a fact about how the file was
+written rather than a judgement about it, so it needs no annotators and no
+judge.
+
+**Nine of its twenty-one defect classes have no corresponding check here, on
+purpose.** dinostomp finds one of them in the form the planter writes it, and
+none of the other eight ([D-096](FINDINGS.md#d-096)):
+
+```
+DINOCORPUS dev: dinostomp 0.63.0
+
+  recall, classes it has a check for   100.0% of 72
+  recall, classes it does NOT          14.8% of 81
+    of which name the planted item     11.1%
+  false alarms on clean instances      15.7% of 51
+```
+
+The blind-spot classes are not exotic. *The keyed answer is simply wrong* and
+*two options are both correct* are the two most common defects in the
+benchmark-error literature, and neither leaves a structural trace a single-file
+linter can see. Two of the twenty-one classes come from this repo's own check
+registry; the other nineteen come from the literature or from real audits, and a
+test fails if that ratio starts to invert.
+
+Splits rotate, and a withheld split is withheld: seeds take a nonce from the
+environment, the labels never ship, and the manifest publishes a **SHA-256
+commitment** to them so a revealed answer key can be proved unedited. Held-back
+defect classes are counted in every manifest and never named, which is the only
+defence against someone reading the taxonomy and writing one checker per class.
+
+Two splits are live: `dev` with labels, and `heldout-2026-08` (400 instances)
+whose labels are withheld behind a published commitment. Scores are
+**[corpus/LEADERBOARD.md](corpus/LEADERBOARD.md)**, never sorted by a single
+number, because a leaderboard ranked on recall rewards a detector that flags
+everything.
+
+The first scored run found three defects in the corpus and one in the battery
+([D-045](FINDINGS.md#d-045), [D-046](FINDINGS.md#d-046)). Details, the split
+registry and the submission format: **[corpus/README.md](corpus/README.md)**.
+
+## The report is an evaluation report, not just an audit
+
+`dinostomp report` writes `STOMP.md`, `STOMP.json` and a badge into the pod. The
+report opens with what the models actually DID, because that is what the eval
+was run to find out:
+
+```
+| model       | provider | records | checkable | judgeable | accuracy | 95% CI         |
+| dry-alpha   | dry      |      24 |        24 |      100% |   100.0% | [0.862, 1.000] |
+| dry-charlie | dry      |      24 |        24 |      100% |    37.5% | [0.212, 0.573] |
+
+6 model(s) x 24 item(s), mean 69.4%, spanning 37.5% to 100.0%, KR-20 0.94.
+9 item(s) every model passed: 38% of the set separated nobody in this fleet.
+At 24 items an UNPAIRED comparison resolves gaps down to about 40%.
+```
+
+Then item difficulty and discrimination, hardest first, with who missed each one
+and the most common wrong answer. Then accuracy sliced by every metadata field
+the items carry, which on MMLU is accuracy by subject. Then cost and tokens,
+summed from the records. Then the claims, then all one hundred and two checks, then the
+receipts and the provenance.
+
+Three rules hold that section together:
+
+- **Accuracy is on CHECKABLE output**, and `judgeable` sits in the same row. 80%
+  accurate on 60%-judgeable output is not 80% accurate.
+- **Every number is recomputed from the records**, never read from a summary. A
+  summary on disk is a derived artifact this tool treats as untrusted
+  everywhere else, and a results table that trusted one would be the single
+  place a hand-edited number survives. A test asserts the accuracy here equals
+  the accuracy the checks report, on the same runs.
+- **Nothing in Results can gate.** A hard item is not a defect and an expensive
+  model is not a defect. Findings come from the checks; this describes.
+
+**The report is also the contract a viewer reads.** Every finding carries its
+`stage` (`data`, `runner`, `records`, `scorer`, `aggregate`, `claim`, `tool`),
+assigned in the engine per check and never guessed from an id prefix. The gating
+dataset checks carry `refs`: a bounded sample of the exact item ids behind the
+finding and the field it is about, so a reader opens the item rather than
+parsing an example string. The report carries `reproduce`, the command that
+re-derives it, built from the flags the engine was actually given. A UI may
+group, filter and open what is there. It may not invent evidence the engine did
+not emit.
+
+## When the input is a file: images and audio
+
+A text eval carries its input in the dataset. A vision or audio eval carries a
+POINTER, and the thing pointed at can change without the dataset changing. An
+item declares its asset and its hash:
+
+```json
+{"id": "cifar-test-00042", "input": "Which of these ten classes is shown?",
+ "input_ref": {"kind": "image", "uri": "images/test/test-00042.png",
+               "sha256": "9f3c...", "split": "test"},
+ "choices": ["airplane", "automobile", "..."], "target": "cat"}
+```
+
+Most of the battery never looks at the modality. Every run check, every claim
+check, the witness gate and the mutation gauntlet are unchanged. What changes is
+that **an asset-backed item is identified by its asset's bytes**, so
+`dup-questions` and `conflicting-keys` work on pictures for free, and four
+checks exist that a text pod has no use for:
+
+| check | what it catches |
+|---|---|
+| `asset-drift` | the file is there, inside the pod, and still hashes to what the dataset says |
+| `label-in-path` | one directory per class is how image datasets ship, and it puts the answer in the filename |
+| `split-leak` | the same asset in train and in test |
+| `near-dup-assets` | the same picture twice, at different bytes |
+
+The first three need nothing but the standard library. Only the last one needs
+pixels:
+
+```bash
+pip install 'dinostomp[vision]'
+```
+
+Without it that check **skips and says so**, because "no near-duplicates found"
+and "I cannot look for near-duplicates" are different sentences and only one of
+them is true. The core keeps its two dependencies.
+
+A ten-image demonstration ships with the repo, real PNGs and all, so the checks
+can be watched firing without downloading anything:
+
+```bash
+dinostomp stomp examples/shapes/items.jsonl
+```
+
+```
+  [FAIL] dup-questions     1 duplicated question(s) among 10
+  [FAIL] split-leak        1 asset(s) appear in more than one split
+           - bcb1988d1f76...: test, train
+  [warn] near-dup-assets   2 candidate near-duplicate pair(s) at Hamming distance <= 5 of 64
+           - shape-002 ~ shape-007 (0 bits)
+```
+
+**Scored against a human answer key.** Barz & Denzler hand-annotated every
+CIFAR-10 test image with a near-duplicate in the training set and published the
+pairs. `benchmarks/cifair/` runs the battery's own detector against that
+annotation, which is the second time anything here has been graded by someone
+outside this repo:
+
+```bash
+python benchmarks/cifair/fetch.py --meta      # the annotation alone, 10 KB
+python benchmarks/cifair/compare.py --sweep   # recall, and what each threshold costs
+```
+
+## Beyond plain completions
+
+**Agents** mount as examinees: a pod-local `run(item, ctx) -> {output,
+trajectory}` gets the budget cap, the ledger, the witness gate and six
+trajectory checks. Stated plainly and repeated in the code: a trajectory is
+**self-reported**, so those checks verify the record, not the execution.
+
+**LLM judges** have to earn it. `--probe judge` grades cases whose verdict is
+known *by construction*, then regrades them under six perturbations that change
+no meaning and names every bias that flips one. The judge's verbatim response is
+recorded, so every verdict re-derives offline.
+
+**Prompt phrasing** is a free parameter nobody registers. `--probe template`
+re-asks the same items under six instruction framings and reports whether your
+*ranking* changes, not just your number.
+
+**Someone else's runner** is fine too. The battery consumes the record and
+manifest schemas, not this runner, and each check declares which fields it
+reads. `dinostomp import <spec> <their-log.jsonl>` brings a foreign log in as
+conforming evidence; `dinostomp evidence <spec>` shows exactly which checks that
+evidence unlocks and which fields the rest are waiting on. Imported evidence is
+unprivileged: schema-validated at the boundary, inside the same drift boundary,
+claiming no engine fingerprint it did not earn, and nothing is invented to fill
+a gap. Pointing your scorer at their outputs re-derives their verdicts
+independently, which is a real check on someone else's scoring for free.
+
+That claim has now been tested on a log this project did not write.
+[benchmarks/lm-eval-import](benchmarks/lm-eval-import/) is a real lm-evaluation-harness details
+file for ARC-Challenge, 1172 items, published by the Open LLM Leaderboard in
+2023. It carries **no generated text at all**, because it scores candidate
+continuations by log-probability, which is how ARC, MMLU and HellaSwag are
+scored there. Three checks now skip naming `output`, the coverage line shortens,
+and nothing is invented to cover the gap. Getting there cost five defects in
+dinostomp itself, written up as D-021 to D-025. The log's own numbers came back
+clean: both metrics it reports re-derive exactly from the raw log-probabilities
+in the same file (N-007).
+
+A **second** format followed, and that is the one that says whether the contract
+generalises: [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai), the UK
+AI Security Institute's framework. Nested documents rather than tables, `C`/`I`
+verdicts rather than 0/1, and real tool events, so an imported agent run reaches
+the trajectory checks. It cost **one** defect where the first cost five (N-011).
+An imported trace is labelled `foreign_observed`, never `harness_observed`: the
+exporting harness watched those calls, this engine did not.
+
+## Replay a pod's runs
+
+```
+dinostomp replay audits/xstest-refusal
+```
+
+Every arm of a pod grades the same items side by side in the terminal, from
+the committed run records: no model is called and nothing is simulated. The
+header says so, names the answer key, states what always giving the most
+common answer scores (marked on every bar), and quotes the scorer's own
+must-fail witnesses so a right word inside a failed answer needs no
+explanation. Each lane shows the model's raw output and the verdict the
+scorer recorded, in lockstep, so the running scores are comparable at every
+frame. Wall time is not animated (the provider and the queue are in it) and
+appears once, as recorded, in the final table, where every accuracy is
+recomputed from the records and checked against the run's saved summary; a
+disagreement prints `MISMATCH` and fails the exit code.
+Several pods replay together (`dinostomp replay podA podB`) only when their
+items are byte-identical and they share a scorer and witnesses; otherwise it
+refuses. `--positive refusal,partial` adds a binary table (accuracy,
+precision, recall, F1, how often each judge says positive, and the
+calibration of that call); the main table carries each judge's ECE. `pip
+install dinostomp[pretty]` draws the tables with
+[rich](https://github.com/Textualize/rich); without it, the same rows print as
+plain text, and a table too wide for the terminal falls back to plain rather
+than cut a number short. `--hide-prompts` is for sharing a recording: request
+text becomes `[request hidden]` with the item's id and type kept, and each
+output is cut to its first line with the length of the rest shown, since the
+rest is often why a verdict failed.
+
+## A Jev question, tested like an if-statement
+
+TypeSafe's Jev answers a question about some text with a probability, and
+people call it from application code the way they would call an if-statement.
+`dinostomp jev` is the test for that if-statement: one file with the question
+and labelled examples, one command.
+
+```yaml
+# urgency.jev.yaml
+question:
+  type: noul
+  instructions: "Does this message need a human to act on it today?"
+require: {accuracy: 0.85, flips: 0}      # CI fails under these
+examples:
+  - {state: "Help! My payouts have been failing for 3 days.", expect: yes}
+  - {state: "Thanks, everything is working again!", expect: no}
+  # 20+ of these
+```
+
+```
+$ dinostomp jev urgency.jev.yaml
+urgency.jev.yaml | noul | jev-1.13.0 via typesafe | 24 examples
+
+  accuracy     100% (24 of 24)   95% interval 86% to 100%
+  threshold    p(yes) >= 0.50 gives 100%; no other cut does better on these examples
+  confident    at >= 0.90 it answers 96% of inputs, 100% of those right
+  calibration  ECE 0.062 (bar 0.10)
+  blank input  answers 'no' at 0.81; saying that to every example scores 50%; the model is +50 points from that
+  rewording    0 of 60 answer(s) flipped (whitespace, formatting, politeness)
+```
+
+What each line is for: the interval says how much your examples can tell you;
+the threshold line says where to cut p(yes); **blank input** is what the
+question answers with no text at all, so lopsided examples or a leaning
+question show up as a small gap; **rewording** changes nothing a reader
+would care about and must not flip an answer; every wrong answer is listed,
+the ones it was *sure* of first, because those are a wrong label or the
+question's blind spot; and **close calls** (right, but under 0.80) show where
+the wording is carrying the decision. `examples/jev-question/refund.jev.yaml`
+is a question with a gray zone on purpose, and its report points at one of
+its own labels. Every run is saved under `data/jev/` and compared with the last
+run of the same question, so when `jev-latest` moves to a new version, the
+change is one printed line (`jev-1.13.0 -> jev-1.14.0: accuracy 100% -> 90%,
+2 answer(s) changed`) rather than something your users find. Choice questions
+work the same way with `type: choice` and `criteria`. Your key, your machine;
+`TYPESAFE_API_KEY` or, failing that, `OPENROUTER_API_KEY`.
+
+## Agents: audit the execution, not the diary
+
+Point a spec at pod-local Python and it mounts as an examinee, with the budget
+cap, the ledger, the witness gate and the whole battery applied unchanged. Two
+rails, and the difference is who writes the trace.
+
+On the **self-reported** rail the agent writes its own trajectory, and an agent
+that omits a call from its trace cannot be caught by reading it. On the
+**mediated** rail the harness holds the tools:
+
+```yaml
+tools:
+  retrieve: tools.py:retrieve
+models:
+  - {provider: mediated, model: grounded, entrypoint: agent.py:answer}
+```
+
+Now the trajectory is a log, a forbidden tool is denied when the agent reaches
+for it rather than noticed afterwards, and evidence can be **withheld**:
+
+```bash
+dinostomp run examples/mediated/eval.yaml --probe ablate
+```
+
+```
+[ok]   answer-grounding         0 of 3 target(s) pass items whose answer does not APPEAR ...
+[warn] answer-grounding-causal  1 of 3 agent(s) answer identically with their evidence withheld
+         - oneshot: 18 of 18 passing answer(s) (100%) are unchanged when the evidence is withheld
+```
+
+The first check asks whether the answer *appears* in the retrieved evidence, and
+an agent answering from memory that retrieves the right thing anyway sails past
+it. The second takes the evidence away and asks whether the answer changes. It
+did not, for any of them.
+
+Mediation makes the trace trustworthy. It does **not** make the agent
+trustworthy: in-process, `tools._registry` reaches a forbidden tool in one
+attribute access and leaves the trajectory empty. For that, put a process
+boundary in the way:
+
+```yaml
+isolation: {mode: subprocess, timeout_s: 60}
+```
+
+The agent runs in a child with a credential-stripped environment, no tool code,
+a denied `socket` module and an enforced timeout. Every claim is tested against
+an in-process control, **including the two escapes that still work**: a re-exec
+gets a socket, and `open()` still reads the tool file. Those are asserted as
+passing tests so the boundary cannot quietly grow a reputation it has not
+earned.
+
+It is containment, not confinement: it defends a run against a careless agent,
+not a machine against a hostile one. Untrusted code belongs in a VM.
+
+## Extending it
+
+The core is small and owns what `BROKEN` means. Two rails grow around it, and
+both pay the same evidence tax the core pays itself.
+
+**Checks.** A package exposing a `dinostomp.checks` entry point adds checks to
+the battery. Its entry fee is the core's own: a planted defect the check must
+catch and a clean pod it must stay quiet on. Ship neither and your checks still
+run and are still reported, but they are labelled `UNVALIDATED`, excluded from
+coverage, and **they do not vote on the verdict**.
+
+**Adapters.** Because the battery consumes the schemas rather than this runner,
+anything that writes conforming evidence is auditable. Other harnesses' adapters
+can live in other people's repos; `dinostomp import` is the reference one.
+
+**The rule that makes this safe, and it is enforced in code:**
+
+> An extension may **add** findings. It may never remove or soften one.
+
+No hook runs before the core, filters findings, or moves a threshold.
+Extensions get a write-only collector, `THRESHOLDS` is fingerprinted around
+their execution, and core findings are compared before and after. Every loaded
+extension is named, versioned and hashed in the report, so a `SOUND` is always a
+claim about a specific set of code.
+
+The full contract, including why an extension is trusted when a stranger's pod
+is not, is in **[METHODOLOGY.md](METHODOLOGY.md)** along with all one hundred and two
+checks and why each one exists.
+
+## In CI
+
+`stomp` already exits the way CI wants: `0` sound or ok, `1` broken, `4`
+incomplete, and `--json` writes the machine-readable report.
+
+```bash
+dinostomp stomp evals/refusal/eval.yaml --json stomp-report.json
+```
+
+The packaged Action is [action.yml](action.yml):
+
+```yaml
+- uses: collapseindex/dinostomp@v0.63.0
+  with:
+    target: evals/refusal/eval.yaml
+```
+
+It fails the job on a gated finding and posts the findings as a PR comment.
+`allow-incomplete` and `trust-code` both default to **false**, because an
+unattended pipeline must not accept thin coverage or import a stranger's Python
+because a default said so.
+
+With `version` unset it installs the same git ref the Action was invoked at,
+so the block above works whether or not the package index has the release. To
+install from PyPI instead, pass a pip spec:
+
+```yaml
+    version: "dinostomp==0.63.0"
+```
+
+That is stated rather than hidden because a copy-pasteable block that fails for
+the first person who tries it is a credibility wound in a document whose whole
+thesis is receipts. It did fail, for thirty-five days: [D-095](FINDINGS.md#d-095).
+
+`dinostomp report` also writes `stomp-badge.svg`, which carries the verdict and
+its coverage fraction together (`sound 57/57`) so a badge on a README cannot
+outrun the evidence behind it.
+
+## Before you trust it
+
+**A pod is code.** A custom scorer, judge, or target is a file that gets
+imported, and importing runs it. So `stomp`, `report` and `verify` refuse to
+import pod-local Python by default; the affected checks skip, loudly, and the
+verdict says so. `dinostomp inspect <spec>` reads a stranger's Python *without*
+importing it. Full statement: [SECURITY.md](SECURITY.md).
+
+**`MECHANICALLY SOUND` is a narrow claim, and the report says so in a field it
+can never fill.** Every report carries:
+
+```
+measures the intended construct: NOT ESTABLISHED BY DINOSTOMP
+```
+
+That is a constant. There is no flag and no code path that sets it to anything
+else, and a test walks the source to keep it that way. This battery checks
+mechanical integrity; construct validity is argued, not computed, and a trivial,
+mis-aimed, or saturated eval can pass every check here. One hundred and two is not a
+number that bounds the ways an eval can be invalid.
+
+**The self-tests are not independent validation.** 102 of 102 caught means every
+check fires on the failure it was built for. Those failures were planted by the
+same hands that wrote the checks, so it says nothing about defects nobody here
+imagined, and the scorecard prints that caveat under its own score. The next
+real credibility jump is outsiders breaking it: see
+[CONTRIBUTING.md](CONTRIBUTING.md), where the ask is a pathological pod built
+from the schemas *without* reading the check implementations. Misses get
+published next to the tool's own defects.
+
+**The battery ships with its own validation, and you can run it.**
+
+```bash
+python trials/run_trials.py        # 102 planted defects, 16 pods that must stay clean
+python trials/pin_thresholds.py    # which of its own thresholds are load-bearing
+```
+
+The current answers are 102 of 102 caught, 0 false alarms, and 34 of 36 thresholds
+pinned. That last number is published because it is uncomfortable: two
+thresholds could be quietly loosened today without a single trial noticing, and
+the tool names them.
+
+## Docs
+
+- **[NVIDIA validation-data audit](audits/nemotron-knowledge-mcqa/FINDINGS.md)**: direct-source structural checks, reproduction script, and corrections to the initial audit.
+
+- **[AUTHORING.md](AUTHORING.md)** — writing a spec, or having a model write one: the schema contract and the self-correction loop
+- **[FINDINGS.md](FINDINGS.md)** — what it found, in MMLU, GSM8K, TruthfulQA, and in itself
+- **[METHODOLOGY.md](METHODOLOGY.md)** — the one hundred and two checks, the pod format, the philosophy, the self-audit
+- **[SECURITY.md](SECURITY.md)** — pod code, untrusted model output, money, what this does not do
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — the entry fee for a new check is a planted defect, not an argument
+- **[findings.json](findings.json)** — the ledger as data: versioned, validated against [docs/findings.schema.json](docs/findings.schema.json) before it is written
+- **[REFERENCES.md](REFERENCES.md)** — where the borrowed methods come from, what the audited benchmarks are, and what this deliberately does not borrow
+- **[CHANGELOG.md](CHANGELOG.md)** — every release, including the ones that fixed its own flattering bugs
+
+## Authenticity
+
+<sub>The engine fingerprint is the SHA-256 of dinostomp's own code and schema pack (`203b45ecbf3cceeec4acaf4593e281b51bf83f1b70523a25e2d8c4601b4dc7ac`). Recompute it with `dinostomp fingerprint`; if it differs, you are not running the code these docs describe. It is recorded in every run manifest as `tool_sha256`, because an auditing tool is an input to its own verdicts and should be hashed like every other input. When you cite a RESULT rather than the tool, quote the fingerprint alongside the version.</sub>
+
+## Citing, contributing, license
+
+`CITATION.cff` carries the citation metadata. `CONTRIBUTING.md` states the entry
+fee for a new check and the rules a patch may not remove. [Apache-2.0](LICENSE).
+
+<sub>Built and maintained by one person, unfunded. If it caught something in your
+eval, [sponsorship](https://github.com/sponsors/collapseindex) buys time to keep
+pointing it at real benchmarks and publishing what it finds, including the one hundred
+  findings against itself. Adversarial pods and bug reports are worth more than
+money and are always free:
+[break it, please](CONTRIBUTING.md#break-it-please).</sub>

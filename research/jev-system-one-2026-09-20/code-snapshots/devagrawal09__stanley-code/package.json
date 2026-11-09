@@ -1,0 +1,66 @@
+{
+  "name": "stanley-code",
+  "version": "0.1.0",
+  "description": "Stanley: a Jev-first, self-improving coding agent. Deterministic workflows plus bounded TypeSafe Jev judgment, with a Pi coding-agent fallback that teaches Stanley new workflows.",
+  "license": "MIT",
+  "author": "Dev Agrawal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devagrawal09/stanley-code.git"
+  },
+  "homepage": "https://github.com/devagrawal09/stanley-code#readme",
+  "bugs": {
+    "url": "https://github.com/devagrawal09/stanley-code/issues"
+  },
+  "type": "module",
+  "bin": {
+    "stanley": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "keywords": [
+    "stanley",
+    "typesafe",
+    "jev",
+    "pi",
+    "coding-agents",
+    "ai-agents",
+    "judgment",
+    "developer-tools",
+    "git-diff",
+    "test-failures",
+    "cli"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "smoke": "node scripts/smoke-cli.ts",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run smoke",
+    "check:package": "npm run build && node scripts/release.ts manifest && node scripts/release.ts pack --dry-run"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0",
+    "tsx": "4.23.13"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.3"
+  }
+}

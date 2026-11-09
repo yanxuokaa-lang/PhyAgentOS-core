@@ -1,0 +1,370 @@
+<div align="center">
+
+<img src="./assets/readme/jev-gate-logo.svg" width="460" alt="jev-gate">
+
+# jev-gate
+
+### Not every coding task needs your best model.
+
+Jev-powered model routing for Claude Code.<br>
+An experiment in using frontier intelligence for the hard parts—not every part.
+
+[![CI](https://github.com/MongLong0214/jev-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/MongLong0214/jev-gate/actions/workflows/ci.yml)
+[![V5 local plugin](https://img.shields.io/badge/V5-local%20plugin%2C%20host--verified-58A6FF)](#try-v5)
+[![Savings not established](https://img.shields.io/badge/savings-not%20established-D29922)](#results)
+[![Node 22+](https://img.shields.io/badge/node-22%2B-3FB950)](#try-v5)
+
+[The idea](#the-idea) · [How V5 works](#how-v5-works) · [Try V5](#try-v5) · [What is verified](#what-is-verified-and-what-is-not) · [Results](#results) · [Build with us](#build-with-us)
+
+</div>
+
+> **Status · September 18, 2026 · v0.2.0.** V5 turns one request into a judged workflow: Jev decides the execution
+> shape, a strong read-only planner decomposes the job, a Sonnet coordinator runs the plan behind an execution guard,
+> and Jev picks a tier for every planner and worker dispatch. The mechanism was **observed end to end on Claude Code
+> 2.1.275/2.1.276** (headless and interactive). **No cost or time benefit is established**: the whole-job comparison was
+> stopped after one cell for budget reasons, and in that cell every task routed to the same tier. See
+> [What is verified](#what-is-verified-and-what-is-not) and [Results](#results). Contract:
+> [#21 PRD](https://github.com/MongLong0214/jev-gate/issues/21) → [#22 ADR](https://github.com/MongLong0214/jev-gate/issues/22).
+> Release: [v0.2.0](https://github.com/MongLong0214/jev-gate/releases/tag/v0.2.0). Next work and current state:
+> [HANDOFF.md](HANDOFF.md).
+
+## The idea
+
+You ask your coding agent:
+
+> “Build a space-simulation game.”
+
+That is one request, but many different jobs: work out the physics, design the state model, implement camera controls, connect the HUD, and test the result.
+
+<p align="center">
+  <img
+    src="./assets/readme/hero.svg"
+    width="760"
+    alt="One user job breaks into four pieces of work — simulation architecture, camera controls, HUD wiring and regression tests. Each is evaluated at the gate on its own. The architecture work goes to a frontier model; the other three go to the cheaper model."
+  >
+</p>
+
+**Why give all of those jobs the same model?**
+
+`jev-gate` explores a different default: **Sonnet coordinates. Jev evaluates the next delegated task. A suitable Claude model does the work.**
+
+The question is not just *“Is this project hard?”* It is *“Does this next piece of work need a frontier model?”*
+
+We are not aiming for hundreds of tiny agents. The useful unit is a coherent outcome—camera controls and their tests, for example—not each file read. Handoffs, repeated exploration, and integration all have costs. The gate only helps if it saves more than it adds.
+
+## How V5 works
+
+One request becomes a judged workflow. Jev is asked at every decision point, because a judgment costs about $0.0001 and
+returns in under a second; the expensive models are asked only where a decision is hard.
+
+```text
+your request
+  └─ Gate A  Jev: one direct conversation, or a decomposed job?
+       ├─ direct        → Sonnet works normally, no plan, no guard
+       └─ orchestrated  → strong planner (Opus, or Fable when Jev says the uncertainty warrants it)
+                            reads the repository and returns tasks, interfaces, dependencies and required checks
+                          Sonnet coordinates: it dispatches ready tasks and integrates results, but cannot
+                            implement the job itself while orchestration is active
+                            └─ Gate B  Jev: which tier runs this task? fast · standard · deep · frontier
+                            └─ Gate C  Jev: does this result satisfy its contract? (advisory)
+                          a broken planning assumption returns to the planner, not to improvisation
+```
+
+**Sonnet runs the plan; it does not invent the important parts of it.** V4 left decomposition to the coordinator, and on
+four small jobs it never delegated at all ([results](#results)). V5 moves that decision to Jev and the planner.
+
+**Code owns acceptance.** A worker's result unlocks its dependents only when the reply reports every required check of
+its task contract as passed. Gate C can advise rework or replanning, but it can never turn an incomplete result into an
+accepted one.
+
+**Uncertainty preserves the default.** A tie, a low confidence, an abstention or any HTTP failure keeps the call that was
+already going to happen. A tier above standard additionally requires a concrete upgrade basis in the task itself.
+
+| Tier | Model | Reasoning effort | Used for |
+|---|---|---|---|
+| fast | `haiku` | requested `low` — **not applied by the host for this model** | mechanical, fully specified work |
+| standard | `sonnet` | session default | bounded implementation under established contracts |
+| deep | `opus` | `high` | unresolved interacting constraints, or an observed reasoning failure |
+| frontier | `fable` | `xhigh` | exceptional foundational uncertainty |
+
+Planner dispatches use the deep and frontier tiers only. Tiers are abstract on purpose: the model names are a per-host
+map, so the same policy can move to another coding host later.
+
+<details>
+<summary><strong>Technical boundary: exactly where the gates run</strong></summary>
+
+**Gate A** runs on a root `UserPromptSubmit` in `auto` with a `prompt_id`. Without a prompt identity there is no job and
+no guard. Blank input, slash commands, child callers, a missing key or an invalid config make no request.
+
+**The guard** is an allow-list and is active only while a job is orchestrated: the root may use Read, Grep, Glob, LS,
+WebFetch, WebSearch, AskUserQuestion, TodoWrite, the Task tools, ListAgents and owned Agent calls. Everything else is
+denied with a fixed reason. Named root tools are blocked and unknown tools are declined; this is a product execution
+boundary, not a sandbox. A disabled or crashed hook removes it.
+
+**Gate B** runs for a new eligible owned dispatch: foreground, no `model` pin, no `resume`/`agentId`/`name`/`team_name`/
+`isolation`/`fork`, no concrete `CLAUDE_CODE_SUBAGENT_MODEL`, a valid `[JEV_TASK rev=<n> id=<id>]` marker naming a task
+of the current plan revision whose dependencies are accepted, deliverables disjoint from running tasks, and the composed
+contract within 64 KiB. The patch returns the complete original input with `subagent_type`, `model` and the appended
+contract changed; permissions, role and every other field survive.
+
+**Gate C** runs after a worker completes, in `auto`, only when the deterministic check already accepted the reply. Its
+verdict is recorded and delivered as context; it never changes readiness.
+
+Bounds per job: two planning attempts, two replans, two attempts per task, three parallel workers. Job state lives in one
+private file per session under `$XDG_STATE_HOME/jev-gate/jobs/` (0700/0600, atomic writes, superseded generations kept as
+history). Any failure — missing key, timeout (one deadline covering headers and body), HTTP 401/422/429/529, invalid
+response, oversized input — preserves the native call with a fixed stderr code. There are no retries.
+
+</details>
+
+## Try V5
+
+Requirements: **Node.js 22+**, **official Claude Code signed in with a Claude.ai subscription** (the recorded checks used
+2.1.275 and 2.1.276 on macOS), and a **TypeSafe API key** for `auto` mode. Start on a disposable project. Read the
+[data disclosure](#your-login-your-data-your-choice) first.
+
+```sh
+git clone https://github.com/MongLong0214/jev-gate.git
+cd jev-gate
+npm ci
+npm run build
+PLUGIN_DIR="$PWD"
+
+# Set TYPESAFE_API_KEY in this shell with your local secret workflow — never in chat, an issue or a committed file.
+# The hook does not load a project's .env.
+JEV_GATE_MODE=auto node dist/cli.js doctor      # diagnostics only, no inference
+
+cd /path/to/your/project
+JEV_GATE_MODE=auto \
+CLAUDE_CODE_FORK_SUBAGENT=0 \
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
+claude --model sonnet --plugin-dir "$PLUGIN_DIR"
+```
+
+Type normally. There is no `/jev` command. The two environment settings request the foreground, non-fork launch profile
+the plugin is verified against; they are scoped to this command and are not written into your settings.
+
+| Mode | What runs | Jev |
+|---|---|---|
+| `off` (default) | nothing: no admission, no guidance, no guard, no state or trace writes. Loaded agent definitions still exist — remove `--plugin-dir` and start a new session for the absent-plugin condition | 0 |
+| `native` | the same roles, guard and contracts; the main session decides whether to start planning and picks tiers by choosing a worker profile | 0 |
+| `auto` | Gate A on your request, Gate B on every planner and worker dispatch, Gate C on every worker result | ≤ 1 request per gate event |
+
+Optional config at `~/.config/jev-gate/config.json` (or `JEV_GATE_CONFIG`), `JEV_GATE_MODE` overrides the mode only, and
+`JEV_GATE_MODE=off` returns before any file is read:
+
+```json
+{ "version": 5, "mode": "off", "jevModel": "jev-1.13.0", "requestDeadlineMs": 3000,
+  "admissionConfidenceFloor": 0.8, "routeConfidenceFloor": 0.8, "resultConfidenceFloor": 0.8,
+  "plannerDefaultTier": "deep", "maxParallelWorkers": 3, "guardAllowTools": [],
+  "models": { "fast": "haiku", "standard": "sonnet", "deep": "opus", "frontier": "fable" } }
+```
+
+A V3 or V4 file is rejected with this sample and the plugin never rewrites yours — V5 sends more of your text to
+TypeSafe, so an old `auto` setting is not carried over silently. Model mappings choose what a patch proposes; they grant
+no account access. The three floors are uncalibrated policy values. `guardAllowTools` adds read-only tools your project
+needs during orchestration, for example an MCP reader.
+
+Job state lives in `$XDG_STATE_HOME/jev-gate/jobs/` (`~/.local/state/jev-gate/jobs/` by default), one file per session,
+containing your plan and task text. Delete the directory to remove it; a superseded job is kept as history inside its own
+file until the session's file is removed.
+
+A local archive for a machine without a checkout: `npm run pack` writes `dist-pack/jev-gate-<version>.zip` (compiled
+hook, manifest, hooks, the six agent profiles, docs); load it with `--plugin-dir /path/to/jev-gate-<version>.zip`.
+
+## What is verified, and what is not
+
+Recorded observations are in [`bench/results/v5-host-2026-09-18/`](bench/results/v5-host-2026-09-18/) (Claude Code
+2.1.275 and 2.1.276, macOS, Claude.ai subscription, nine headless sessions and one interactive session) and
+[`bench/results/v4-host-2026-09-18/`](bench/results/v4-host-2026-09-18/) for the inherited task boundary.
+
+| Observed | Evidence |
+|---|---|
+| A patch that changes `subagent_type` and `model` together spawns the target profile with its own tools and permissions | child `agent_type` and `resolvedModel`; haiku and fable children both ran and could still Edit and Bash |
+| `prompt_id` is present on `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `Stop` | key dumps per event |
+| The planner returns a JSON plan that the hook parses; the job reaches `planned` and its ready ids reach the coordinator | plan trace, `rev 1` |
+| The canonical task contract reaches the worker | workers reported check ids the coordinator never sent |
+| The guard denies a root `Bash` during orchestration with the fixed reason; a child's own Bash is untouched | guard trace, child tool results |
+| Direct admission runs with no planner, no guard and no owned call; `mode=off` writes no state, trace or guidance | separate sessions |
+| One HTTP attempt per gate event; a real admission returned `direct` at p .99, confidence .98 | real-Jev smoke, 605 input tokens, 698 ms |
+| `fable` applies the requested `xhigh` reasoning effort | `CLAUDE_EFFORT=xhigh` echoed by the child |
+| A worker result judged invalid is reworked as `attempt=2` under the same plan | partial run cell |
+
+| Not verified | Why it matters |
+|---|---|
+| **`haiku` ignores the requested `low` effort** | the child receives no effort value at all, so the fast tier's saving is the model price only |
+| Parallel dispatch of independent tasks | the planners we observed produced serial chains, so the wall-clock lever is untested |
+| Real-Jev Gate B and Gate C in the host smoke | that session's admission returned `direct`, leaving no owned call; the partial run exercised them instead |
+| A root `Edit` denial and the terminal stop in a live session | verified at hook level only |
+| Any cost, runtime or quality benefit | see [Results](#results) |
+
+`doctor` reports configuration and environment issues (auth method, model overrides, launch profile, key presence, the
+six role definitions and their effort fields). It is not proof that patching, effort or model access works on your host.
+
+## Results
+
+### The first benchmark changed the design (V3, September 17)
+
+**Our first gate lost to plain Sonnet. We kept the result.**
+
+<p align="center">
+  <img
+    src="./assets/readme/pilot.svg"
+    width="760"
+    alt="Estimated cost per run across four configurations. Always-Fable on the original request cost $2.39 and passed 3 of 4; always-Fable on the Jev-enriched request cost $2.50 and passed 3 of 4; plain Sonnet with the plugin absent cost $0.58 and passed 4 of 4; Sonnet behind the V3 Jev gate cost $1.42 and passed 4 of 4."
+  >
+</p>
+
+| Configuration | Passed | Estimated total cost | Mean runtime |
+|---|---:|---:|---:|
+| Fable, original request | 3/4 | $2.3940 | 50.9 s |
+| Fable, Jev-enriched request | 3/4 | $2.4951 | 51.9 s |
+| **Sonnet, plugin absent** | **4/4** | **$0.5781** | **22.2 s** |
+| Sonnet, V3 Jev gate | 4/4 | $1.4242 | 41.5 s |
+
+One low-confidence decision escalated to Fable and dominated the overhead. That policy is gone in V4: uncertainty preserves the native call. [Published report](bench/results/run-1-2026-09-17/report.md) · [Original checker report](bench/results/run-1-2026-09-17/report.checker-v1.md) · [What changed](https://github.com/MongLong0214/jev-gate/issues/6)
+
+### V4 evaluation
+
+<p align="center">
+  <img
+    src="./assets/readme/v4-flow.svg"
+    width="860"
+    alt="V4 flow. A Sonnet main session coordinates and integrates; a small task finishes directly with no Jev call; a delegated task goes to a worker or a read-only planner, where a PreToolUse Agent hook lets Jev evaluate that one task once and select a model. V5 keeps this task boundary and adds admission, mandatory planning and result judgment around it."
+  >
+</p>
+
+V5 keeps this task boundary and adds the admission, planning and result gates around it.
+
+
+V4 is compared on complete coding jobs under five arms: `sonnet_native` (plugin absent), `native_hierarchy` (same roles, Sonnet picks models), `jev_hierarchy` (Jev picks eligible tasks), `frontier_native` (Fable main, plugin absent), and `fixed_hierarchy` (same hierarchy, content-blind role defaults). The primary comparison is **Jev hierarchy versus native hierarchy**; beating the expensive default alone proves nothing.
+
+Four new jobs live in [`bench/v4/`](bench/v4/README.md): a localized bug fix with regression tests, a cross-file feature touching model/serialization/view, a compound simulation with deterministic time, camera and HUD, and an async error-propagation bug. Each has a broken start, a trusted behavior checker, and a reference that passes it.
+
+**Run 1 — product policy as shipped (September 18, 2026).** 4 jobs × 5 arms, one repetition, seed 42, Claude Code 2.1.275, Claude.ai team subscription, headless. All 20 cells completed; every arm passed 4/4 after a checker correction (below). Tables: [`bench/results/v4-run-1-2026-09-18/`](bench/results/v4-run-1-2026-09-18/).
+
+| Arm | Passed | Fable tokens | Claude est. | Jev est. | Runtime (4 jobs) |
+|---|---:|---:|---:|---:|---:|
+| `frontier_native` | 4/4 | 1,228,003 | $4.448 | $0 | 449 s |
+| `sonnet_native` | 4/4 | 0 | $1.116 | $0 | 301 s |
+| `native_hierarchy` | 4/4 | 0 | $1.059 | $0 | 274 s |
+| `fixed_hierarchy` | 4/4 | 0 | $1.046 | $0 | 250 s |
+| `jev_hierarchy` | 4/4 | 0 | $1.063 | **$0** | 252 s |
+
+**The gate never engaged.** In all twelve hierarchy cells the plugin loaded, both roles were discovered and the coordinator guidance was injected, but the Sonnet coordinator delegated **zero** tasks: it did every job directly. The three hierarchy arms are therefore the same execution, and their differences from each other (−2 % to +8 %) and from plain Sonnet (≈5 % cost, 9–17 % runtime) are run-to-run variance plus one injected guidance block. The 76 % cost reduction against `frontier_native` comes from starting on Sonnet, not from Jev. On jobs of this size and in headless mode, **V4 adds nothing beyond native Sonnet because it is never asked to decide.** Primary comparison `jev_hierarchy` vs `native_hierarchy`: 4/4 vs 4/4, cost −0.4 %, runtime +8.2 %, validity ok.
+
+The original checker had mis-scored three `job-queue` candidates whose regression tests *hang* (rather than fail) against the unfixed source; hanging is not passing, so the checker was corrected, every candidate was re-scored, and both report revisions are kept.
+
+**Diagnostic — forced delegation (same day).** To observe the gate path at all, the same four jobs were re-run with an explicit user instruction to delegate the implementation to `jev-gate:worker` without a model argument (`bench/v4/diagnostic-delegate.json`), `jev_hierarchy` vs `native_hierarchy` only. This measures the mechanism, not the product policy. Tables: [`bench/results/v4-diag-delegate-1-2026-09-18/`](bench/results/v4-diag-delegate-1-2026-09-18/).
+
+| Job | Jev route (confidence) | Decision | Worker ran on | jev / native cost | jev / native time |
+|---|---|---|---|---:|---:|
+| cart-total | sonnet (.99) | patch → sonnet | claude-sonnet-5 | $0.31 / $0.31 | 75 s / 80 s |
+| todo-priority | opus (.35; p .52/.48) | preserve (below floor) | claude-sonnet-5 (default) | $0.38 / $0.34 | 102 s / 93 s |
+| space-sim | opus (.90) | patch → opus | **claude-opus-5[1m]** | $1.35 / $0.69 | 282 s / 233 s |
+| job-queue | sonnet (.58) | preserve (below floor) | claude-sonnet-5 (default) | $0.35 / $0.38 | 82 s / 107 s |
+
+All eight cells passed. Four eligible calls, four Jev requests (634–861 ms, 12,644 input tokens ≈ $0.0005 total), two patches, two abstentions, zero target/actual model mismatches, hints delivered on both patched calls. Totals: `jev_hierarchy` $2.374 and 541 s versus `native_hierarchy` $1.724 and 513 s — **the Jev arm cost 38 % more for the same four passes**, entirely from the one Opus escalation on `space-sim`, which the Sonnet worker also solved. Two of four routing decisions abstained at the .8 floor.
+
+**Reading.** The native boundary and the routing mechanism work as specified and were observed end to end, including an actual Opus child. The product hypothesis is **not supported by this evidence**: under the shipped policy the gate did not engage, and when forced to engage it selected a more expensive model once without a quality gain. This is one repetition on four small development jobs, so it is exploratory; it does not show that Jev cannot help on larger jobs where Sonnet would fail or delegate on its own.
+
+### V5 evaluation
+
+**Gate A, measured on 29 labelled prompts (live Jev, $0.001).** The admission question agreed with the intended label on
+28 of 29. The five compound development requests were admitted at confidence 0.81–0.96 and every ambiguous or
+contradictory prompt was preserved as `needs_context` or `abstain`. The two pilot jobs prepared for the whole-job
+comparison were chosen `orchestrated` but at confidence **0.61 and 0.72**, below the uncalibrated 0.8 floor, so the
+product policy would run them as one direct conversation. The floor was **not** lowered to change that; a diagnostic arm
+with forced orchestration was added instead. Data: [`bench/results/gate-a-calibration-2026-09-18.json`](bench/results/gate-a-calibration-2026-09-18.json).
+
+**Whole-job comparison: started, then stopped after one cell.** The run was cut for budget before any comparison arm
+executed, so **there is no V5 cost, runtime or quality result**. What the one completed cell shows is the mechanism
+working on a real job — admission, a planner producing a multi-task plan, four worker dispatches, one rework, three
+advisory result judgments — and one uncomfortable observation:
+
+| Worker task | Jev route | Confidence | Upgrade basis | Applied |
+|---|---|---:|---|---|
+| errors module | standard | 0.96 | `no_specific_basis` | patch → standard |
+| formatter | standard | 0.41 | `no_specific_basis` | preserve (below floor) |
+| formatter, attempt 2 | standard | 0.38 | `no_specific_basis` | preserve (below floor) |
+| parser | standard | 0.94 | `no_specific_basis` | patch → standard |
+| analyzer | standard | 0.99 | `no_specific_basis` | patch → standard |
+
+**Every task routed to the same tier.** No task was sent down to `fast` and none was sent up, so in that cell routing
+changed nothing that could show up as a saving. `no_specific_basis` on every call is the upgrade gate working as
+specified, and it also says the planner's task descriptions carried no evidence that a harder tier was warranted. The
+first fix to try is the planner contract, not the floor. Evidence:
+[`bench/results/v5-run-1-partial-2026-09-18/`](bench/results/v5-run-1-partial-2026-09-18/).
+
+Two defects the host verification caught before release: the benchmark runner inherited the launching session's
+`CLAUDE_*` environment (so a measured session could silently run at the parent's reasoning effort), and the hook dropped
+the host's effort field because it arrives as an object. Both are fixed; any earlier effort observation is invalid.
+
+**Next.** The upgrade gate answered `no_specific_basis` on every call, so the first change is the planner contract: each
+task must carry the concrete unresolved constraints that would justify a stronger tier, and the fast tier needs a task
+shaped so that a cheap model can be trusted with it. Then the comparison arms run. Details in
+[HANDOFF.md](HANDOFF.md) and [#33](https://github.com/MongLong0214/jev-gate/issues/33).
+
+<details>
+<summary><strong>What would change the picture</strong></summary>
+
+Jobs large enough that the coordinator delegates on its own (or that Sonnet fails), repetitions to separate policy from variance, and a frozen-boundary probe of `space-sim` comparing Opus and Sonnet workers from the same state. Changing the coordinator guidance to delegate more, or lowering the floor, would be policy tuning and must be developed on separate data and declared before the next held-out run.
+
+</details>
+
+<details>
+<summary><strong>Measurement rules</strong></summary>
+
+Rows come from the saved plan, not from the files that survived: a missing cell is a missing record, never “not started” or cost zero. Totals include failures and timeouts; when any consumption is unknown the total is null and the known subtotal is shown beside it. The complete-case subset is a labeled diagnostic, never the headline. A timeout is not time-to-success. Whole-tree `modelUsage` is the accounting source; Claude dollars are API-equivalent estimates, not subscription invoices; Jev dollars are list price × input tokens with the price frozen per run. Whole jobs are the unit; children of one job are clustered observations. Same pass counts are not equivalence.
+
+```sh
+node dist/bench/run.js --cases bench/v4/cases.json --out /outside/repo/run                       # plan: stdout only, no writes, no inference
+node dist/bench/run.js --cases bench/v4/cases.json --out /outside/repo/run --execute --max-sessions 20
+node dist/bench/report.js --run /outside/repo/run                                                  # reads files only; new report revision each time
+node dist/bench/run.js --regrade --cases bench/v4/cases.json --out /outside/repo/run               # re-score saved snapshots, 0 model calls, history kept
+```
+
+Execute refuses to start without a verified Claude.ai subscription login, with API-key/gateway env active, with a concrete subagent-model override, without `TYPESAFE_API_KEY` when the Jev arm is planned, or into an existing output directory. `--arms a,b` runs a declared subset; unrun controls limit the conclusion. Raw run folders contain task text and stay local.
+
+</details>
+
+## Your login. Your data. Your choice.
+
+Claude runs through its existing official login. `jev-gate` does not implement OAuth, extract or refresh tokens, or require `WORKER_API_KEY`, `FRONTIER_API_KEY`, or an Anthropic API connection. Jev is a separate hosted service and needs **`TYPESAFE_API_KEY`**; its charges and limits are separate from your Claude subscription.
+
+**In `auto` mode V5 sends three kinds of text to TypeSafe**: your request at admission, the composed task contract with
+the relevant predecessor summaries at each planner or worker dispatch, and the worker's structured reply at the result
+judgment, each with fixed evaluation criteria. That text can include source excerpts, file names, and earlier user
+constraints — more than V4 sent, which is why a V4 configuration is rejected rather than reused. The hook does not independently upload your repository, transcript or environment, but text supplied by the caller can contain sensitive information. **Only enable `auto` for data you are authorized to send.** There is no automatic secret-scrubbing or zero-retention guarantee. `native` and `off` send nothing.
+
+Optional local traces (`JEV_GATE_TRACE_DIR`) hold per-phase JSON with prompt lengths and hashes, decisions, Jev usage and the child's reported model; they never contain the key or the prompt body, are written 0700/0600, and are not uploaded. Delete the directory to remove them.
+
+## Build with us
+
+**The most useful contribution is a real coding task—not another optimistic percentage.** Share a sanitized task, what a correct result should do, the host/model versions, and what actually happened. Easy tasks that were over-escalated and expensive tasks that did not benefit from a stronger model are both useful.
+
+[Report a finding](https://github.com/MongLong0214/jev-gate/issues/new) · [Roadmap](https://github.com/MongLong0214/jev-gate/issues/21)
+
+Implementation follows **[#21 PRD](https://github.com/MongLong0214/jev-gate/issues/21) → [#22 ADR](https://github.com/MongLong0214/jev-gate/issues/22) → [#23](https://github.com/MongLong0214/jev-gate/issues/23)–[#31](https://github.com/MongLong0214/jev-gate/issues/31)**. Issues #1–#18 preserve V3 and V4; their closure does not certify inherited defects as fixed. Contributor rules are in [AGENTS.md](AGENTS.md).
+
+```sh
+npm ci
+npm run typecheck
+npm test            # offline: fake HTTP, fake CLI, temp dirs; no key or login
+npm run build
+claude plugin validate . --strict
+```
+
+## Research and references
+
+The [research review in ADR #22](https://github.com/MongLong0214/jev-gate/issues/22) connects routing, execution-state information, simple baselines, and coordination overhead to the design. Results from other models and benchmarks are not forecasts for this plugin.
+
+[Claude Code hooks](https://code.claude.com/docs/en/hooks) · [Native subagents](https://code.claude.com/docs/en/sub-agents) · [Cost tracking](https://code.claude.com/docs/en/agent-sdk/cost-tracking) · [TypeSafe System One API](https://docs.typesafe.ai/api.md) · [Confidence](https://docs.typesafe.ai/confidence.md) · [Jev 1.13 limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13.md)
+
+## License
+
+A license has not yet been selected. No license file is present in this revision.
+
+---
+
+**Keep the hard thinking. Question the expensive default.**

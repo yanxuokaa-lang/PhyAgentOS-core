@@ -1,0 +1,186 @@
+# NanoJev — A nano replica of [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
+
+**English** | [简体中文](README.zh-CN.md)
+
+**A 0.6B parallel decision model. States and questions in, complete probability distributions out—with zero output-token decoding.**
+
+[Model](https://huggingface.co/C-Tianyu/NanoJev) · [Dataset](https://huggingface.co/datasets/C-Tianyu/NanoJev-Data)
+
+**[Open the live side-by-side demo →](https://nanojev.tianyuchen99.chatgpt.site)**
+
+## Three models, one game
+
+[![Jev, NanoJev, and Untuned Qwen exploring the maze side by side](assets/side_by_side_maze.png)](https://nanojev.tianyuchen99.chatgpt.site/#maze)
+
+[Download the maze video (MP4)](assets/side_by_side_maze.mp4) · 27 seconds · 1440 × 1120 · 30 fps
+
+[Play Snake](https://nanojev.tianyuchen99.chatgpt.site/#snake) · [Explore the 50×50 maze](https://nanojev.tianyuchen99.chatgpt.site/#maze) · [Recorded sources and replay checks](assets/side_by_side_data_manifest.json)
+
+The standalone ChatGPT Sites demo presents **Jev, NanoJev, and Untuned Qwen** in three light panels. Playback advances by the same environment step across panels; completed runs freeze at their actual final state. Probability bars show the last decision that produced the displayed state. Shared code planning remains part of each system.
+
+The new maze baseline is the original Qwen3-0.6B: **4,726 attempts, 2,044 collisions, goal reached**. The older maze video below keeps its original **Starting NanoJev** comparison and recorded results.
+
+## Recorded showcase runs
+
+Watch model judgments and shared code planning work together. Each game uses the same controller code across its three systems; the recordings preserve the actual actions, probabilities, and final outcomes.
+
+### Find the exit: 50×50 maze
+
+[![NanoJev finds the exit in a 50×50 maze, with recorded comparison results](assets/arcade_maze.gif)](assets/arcade_maze.mp4)
+
+[Watch the MP4](assets/arcade_maze.mp4) · [Interactive replay](web/arcade.html)
+
+The model judges four local directions. Code remembers collisions, explores untried edges, and repositions through verified open paths.
+
+| System | Attempts | Collisions | Outcome |
+|---|---:|---:|---|
+| **NanoJev** | **244** | **36** | **Goal reached** |
+| [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) | 2,738 | 1,044 | Goal reached |
+| Starting NanoJev | 171 | 43 | Goal reached |
+
+Starting NanoJev is the earlier trained NanoJev checkpoint. The new NanoJev model uses matched local safety training.
+
+### Keep growing: 12×12 Snake
+
+[![NanoJev grows through a complete Snake run, with recorded comparison results](assets/arcade_snake.gif)](assets/arcade_snake.mp4)
+
+[Watch the MP4](assets/arcade_snake.mp4) · [Interactive replay](web/arcade.html)
+
+The common planner filters immediate collisions and finds static paths toward the visible food. The model breaks ties between the remaining actions; a single remaining action is a code-forced move. **Seed: 61005. Controller: greedy.**
+
+| System | Food collected | Steps | Outcome |
+|---|---:|---:|---|
+| **NanoJev** | **27** | **256** | **Alive at horizon** |
+| [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) | 30 | 256 | Alive at horizon |
+| Untuned Qwen3-0.6B | 25 | 211 | Trapped |
+
+Untuned Qwen uses its original pretrained weights and native language-model head, conditioned on the offered A–D answer tokens.
+
+[Recorded cases and replay verification](assets/arcade_data_manifest.json) · [Eight-case controller comparison](results/arcade_controller_comparison.json)
+
+## Features
+
+- **0.6B LLM backbone.** Qwen3-0.6B with decision heads for structured outputs.
+- **Multiple states and questions in one forward.** Batch independent decisions together.
+- **Dynamic Choice.** Supply **2–255 candidates** and receive a probability for every candidate.
+- **Boolean decisions.** Receive the probability that a complete proposition is true.
+- **Ordered Score.** Supply **2–10 levels** and receive the level distribution and expected score.
+- **Complete distributions.** Use the same output for ranking, greedy selection, or probability sampling.
+- **Zero output decoding.** Read decisions directly from a forward pass.
+- **Persistent serving.** Load a checkpoint once and reuse it across requests.
+
+Measured in the running service: **6 states · 18 questions · 44 candidate paths · 1 backbone forward**.
+
+## Larger games and calibrated decisions
+
+- **Full-size environments:** 8×8, 16×16, 32×32, and 50×50 mazes, four topologies, multiple positions per map, and configurable larger sizes.
+- **Local judgments + code planning:** matched 5×5 observations, four parallel safety judgments, movement memory, and model-guided exploration.
+- **Snake dynamics:** reproducible food generation, body growth, collision rules, tail movement, dynamic action candidates, and safety questions.
+- **Probability learning:** observed-event datasets, CE/Brier training, paired proper-reward learning, exact gradient checks, and completed Qwen3-0.6B runs.
+- **Verified evaluation:** map-separated data, frozen game cohorts, real model execution, and independent trajectory replay.
+
+The local safety model reaches **77.84% accuracy on test questions** and **76.56% on 50×50 OOD questions**. The probability-learning pilot's paired proper-reward arm reaches **0.11844 test / 0.06202 OOD distribution error**, measured as the sum of squared differences from the simulator's event probabilities.
+
+[Atomic planning](docs/ATOMIC_PLANNING.md) · [Scaled-game pipeline](docs/SCALED_GAMES.md) · [RLCD implementation and results](docs/RLCD_EXPERIMENT.md) · [Input contract](docs/TYPESAFE_CONTRACT.md) · [Game results](docs/DEVELOPMENT_RESULTS.md)
+
+## Earlier 40-map navigation benchmark
+
+**Controller: T=1 probability sampling.** The full benchmark contains 20 test maps and 20 OOD maps.
+
+| System | 4×4 test | 6×6 OOD |
+|---|---:|---:|
+| **NanoJev** | **19/20 — 95%** | **18/20 — 90%** |
+| [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) | 20/20 — 100% | 19/20 — 95% |
+| Untuned Qwen3-0.6B | 7/20 — 35% | 3/20 — 15% |
+
+[Earlier comparison viewer](web/comparison.html) · [Complete benchmark results](research/nanojev_comparison_public.json)
+
+## How it works
+
+Each decision is defined by a **state**, a **question**, and its **candidate set**. Every candidate path carries the relevant input into the backbone. Shared decision heads return a distribution over the candidates supplied for that question.
+
+Choice uses a shared scalar head and set attention. Boolean uses a single-path sigmoid. Score evaluates its ordered level descriptions and returns their probability-weighted expectation.
+
+1. **Build queries.** Generate states, questions, candidate descriptions, and target distributions.
+2. **Organize data.** Keep related maps, rules, and their variations in the same split.
+3. **Train.** Initialize Qwen3-0.6B, warm up the decision heads, and train with complete-question distribution losses.
+4. **Evaluate.** Measure probability quality and execute game controllers with recorded actions.
+5. **Serve and visualize.** Reuse a persistent model endpoint and replay complete trajectories in the browser.
+
+[Complete pipeline commands](research/pipeline_runbook.md)
+
+## Quick start: side-by-side replay
+
+The interactive replay runs with Python's built-in HTTP server:
+
+```bash
+git clone https://github.com/TianyuCodings/NanoJev.git
+cd NanoJev
+python3 -m http.server 8080 --bind 127.0.0.1 --directory web
+```
+
+Open **http://127.0.0.1:8080/side-by-side.html** for the three-panel Snake and maze comparison. The dark arcade remains at **http://127.0.0.1:8080/arcade.html**, and the earlier benchmark viewer at **http://127.0.0.1:8080/comparison.html**.
+
+## Download the showcase models
+
+| Use | Checkpoint in [C-Tianyu/NanoJev](https://huggingface.co/C-Tianyu/NanoJev/tree/main/variants) |
+|---|---|
+| **50×50 maze demo** | `variants/local_atomic_seed17` |
+| **Snake demo** | `variants/games_gold_seed17` |
+| Full-map comparison | `variants/games_api_seed17` |
+| Calibrated-decision experiments | `variants/events_ce_seed17`, `variants/events_brier_seed17`, `variants/events_paired_seed17` |
+
+```python
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+variant = "local_atomic_seed17"  # Select "games_gold_seed17" for Snake.
+snapshot = snapshot_download(
+    repo_id="C-Tianyu/NanoJev",
+    allow_patterns=[f"variants/{variant}/*"],
+)
+checkpoint_dir = Path(snapshot) / "variants" / variant
+```
+
+The [game data package](https://huggingface.co/datasets/C-Tianyu/NanoJev-Data/tree/main/games_v4) contains the matching training splits, frozen evaluation inputs, and all six Snake controller recordings. [Download, verify, and reproduce the games](docs/GAME_RELEASE.md).
+
+## Download and run the model
+
+The [model](https://huggingface.co/C-Tianyu/NanoJev) and [dataset](https://huggingface.co/datasets/C-Tianyu/NanoJev-Data) are public. Prepare a CUDA environment with the recorded [Python dependencies](requirements-toy.txt):
+
+```bash
+python -m pip install -r requirements-toy.txt
+```
+
+Download the base release checkpoint and dataset. The root checkpoint is the initialization model and the earlier navigation baseline:
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="C-Tianyu/NanoJev", local_dir="checkpoints/NanoJev",
+    allow_patterns=["best.safetensors", "config.json", "tokenizer/*", "backbone_config/*"],
+)
+snapshot_download(
+    repo_id="C-Tianyu/NanoJev-Data", repo_type="dataset", local_dir="data/NanoJev",
+)
+```
+
+Start the persistent service:
+
+```bash
+python scripts/serve_decisions.py \
+  --checkpoint-dir checkpoints/NanoJev \
+  --web-root web --port 8765
+```
+
+Open **http://127.0.0.1:8765**. The service loads the model once and accepts repeated batches through **`POST /api/evaluate`**.
+
+The [pipeline runbook](research/pipeline_runbook.md) covers data generation, training, evaluation, checkpoint creation, and continuing from the downloaded model and data.
+
+## Roadmap
+
+- [x] **Scale up data** — Add larger mazes, Snake, atomic questions, and observed-event datasets.
+- [x] **Calibrated reward prototype** — Implement and test paired proper-reward learning with CE/Brier controls.
+- [ ] **RLCD expansion** — Add broader semantic tasks, stochastic long-horizon events, and additional model seeds.
+- [ ] **Structured input support** — Version the encoder for structured instructions, criteria, and the native Noul interface.

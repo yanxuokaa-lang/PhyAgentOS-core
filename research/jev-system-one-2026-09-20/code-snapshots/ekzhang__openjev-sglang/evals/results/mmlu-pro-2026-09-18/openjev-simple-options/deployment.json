@@ -1,0 +1,12 @@
+{
+  "git_commit": "edb8f61ff78aa9e940a33e58264849cccbcb573d",
+  "change": "Render generated label and description as plain text; hide option keys except as fallback for null descriptions.",
+  "health": {
+    "status": "ok",
+    "startup_seconds": 374.43
+  },
+  "concurrency": 16,
+  "count": 1000,
+  "elapsed_collection_seconds": 27.1,
+  "previous_run": "../openjev/metrics.json"
+}

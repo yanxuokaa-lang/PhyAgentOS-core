@@ -1,0 +1,21 @@
+{
+  "retrieved_at_utc": "2026-09-19T10:39:51.106582+00:00",
+  "page_last_updated": "2026-04-12",
+  "benchmark": "BFCL V4",
+  "page_declared_evaluator_commit": "f7cf7359b7ac615a0b294831c5ba2bc95ee4a000",
+  "page_declared_evaluator_version": "2025.12.17",
+  "official_model_mode_rows": 109,
+  "baseline_results_recomputed": false,
+  "files": [
+    {
+      "path": "data_overall.csv",
+      "url": "https://gorilla.cs.berkeley.edu/data_overall.csv",
+      "sha256": "ede5081a24bc5ac7f9b3b09a52af6bcfcd35aa0f1709239fed979db77a8159a6"
+    },
+    {
+      "path": "leaderboard.html",
+      "url": "https://gorilla.cs.berkeley.edu/leaderboard",
+      "sha256": "ef72a8621b6ea1b8aa1d1b7691f73cc3079fd38e86f599c9a38cb626c911fc29"
+    }
+  ]
+}

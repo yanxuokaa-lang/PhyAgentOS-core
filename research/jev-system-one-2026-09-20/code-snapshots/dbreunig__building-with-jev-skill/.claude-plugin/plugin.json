@@ -1,0 +1,9 @@
+{
+  "name": "jev",
+  "description": "A skill for writing and improving programs that call Jev, TypeSafe's System One model.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Drew Breunig"
+  },
+  "repository": "https://github.com/dbreunig/building-with-jev-skill"
+}

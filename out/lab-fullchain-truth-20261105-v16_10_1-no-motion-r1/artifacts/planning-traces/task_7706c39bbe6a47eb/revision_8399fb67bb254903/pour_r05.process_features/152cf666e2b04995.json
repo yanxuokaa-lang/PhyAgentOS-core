@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "25758bc02352f581ec5574ead4620137486e652db20ef35195a605955517bb63",
+  "created_at": "2026-11-05T06:20:19.575475Z",
+  "decision_reason": "仅执行当前唯一就绪的只读Query，使用冻结的本次场景绑定；不授权运动。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:248a971bdde843749884f8da7231ed36:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "afc2573af7911f4446772ffa92fa07f5b8f21134bfcdc206b100cf5bb11192b9",
+  "node_id": "pour_r05.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7706c39bbe6a47eb/revision_8399fb67bb254903/pour_r05.process_features/152cf666e2b04995",
+      "input_binding_digest": "afc2573af7911f4446772ffa92fa07f5b8f21134bfcdc206b100cf5bb11192b9",
+      "node_digest": "a1da992b855813349c37e5c93a9671698286a48cbd879dd0638eb16e8de1d7a6",
+      "node_id": "pour_r05.process_features",
+      "obligation_id": "pour_r05-process-features",
+      "revision_id": "revision_8399fb67bb254903"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/ab0b040da2144200ad8b07f58e0fd6f8.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 496,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:248a971bdde843749884f8da7231ed36:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:248a971bdde843749884f8da7231ed36:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_8399fb67bb254903",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:248a971bdde843749884f8da7231ed36:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_7706c39bbe6a47eb"
+}

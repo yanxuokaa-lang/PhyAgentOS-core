@@ -1,0 +1,11 @@
+{
+  "git_commit": "99edf51",
+  "sglang": "0.5.19",
+  "backend_image": "lmsysorg/sglang:v0.5.19-cu130",
+  "change": "Warmups request one unused selected-token logprob to avoid mixed-logprob batching crashes; no SGLang patch.",
+  "startup_seconds": 387.78,
+  "concurrency": 16,
+  "completed_examples": 3270,
+  "retries": 0,
+  "previous_incomplete_run_excluded": true
+}

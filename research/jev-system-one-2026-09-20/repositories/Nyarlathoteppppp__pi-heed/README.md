@@ -1,0 +1,291 @@
+<div align="center">
+
+# pi-heed
+
+**Your agent understood your instruction. pi-heed makes sure it still remembers.**
+
+Runtime constraints for the [pi](https://pi.dev) coding agent: every side-effecting tool call is checked against what you said, before it runs.
+
+[![pi](https://img.shields.io/badge/pi-%E2%89%A50.85.1-7c5cff)](https://pi.dev)
+[![Jev](https://img.shields.io/badge/powered%20by-TypeSafe%20Jev-f5a524)](https://docs.typesafe.ai)
+[![tests](https://img.shields.io/badge/tests-166%20passing-2ea043)](#development)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+</div>
+
+---
+
+You say *"review only, don't touch anything"*. Forty tool calls and one context compaction later, the agent reaches for `write`. pi-heed stops it, with your own words as the reason:
+
+```
+[pi-heed] User constraint c1 "Review only. Don't modify any files.". Pending call: bash: echo reviewed >> notes.txt.
+It would change files or external state. Do not apply it; describe the intended change instead, or ask the user to lift the constraint.
+```
+
+And when you *did* change your mind (*"I've changed my mind for notes.txt only"*), it lets that one file through and keeps everything else locked.
+
+## Conversational policy, not a keyword list
+
+What you say over a session is a policy that changes: *"don't touch src — but src/auth is fine — except secrets.ts"*, *"this once you can edit package.json"*, *"this round you can install deps"*, *"never mind, revoke that"*. pi-heed keeps it as structured state:
+
+```ts
+{ id, sourceQuote, effect, action, resource, scope, exceptions, status, provenance }
+//      DENY | ALLOW | REQUIRE_CONFIRMATION | REQUIRE_BEFORE
+//                     modify | install_deps | git_push | git_commit | custom
+//                               "*" | "tests" | path/dir
+//                                         session | goal | run | once
+//                                                             active | superseded | expired
+```
+
+| You say | What happens |
+|---|---|
+| *"不要改测试"* | ADD `DENY modify tests` |
+| *"现在测试可以改了"* | LIFT: the deny becomes `superseded`, with your words as the reason |
+| *"其他都别改，但 notes.txt 可以"* | `DENY modify *` + `ALLOW modify notes.txt` |
+| *"src 不能改，但 src/auth 可以，不过 secrets.ts 还是不能动"* | nested: the most specific rule wins per file |
+| *"这一次可以改 package.json"* / *"这一轮可以装依赖"* | `once` (expires after the first use) / `run` (expires when the run ends) |
+| *"刚才允许的取消，继续不要改测试"* | RE-APPLY: the permission is superseded, the deny comes back |
+| *"ask me before pushing"* / *"push 前先跑测试"* | `REQUIRE_CONFIRMATION git_push` / `REQUIRE_BEFORE git_push` until tests pass with no change since |
+
+Resolution per call: the most specific resource wins (file > dir > tests > everything), then the more specific action, then the newer instruction. Nothing is deleted. Every change is an op persisted in the session, so after a reload or compaction the state replays to exactly what it was, without calling Jev again.
+
+**Jev's job is narrow.** It never writes a policy. For each message it classifies how each existing policy changed (`KEEP / LIFT / NARROW / EXCEPTION / REPLACE / UNKNOWN`), asks whether this is your go-ahead to start changing things, and answers a few signals (new prohibition? temporary permission? new task?). Finite situations get a fixed option set with an explicit `unclear`. pi-heed applies only confident answers, and takes resources from your message, never from Jev. Anything uncertain changes nothing. A free-text prohibition is also asked once which tools cannot break it, so those calls skip the per-call check.
+
+## Benchmark
+
+79 scripted sessions and 261 labelled decisions: basics, lifecycle, long sessions with compaction, adversarial input, cases taken from the author's real sessions, and messages that mention a rule without setting one. Replayable offline from a recorded cassette. [Details and method →](bench/README.md)
+
+| | recall | false block | lifecycle | task success | cost / task |
+|---|---|---|---|---|---|
+| v0.3.0 + Jev | 71.4% | 5.2% | 70.5% | 61.2% | $0.000051 |
+| v0.4.0 + Jev | 95.2% | 0.6% | 95.5% | 93.9% | $0.000049 |
+| v0.5.1 + Jev | 97.6% | 0.0% | 100% | 98.0% | $0.000038 |
+| v0.6.0 + Jev | 97.8% | 0.0% | 100% | 98.2% | $0.000040 |
+| v0.7.4 + Jev | 97.8% | 0.0% | 100% | 98.2% | $0.000069 |
+| **v0.8.0, rules only** | 90.9% | 1.0% | 95.5% | 89.9% | $0 |
+| **v0.8.0 + Jev** (TypeSafe's own API) | **98.5%** | **0.0%** | **100%** | **98.7%** | $0.000058 |
+
+Sessions with at least one false block: 16.3% (v0.3) → **0.0%**. Two cases sit at a threshold and flip between live
+recordings. From v0.6 the benchmark includes cases from real sessions (now 7/7). v0.6.0 rules-only numbers are
+lower than v0.5's only because the new real-session cases are harder.
+
+### Replaying the author's own pi sessions
+
+The scripted cases are written by us. So we also replayed every local pi session the author had (21 sessions, 594
+messages, 9,090 real tool calls) through pi-heed in enforce mode with Jev, without executing anything
+([bench/replay/](bench/replay/), output stays local). The first replay was humbling:
+
+| | rules made | calls blocked | distinct incidents | sessions with a block |
+|---|---|---|---|---|
+| v0.7.4 | 424 | 1,013 | 42 | 14 / 21 |
+| **v0.8.0** | 232 | **95** | **16** | 11 / 21 |
+
+Almost all of the 1,013 were one pattern: *"先别改，先看看和我讨论"* ("don't change anything yet, let's discuss") became
+a ban for the rest of the session, and the later *"改吧"*, *"你接着做吧"* or *"确认并开始"* didn't end it. The rest were
+pasted material read as the user's own rules: a prompt written for another AI, another agent's report. What is left
+is mostly holds the user never explicitly lifted before the model started; some of those are real catches.
+Replay counts every later call, so it overstates: live, the first block makes the model ask. (E17)
+
+### Does it matter with a real model?
+
+Real pi sessions ([bench/live/](bench/live/README.md)): small repos, each tempting the model to break a rule stated in
+an earlier turn, pi-heed off vs on. Outcomes are read from git, not from the model. Two models so far.
+
+| | model broke the rule: pi-heed off | pi-heed on | false blocks |
+|---|---|---|---|
+| rule stated once, unchanged (grok 15 runs, gemini 15) | 0 / 30 | 0 / 30 | 0 |
+| **rule changed mid-session** (grok S5 3 runs; gemini S5 + S7, 10 runs) | **8 / 13** | **0 / 13** | 0 |
+
+Both models keep a simple rule on their own. A rule that changed during the conversation, they broke most of the
+time. In one case gemini "undid" a test the user had asked for after the permission was revoked. pi-heed caught
+every one without blocking the allowed work. That is what pi-heed is for.
+
+## Experiment report: using a fast decision model well
+
+[Jev](https://docs.typesafe.ai) is a *System One* model: no text, just calibrated decisions in a few hundred ms. TypeSafe's
+own principle, *code handles control flow; Jev provides common-sense perception*, is how pi-heed is built: the policy
+engine decides, Jev only answers narrow questions about what a message means. We
+measured every judgement pi-heed asks it for (70 labelled items, 108 cross-kind pairs, 49 benchmark sessions), checked against TypeSafe's own authoring guidelines, and
+changed the design where the data said so. The full log, including the result that reversed an earlier
+conclusion, is in **[EXPERIMENTS.md](EXPERIMENTS.md)** (E01–E19). Per-judgement tables are in [bench/JEV-LAB.md](bench/JEV-LAB.md).
+
+**What we found, and what we changed because of it**
+
+| # | Finding | Evidence | What pi-heed does |
+|---|---|---|---|
+| 1 | **The probabilities are calibrated**, slightly underconfident at the top | p 0.9–1.0 → 98% true · 0.7–0.9 → 94% · 0–0.1 → 7% | Treats p as a probability; thresholds (0.9) are conservative on purpose |
+| 2 | **Latency is flat in the number of questions**; parallel requests are slower | 1 / 4 / 8 questions: 274 / 273 / 276 ms · 8 parallel: ~650 ms | Everything about a message goes in one request |
+| 3 | **The only latency lever is *when* you ask** | pi-heed's own code: 1–46 µs · Jev floor ~250 ms | Pre-judges while the model streams (edit/write from the path alone); shadow mode never waits. Real pi: blocked a `write` after **0 ms** wait |
+| 4 | **Ask about intent, not a taxonomy** | lift detection: `KEEP/LIFT/NARROW…` 71% → *"is this your go-ahead?"* **93%**, confident answers 100% right | Go-ahead question for lifts ("Ship it", "按你的方案改吧" now work) |
+| 5 | **Jev anchors on what it reads first** | exception check with the call and messages *before* the old constraint: confident answers 75% → **100%** right | Field order + "later messages override earlier ones" |
+| 6 | **Ask exactly what you mean: "explicitly forbidden" ≠ "implied"** | *"may the assistant modify tests?"* after "look but don't touch" → "forbidden" (implied, not stated): 27/91 false adds | Asks whether the user *explicitly* forbade it; every choice has an `unclear` escape |
+| 7 | **TypeSafe's structured question format helps for some judgements, not all** | read-only 7/9 → **9/9**, tool relevance 5/8 → **8/8** safe skips, 0 wrong; go-ahead and exception checks got *worse* | Structured `{question, focus}` + `true/false` criteria where it measured better, prose elsewhere |
+| 8 | **Voting doesn't fix blind spots** | errors are correlated across phrasings; averaging mostly cost coverage | Better questions instead of ensembles |
+| 9 | **Don't ask Jev what the rules already know** | "an edit changes files": p ≈ 0.7 | Side effects, paths and scopes are deterministic rules; Jev only judges meaning |
+| 11 | **One request, one state: isolate a question that other context distracts** | go-ahead inside the shared state caught 5/9 lifts; in its own minimal request **8/9**, 0 false | go-ahead asked in a parallel request with only the message and the earlier rule |
+| 10 | **Only Jev-decided calls compound, so decide fewer** | deterministic decisions never erred · Jev-influenced decisions per benchmark: 52 → **12** with a per-prohibition tool-relevance check | Asks once per prohibition which tools can't break it, and skips those calls (0 wrong skips) |
+| 13 | **Holds end at the go-ahead; pasted material isn't the user's voice** | real sessions: 1,013 blocks → 95. *"改吧"* 0.77, *"确认并开始"* 0.81 are go-aheads; *"好改吗"* 0.03 is not · pasted prompts/reports vs tasks: 23/25, no material taken as a task · the user's own line inside a paste: ≥ 0.95, report lines ≤ 0.91 | "not yet" bans end at a go-ahead (rules or Jev ≥ 0.75); bans inside a long paste count only if Jev says the paste is a task for this assistant, or the line is the user's own (E17) |
+| 12 | **The parser can't tell who a "don't" is for; Jev can** | "explain why people say never force push", "write a hook that blocks pushes", "I don't mind if you edit the tests": parser made bans from 11 of 22 such messages · Jev *"does this restrict the assistant?"*: 13/13 caught (p ≥ 0.96), **0/18 real rules dropped** (p ≤ 0.19) | Every ban the parser adds is checked in its own request; confident `not_a_rule` ends it (E16) |
+
+Cost stayed negligible throughout: ≈ $0.00004 per session, about 1.7 Jev calls.
+
+## Why it's different
+
+|  | typical guardrail | **pi-heed** |
+|---|---|---|
+| Rules come from | a static config file | **what you said in this conversation** (English & 中文) |
+| Survives context compaction | — | **yes**. Constraints are rebuilt from the session, not the model's memory |
+| When it acts | after the damage, or by nagging | **before execution**, only on side effects |
+| Why it acted | "blocked" | **evidence**: your quote + the exact call + the fix |
+| Exceptions | all or nothing | *"except notes.txt"* is understood |
+| Uncertain? | guesses | **abstains** (`insufficient`) or fails open |
+
+## Install
+
+```bash
+pi install git:github.com/Nyarlathoteppppp/pi-heed
+```
+
+Rules work immediately. For the semantic layer, give it a Jev key (see below). It starts in **shadow mode**: it decides and logs, but never interferes until you say so:
+
+```
+/heed on
+```
+
+## What it checks
+
+| Constraint you state | Example | Decided by |
+|---|---|---|
+| Read-only | *"review only"*, *"不要改代码"*, *"hands off"* | rules + Jev |
+| Don't touch tests | *"don't touch the tests"*, *"别动测试"* | rules + Jev |
+| No new dependencies | *"no new deps"*, *"不要引入新依赖"* | rules + Jev |
+| Protected path | *"don't edit src/config.ts"*, *"别改 package.json"* | rules |
+| Anything else | *"never call the production API"*, *"don't push to GitHub"* | Jev: `violates` / `complies` / `insufficient` |
+| Blind retries | same command, same error, nothing changed | rules, and it appends evidence to the failing result |
+
+Reads (`read`, `grep`, `find`, `ls`, non-mutating shell) are never checked.
+
+## Optional
+
+```bash
+export PI_HEED_INFORM=1   # write the active rules into the system prompt (in the live benchmark: half the forbidden attempts, n=5)
+export PI_HEED_BUMP=0.7   # an unsure free-text violation stops the first attempt and asks the model to check with you in chat
+```
+
+Both are off by default until there is more data. There are no dialogs: pi-heed talks to the model, and the model
+talks to you.
+
+## Safety properties
+
+- **Shadow by default.** `off` · `shadow` · `enforce`, persisted per session.
+- **Fails open.** Jev error or timeout (2.5 s) → pi behaves as if pi-heed weren't installed.
+- **Never starts a turn.** It blocks a call or annotates a result; it never re-prompts the model. Esc stays Esc.
+- **Stale-proof.** A verdict that lands after you pressed Esc or sent a new prompt is discarded.
+- **Budgeted.** At most 3 interventions per agent run.
+- **Only your words count.** Text injected by extensions (including pi-heed) never becomes a constraint.
+- **Cache-friendly.** No context rewriting; evidence rides on the blocked call or the failing result.
+
+## Jev key
+
+Semantic checks need one of the keys below.
+
+| Variable | Endpoint | Default model |
+|---|---|---|
+| `OPENROUTER_API_KEY` | OpenRouter Decisions API | `~typesafe/jev-latest` (follows the newest Jev) |
+| `TYPESAFE_API_KEY` | api.typesafe.ai | `jev-latest` |
+| `PI_HEED_ENV_FILE` | read either key from a dotenv file | |
+| `PI_HEED_MODEL` | pin a version | |
+
+pi started outside a shell (desktop app, pi-web) doesn't see `~/.zshrc`. Put the settings in
+`~/.pi/agent/pi-heed.json` instead: `{ "envFile": "/path/to/.env", "mode": "shadow" }` (also `inform`, `bump`).
+Environment variables win over the file, and `/heed mode` wins over both. `/heed status` shows `judge: none` when no
+key was found.
+
+**What leaves your machine** (only when a key is set): each message you type, for constraint understanding; and for mutating calls under a constraint, the constraint text plus the call (arguments truncated to 1500 chars; they can contain code).
+
+## Commands
+
+```
+/heed                            status, then this list
+/heed on | off | shadow          enforce / stop checking / log only (this session)
+/heed status                     mode, judge, active policies, budget
+/heed policies                   the resolved policy right now
+/heed history                    superseded and expired policies, and why they ended
+/heed explain <id>               which of your sentences a policy came from, its exceptions
+/heed add <text>                 add a free-text prohibition by hand
+/heed drop <id>|all              remove one rule, or all of them
+/heed log [n]                    recent decisions (with pre-judge / wait times)
+/heed review [n]                 recent decisions, numbered
+/heed label [n] <good|bad> [note]  label decision n from /heed review (default: the latest)
+```
+
+## Known limitations
+
+- A free-text prohibition is only enforced when Jev is confident (p ≥ 0.9, confidence ≥ 0.8). *"Don't send notifications"* vs a Slack webhook `curl` scored 0.76–0.88 and ran. That is fail-open by design.
+- *"Don't delete any data"* is judged violated by `rm -rf dist/` (p = 0.97). Whether build output is "data" is arguable.
+- A single message that both forbids and requests an edit (*"don't modify files; run `echo x >> f`"*) is blocked.
+- Shell and inline-code side-effect detection is pattern-based; exotic commands can slip through.
+- **Without a Jev key the parser alone decides what is a rule**, and it takes "explain why people say never push" or "write a hook that blocks pushes" as bans (11 of 22 such messages in E16). With a key, 0 of 22. Check `/heed status`, and `/heed drop all` clears a bad batch.
+- A hold (*"先别改"*) ends at the user's go-ahead. If the user never gives one and the model starts anyway, pi-heed blocks and the model has to ask; a go-ahead phrased as a plain new task is caught by Jev most of the time (12/14 in E17), not always.
+- Bans inside long pasted material count only with Jev. Without a key they are ignored, so a real rule buried in a pasted spec is missed.
+- Bash commands are judged on the paths they write when those can be read off the command (redirects, `cp`/`mv`/`rm`/`mkdir`/`tee`); otherwise on every path they mention, which is the cautious side.
+- `goal` scope only ends when Jev says a message starts a new task. Without a key it behaves like `session`.
+- The live benchmark covers two models (dragon-grok-4.6, gemini-3.8-flash); five of its twelve scenarios still await runs.
+
+## Related work
+
+- **[thruwire/foreman](https://github.com/thruwire/foreman)** puts Jev above a Codex worker to supervise a *whole job*:
+  is it done, stuck, off track, in need of verification or a human? A Python policy then continues, steers, stops,
+  retries or finishes. pi-heed works one layer down, inside pi's tool loop: *does this call break a rule the user
+  set?* The two are complementary, and share TypeSafe's principle that code decides and Jev perceives. pi-heed
+  borrowed foreman's retry of 429 / transient 5xx (inside the deadline) and its answer validation. Two of our
+  measurements bear on foreman's open questions: a shared large state can cost a question accuracy (E12), and
+  narrow questions beat broad ones (E09).
+
+## Direction: the main model understands, pi-heed checks receipts
+
+Up to 0.8, pi-heed read every user message itself (parser + Jev) to decide what the rules were. That layer grew
+(go-ahead detection, paste gates, authorship) and it was where the false blocks came from. Main models understand
+the user better every release; re-interpreting them in a second layer duplicates that and adds its own mistakes.
+
+From 0.9 there is a second pipeline, the **ledger**:
+
+- The main model records the user's hard rules with `heed_record`, quoting the user's exact words, and ends them
+  with `heed_lift`. Temporary permissions ("just this once") are `allow` records with scope `once` or `run`.
+- pi-heed does not interpret. It checks the receipt (the quote is in a message the user typed, and a lift's quote
+  is newer than the rule) and enforces the recorded rules at tool-call time, deterministically.
+- Jev is left with three narrow judgements: does a call fall under a rule's `unless` ("unless it only fixes a
+  typo"), does a call break a free-text rule ("never call the production API"), and does the user's message really
+  take a rule back (lifts and lasting permissions).
+
+Live, same model and scenarios (E19): 0 violations in every condition; false blocks interpreter 3, ledger 1 (fixed
+since), ledger + parser fallback 3, all of the parser conditions' from the parser. The model recorded every rule
+the scenarios stated and nothing where there was none. From 0.10 the ledger is the default. The interpreter stays
+selectable (`PI_HEED_PIPELINE=interpret`) for the scripted benchmark and comparison, and will be removed in 1.0.
+
+## Roadmap
+
+- [ ] Suggest-only rollback to the last verified checkpoint (with [pi-rewind-hook](https://github.com/nicobailon/pi-rewind-hook))
+- [x] Benchmark: lifecycle, long sessions, compaction, adversarial ([bench/](bench/README.md))
+- [x] Fewer Jev-decided calls per session: per-policy tool relevance (E07)
+- [x] Fix what real sessions showed (E11 → v0.6): scratch files, design guidance, implicit lifts, inline code, extension tools
+- [x] Live benchmark on a second model, and "inform" (E14)
+- [x] Faster labelling (`/heed review`, `/heed label n`)
+- [x] Live benchmark S8–S15 (E19)
+- [x] Ledger as the default (0.10)
+- [ ] Remove the interpreter (`understand.ts`, the parser's heuristics) in 1.0
+- [ ] More models and runs for the ledger, especially weaker models that may not record rules
+- [ ] Recalibrate thresholds from labelled real sessions; E05 suggests 0.9 is conservative
+- [ ] Threshold calibration from `/heed label` data
+
+## Development
+
+```bash
+npm install
+npm test                                        # 122 tests, no network
+node bench/run.ts --judge replay                # benchmark, offline
+npm run typecheck
+PI_HEED_ENV_FILE=~/.env npm run smoke:jev       # live Jev check
+```
+
+MIT © Nyarlathoteppppp

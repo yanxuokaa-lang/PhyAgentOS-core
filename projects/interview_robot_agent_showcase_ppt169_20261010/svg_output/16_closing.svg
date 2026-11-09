@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="#17324D"/>
+<rect x="0" y="0" width="18" height="720" fill="#5B9BD5"/>
+<rect x="18" y="0" width="8" height="720" fill="#2471B4"/>
+<text x="78" y="126" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#5B9BD5">总结</text>
+<text x="78" y="226" font-family="Microsoft YaHei, Arial, sans-serif" font-size="46" font-weight="bold" fill="#FFFFFF">比赛中，我把 VLA 策略部署到双臂机器人；</text>
+<text x="78" y="294" font-family="Microsoft YaHei, Arial, sans-serif" font-size="46" font-weight="bold" fill="#FFFFFF">在 PhyAgentOS，我把感知与操作做成 Tool。</text>
+<line x1="80" y1="354" x2="1190" y2="354" stroke="#184CA0" stroke-width="2"/>
+<text x="80" y="420" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#C6DDF1">比赛项目</text>
+<text x="80" y="460" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#FFFFFF">关注策略部署、控制链路和现场运行</text>
+<text x="80" y="530" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#5B9BD5">PhyAgentOS</text>
+<text x="80" y="570" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#FFFFFF">关注工具调用、任务状态与执行恢复</text>
+<text x="80" y="664" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#62788E">颜旭 · 中国科学院大学 · yanxu.okaa@gmail.com</text>
+</svg>

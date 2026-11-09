@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "litjev"
+version = "0.1.0"
+description = "(Unofficial) Turn any off-the-shelf LLM into a JEV-like decision layer"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES/*.txt"]
+authors = [{ name = "ZhengxuYu" }]
+requires-python = ">=3.11"
+dependencies = [
+  "accelerate>=1.10.0",
+  "fastapi>=0.116.0",
+  "numpy>=2.0.0",
+  "pillow>=10.4.0",
+  "pydantic>=2.11.0",
+  "safetensors>=0.6.0",
+  "torch==2.11.0",
+  "torchvision>=0.26.0",
+  "transformers>=5.17.0",
+  "datasets>=3.0",
+  "uvicorn>=0.35.0",
+]
+
+[project.optional-dependencies]
+games = ["gymnasium>=1.1.1", "chess>=1.11.2", "vizdoom>=1.2.4"]
+dev = [
+  "httpx>=0.28.0",
+  "pytest>=8.4.0",
+  "ruff>=0.12.0",
+]
+
+[project.urls]
+Repository = "https://github.com/zhengxuyu/litjev"
+Issues = "https://github.com/zhengxuyu/litjev/issues"
+
+[project.scripts]
+litjev = "litjev.cli:serve"
+litjev-serve = "litjev.cli:serve"
+litjev-mmlu = "litjev.cli:mmlu"
+litjev-calibrate = "litjev.cli:calibrate"
+litjev-play = "litjev.games.cli:play"
+litjev-film = "litjev.games.cli:film"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/litjev"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src", "/tests", "/examples", "/docs", "/scripts",
+  "/README.md", "/CONTRIBUTING.md", "/SECURITY.md",
+  "/pyproject.toml", "/uv.lock", "/LICENSE", "/NOTICE", "/CITATION.cff",
+  "/THIRD_PARTY_LICENSES", "/THIRD_PARTY_NOTICES.md",
+]
+exclude = ["**/node_modules", "**/__pycache__"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+# Cluster driver 570 supports CUDA 12.8; do not select CUDA 13 wheels.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

@@ -1,0 +1,43 @@
+{
+  "name": "fast-jev-output",
+  "version": "0.1.0",
+  "description": "Trim long Bash output with Jev before it reaches the model.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && npm run typecheck:hooks",
+    "test": "vitest run",
+    "test:live": "tsx --test tests/jev-live.ts",
+    "test:long-session": "tsx tests/claude-long-session.ts",
+    "test:codex-session": "npm run build && node tests/codex-long-session.mjs",
+    "test:codex-real": "npm run build && node tests/codex-real-tasks.mjs",
+    "test:archive-recovery": "tsx tests/claude-archive-recovery.ts",
+    "report:long-session": "tsx tests/long-session-report.ts",
+    "typecheck:hooks": "tsc -p tsconfig.hooks.json",
+    "validate:plugin": "claude plugin validate .claude-plugin/plugin.json",
+    "eval:manual": "tsx evals/manual/run.mts",
+    "eval:real": "tsx evals/manual/real.mts",
+    "eval:accuracy": "tsx evals/manual/accuracy.mts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
