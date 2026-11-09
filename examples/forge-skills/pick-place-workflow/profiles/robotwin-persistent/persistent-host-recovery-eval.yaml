@@ -1,0 +1,64 @@
+schema_version: paos-robotwin20-persistent-host/v1
+agent:
+  enabled: false
+tools:
+  enabled: true
+host: 127.0.0.1
+port: 19020
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+adapter_root: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}
+runtime_root: ${ROBOTWIN20_RUNTIME_ROOT}
+runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+worker_python: ${ROBOTWIN20_WORKER_PYTHON}
+materializer_python: ${ROBOTWIN20_MATERIALIZER_PYTHON}
+perception_profile: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/perception.yaml
+grasp_profile: ${ROBOTWIN20_GRASP_PROFILE}
+materializer_arguments: ${ROBOTWIN20_MATERIALIZER_ARGUMENTS}
+model:
+  provider: qwen3_vl_vllm_fallback
+  primary:
+    api_base: http://127.0.0.1:8012/v1
+    model: qwen3-vl-4b-awq
+    api_key_env: ""
+    timeout_seconds: 30
+    max_output_tokens: 1536
+    lifecycle:
+      enabled: true
+      control_api_base: http://127.0.0.1:8012
+      idle_timeout_s: 60
+      control_timeout_s: 5
+      sleep_level: 1
+  fallback:
+    api_base: ${ROBOTWIN20_MODEL_API_BASE}
+    model: ${ROBOTWIN20_MODEL}
+    api_mode: chat_completions
+    api_key_env: ROBOTWIN20_MODEL_API_KEY
+    reasoning_effort: ${ROBOTWIN20_REASONING_EFFORT}
+    timeout_seconds: 120
+    max_output_tokens: 768
+worker:
+  startup_timeout_s: 180
+  request_timeout_s: 360
+  shutdown_timeout_s: 30
+  action_max_duration_s: 300
+video:
+  enabled: true
+  fps: 25
+  stride_steps: 4
+materializer_timeout_s: 300
+preparation_timeout_s: 330
+allow_benchmark_scene_facts: true
+route_geometry_source: ${ROBOTWIN20_ROUTE_GEOMETRY_SOURCE}
+simulation_action_mode: ${ROBOTWIN20_SIMULATION_ACTION_MODE}
+start_state_tolerance_rad: 0.0001
+goal_source: ${ROBOTWIN20_GOAL_SOURCE}
+# Evaluation-only: enable the measured safe-reverse-replay acquire recovery
+# and the deterministic gripper-close-offset failure injection so the
+# failure -> safe recovery -> fresh-observation replan loop can be measured
+# reproducibly. Both stay disabled in every other profile.
+acquire_safe_recovery: true
+failure_injection:
+  enabled: true
+  mode: gripper_close_offset
+  close_value: 0.2
+  probability: 1.0
