@@ -1,0 +1,29 @@
+{
+  "lab_root": "/home/yanxu/LabUtopia",
+  "config_path": "/home/yanxu/LabUtopia/config/tabletop_station.yaml",
+  "motion_config_path": "labutopia-oracle-motion.json",
+  "physics_config_path": "labutopia-mixture-physics.json",
+  "scene_usd_path": "/home/yanxu/LabUtopia/assets/chemistry_lab/tabletop_station/tabletop_station.usda",
+  "robot_usd_path": "/home/yanxu/LabUtopia/assets/robots/Franka.usd",
+  "source_path": "/World/ReagentZones/A/R01/Model",
+  "destination_path": "/World/OperationArea/TargetBeaker/Model",
+  "source_label": "R01",
+  "label_inspection_prim_path": "/World/ReagentZones/A/R01",
+  "label_inspection_focal_length_mm": 3.5,
+  "destination_label": "BEAKER",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1",
+  "supported_operations": [
+    "pour_cycle",
+    "stir_cycle"
+  ],
+  "camera_render_frames": 32,
+  "headless": true,
+  "worker_python_path": "/home/yanxu/miniconda3/envs/labutopia/bin/python",
+  "physics_scene_path": "/World/PhysicsScene",
+  "physics_dt_s": 0.0010416666666666667,
+  "control_dt_s": 0.016666666666666666,
+  "startup_settle_s": 0.0,
+  "perception_config_path": "labutopia-oracle-perception.json",
+  "perception_mode": "simulator_truth",
+  "simulation_truth_manifest_path": "labutopia-simulator-truth.json"
+}

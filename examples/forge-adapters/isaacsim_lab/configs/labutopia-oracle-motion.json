@@ -1,0 +1,71 @@
+{
+  "workspace_min_m": [-0.7, -0.7, 0.7],
+  "workspace_max_m": [0.65, 0.65, 1.65],
+  "approach_distance_m": 0.12,
+  "acquire_route_selection": "simulator_truth_preselected",
+  "acquire_route_search_timeout_s": 600.0,
+  "acquire_route_strategies": ["staged"],
+  "acquire_timing": "stage_continuous",
+  "acquire_min_reorient_radius_m": 0.5,
+  "acquire_probe_terminal_seed_count": 8,
+  "acquire_failure_recovery_codes": [
+    "physical_grasp_lost",
+    "grasp_not_confirmed",
+    "grasp_transform_mismatch"
+  ],
+  "acquire_staging_corridor_candidates": [
+    {
+      "approach_distance_m": 0.12,
+      "staging_backoff_m": 0.0,
+      "tangential_offset_m": 0.0
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": 0.0
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": -0.06
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": 0.06
+    }
+  ],
+  "acquire_transit_clearance_candidates_m": [0.04, 0.08, 0.12],
+  "acquire_transport_orientation_candidates_xyzw": [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0]
+  ],
+  "acquire_axial_symmetry_angles_rad": [0.0, 1.5707963267948966, -1.5707963267948966, 3.141592653589793],
+  "lift_distance_m": 0.12,
+  "process_clearance_m": 0.18,
+  "pour_lip_clearance_m": 0.04,
+  "maximum_tilt_rad": 1.5,
+  "maximum_stir_radius_m": 0.025,
+  "maximum_stir_depth_m": 0.06,
+  "settle_s": 0.6,
+  "collision_margin_m": 0.003,
+  "position_tolerance_m": 0.002,
+  "maximum_waypoint_joint_delta_rad": 0.5,
+  "joint_step_rad": 0.01,
+  "joint_velocity_rad_s": 0.4,
+  "joint_acceleration_rad_s2": 0.8,
+  "finger_velocity_m_s": 0.015,
+  "finger_acceleration_m_s2": 0.15,
+  "joint_tracking_tolerance_rad": 0.04,
+  "grasp_position_tolerance_m": 0.008,
+  "grasp_rotation_tolerance_rad": 0.08,
+  "placement_tolerance_m": 0.008,
+  "max_execution_steps": 12000,
+  "mount_collision_paths": ["/World/table"],
+  "support_collision_paths": [
+    "/World/table",
+    "/World/TubeRack/Model/test_tube_rack/group_08/_______1944"
+  ],
+  "axial_grip_paths": ["/World/OperationArea/GlassRod"],
+  "stir_entry_reserve_turns": 0.25
+}

@@ -365,7 +365,7 @@ def acquire_staging_corridors(config):
 
 def acquire_route_selection(config):
     policy = config.get("acquire_route_selection", "minimum_joint_travel")
-    if policy not in ("minimum_joint_travel", "first_feasible"):
+    if policy not in ("minimum_joint_travel", "first_feasible", "simulator_truth_preselected"):
         raise PhaseMotionError("invalid_motion_configuration", "unsupported acquire route selection policy")
     return policy
 
@@ -1203,6 +1203,20 @@ class IsaacPhaseMotion:
             policy = acquire_route_selection(self.config)
             strategies = acquire_route_strategies(self.config)
             clearances = acquire_transit_clearances(self.config)
+            if policy == "simulator_truth_preselected":
+                # Oracle execution mode: the grasp pose already comes from
+                # simulator truth, so collapse every search dimension to its
+                # first configured element and qualify exactly one variant.
+                # Route qualification, contact checks and safety boundaries
+                # are unchanged; only the enumeration is skipped.
+                strategies = (strategies[0],)
+                variants = (variants[0],)
+                transport_orientations = (transport_orientations[0],)
+                clearances = (clearances[0],)
+                staging_corridors = (staging_corridors[0],)
+                direct_corridors = tuple(dict.fromkeys(
+                    (corridor[0], 0., 0.) for corridor in staging_corridors
+                ))
             variant_count = sum(
                 len(direct_corridors) * len(variants) if strategy == "direct"
                 else len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants)

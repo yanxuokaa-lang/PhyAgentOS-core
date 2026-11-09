@@ -49,6 +49,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.4.0 (2026-11-09 11:40) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] 实验室线新增显式 oracle 执行模式：`grasp_source: "simulator_truth_oracle"` 由 final-composed USD 真值直接产出类别感知抓取候选（瓶身轴向带内避让瓶口、棒杆留出工作端），镜像 GraspNet 候选形状经同一 `RecordedGraspProvider` 记录，并继续走未改变的 task-affordance gate 与 approach probe；全程标注 `simulator_ground_truth`，不冒充传感器推导。 / Add the explicit oracle execution mode to the lab line: `grasp_source: "simulator_truth_oracle"` derives category-aware grasp candidates directly from final-composed USD truth (vessel body band below the rim, rod shaft leaving the working end free), mirrors the GraspNet candidate shape through the same `RecordedGraspProvider`, and still passes the unchanged task-affordance gate and approach probe; lineage stays `simulator_ground_truth` and never masquerades as sensor-derived.
+- [env] [feat] acquire 路线新增 `simulator_truth_preselected` 策略：各搜索维度（策略/走廊/净空/转运朝向/轴向角）收敛到首个配置元素，只资格检查唯一变体（O(1) 取代 104 变体枚举）；关节限位、跟踪、碰撞、接触窗口、取消与安全恢复全部保留——豁免的是搜索，不是安全边界。 / Add the `simulator_truth_preselected` acquire route policy: every search dimension collapses to its first configured element and exactly one variant is qualified (O(1) instead of the 104-variant enumeration); joint limits, tracking, collision, contact windows, cancellation and safe recovery are unchanged — the exemption is the search, not the safety boundary.
+- [env] [config] 新增 `labutopia-oracle` 部署 profile 与 oracle 感知/运动配置（显式命名；oracle 抓取几何来自配置夹爪参数）。 / Add the explicitly named `labutopia-oracle` deployment profile plus oracle perception/motion configurations (oracle grasp geometry comes from configured gripper parameters).
+- [eval] [test] 14 项新测试覆盖几何正反例（瓶带/棒端自由/平行轴确定性回退）、候选形状与 `candidate_world_pose` 约定、同捕获真值记录 fail-closed、歧义类别、profile 装配与单变体资格。 / Fourteen new tests cover geometry positive/negative cases, candidate shape and the `candidate_world_pose` convention, same-capture truth fail-closed checks, ambiguous categories, profile assembly and single-variant qualification.
+
+### 文件变更详情 / File Changes
+- [新增] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/oracle_grasp_geometry.py`：真值语义抓取几何与 `OracleSimulatorTruthGraspProvider`。 / Truth semantic grasp geometry and `OracleSimulatorTruthGraspProvider`.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/perception_runtime.py`：`grasp_source` 分支、oracle 块 fail-fast 校验、records 绑定。 / `grasp_source` branching, fail-fast oracle block validation and records binding.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L366-L371, L1203-L1218：新策略枚举与单变体收敛。 / New policy value and single-variant collapse.
+- [新增] `configs/labutopia-oracle.json`、`configs/labutopia-oracle-perception.json`、`configs/labutopia-oracle-motion.json`。 / Explicit oracle deployment, perception and motion configurations.
+- [新增] `examples/forge-adapters/isaacsim_lab/tests/test_oracle_grasp.py`（14 测试）。 / Fourteen oracle-mode tests.
+
+### 关键 Diff / Key Diff
+```diff
+before: grasp candidates only from the GraspNet worker funnel; acquire search
+        enumerated 104 variants (R05 route_search_timeout at 600s)
+after:  optional oracle provider derives semantic candidates from recorded
+        truth; the preselected policy qualifies exactly one configured variant
+unchanged: task-affordance gate, approach probe, route qualification,
+           contact windows, settlement, v17.0.0 safe recovery
+```
+
+### 架构与验证 / Architecture and Validation
+- Oracle 只作为可替换 Provider 插在既有感知端口后面；AgentLoop、execute_subtask 契约、Coordinator settlement 与安全恢复零改动。真值候选与模型候选共用同一 gate，语义校验不因来源放行。 / The oracle is a replaceable Provider behind the existing perception ports; AgentLoop, the execute_subtask contract, Coordinator settlement and safe recovery are untouched. Truth candidates share the same gate as model candidates; qualification never relaxes by provenance.
+- 验证：isaacsim_lab 全量 `498 passed, 2 skipped`；ruff、compileall 通过。未运行 Isaac 仿真、PAOS task 或运动。 / Full isaacsim_lab suite `498 passed, 2 skipped`; ruff and compileall pass. No Isaac simulation, PAOS task or motion was run.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v17.3.15 (2026-11-09 10:20) - codex
 
 ### 完成范围 / Completed Scope
@@ -169,33 +201,6 @@ still:  no stoppable, route/contact-qualified relation Action Provider
 
 ### Git 提交 / Git Commit
 - Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`. / Implementation: `0e469853`; receipt: `b91ea614`; branch: `feature/planning-loop`; push failed at 2026-11-08 14:46 Asia/Shanghai with GitHub TLS `GnuTLS recv error (-110)`.
-
-## v17.3.11 (2026-11-08 12:49) - codex
-
-### 完成范围 / Completed Scope
-- [env] [diag] 确认配置的 Runtime/artifact roots 不存在，`RoboTwin20` 环境可导入 SAPIEN/Torch 但缺少 `robotwin`/Curobo；创建空目录不会提供 task class、资产或执行机制。 / Confirm configured Runtime/artifact roots are absent and `RoboTwin20` imports SAPIEN/Torch but lacks `robotwin`/Curobo; empty directories would not provide task classes, assets or execution mechanisms.
-- [env] [diag] 官方 `RoboTwin-1.0` task inventory 是 `blocks_stack_easy`/`blocks_stack_hard`，没有 `stack_blocks_three`；不能通过直接安装官方 branch 修复当前 profile。 / Official `RoboTwin-1.0` task inventory has `blocks_stack_easy`/`blocks_stack_hard`, not `stack_blocks_three`; installing that branch alone cannot repair the current profile.
-- [policy] [diag] 已有通用 Provider 注入路径，但没有基于确切 task/controller 接口实现并资格验证的 RoboTwin relation Provider、table geometry、route/contact 或执行反馈。保持 motion disabled；后续需提供定制 task source/revision，或明确接受改用官方 `blocks_stack_easy`。 / The generic Provider injection path exists, but no RoboTwin relation Provider based on exact task/controller interfaces has been implemented and qualified for table geometry, route/contact or execution feedback. Keep motion disabled; provide the custom task source/revision or explicitly accept official `blocks_stack_easy`.
-
-### 文件变更详情 / File Changes
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L313-L356：保存 Runtime/dependency/task inventory 复核、benchmark 替换风险、PAOS Provider 缺口和继续条件。 / Record Runtime/dependency/task-inventory checks, benchmark-substitution risk, the PAOS Provider gap and continuation prerequisites.
-- [修改] `changelog/2026-11_part2.md` L644-L674：追加本版本双语诊断、关键 Diff 和验证。 / Add this version's bilingual diagnosis, key diff and validation.
-- [修改] `CHANGELOG.md` L52-L81：更新最近五版本。 / Update the latest-five versions.
-
-### 关键 Diff / Key Diff
-```diff
-before: missing Runtime root/provider treated as generic provisioning gaps
-after:  official RoboTwin-1.0 inventory does not contain stack_blocks_three;
-        current environment also lacks robotwin and Curobo
-decision: no empty roots, guessed task handles, silent benchmark substitution or motion enablement
-```
-
-### 架构与验证 / Architecture and Validation
-- Coordinator/AgentLoop ownership unchanged; environment geometry, route/contact qualification and execution feedback remain Adapter/Provider responsibilities. No task, Action, simulator or motion was started. / Coordinator/AgentLoop ownership is unchanged; environment geometry, route/contact qualification and execution feedback remain Adapter/Provider responsibilities. No task, Action, simulator or motion was started.
-- Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed. / Read-only check: Runtime and artifact roots missing; `sapien=True`, `torch=True`, `robotwin=False`, `curobo=False`; official task-tree API lists `blocks_stack_easy.yml` and `blocks_stack_hard.yml`, not `stack_blocks_three`. No source behavior changed.
-
-### Git 提交 / Git Commit
-- Diagnosis commit: `3232614b`; receipt commit: `9d4ada95`; branch: `feature/planning-loop`; push stalled for 40 seconds and was interrupted, so both commits remain local (branch ahead 2). / Diagnosis commit: `3232614b`; receipt commit: `9d4ada95`; branch: `feature/planning-loop`; push stalled for 40 seconds and was interrupted, so both commits remain local (branch ahead 2).
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 
