@@ -71,7 +71,7 @@ after:  closed snapshot fields + decoded/canonicalized/deduplicated/retained fun
 - 修复只改 provider 输出形状；gate/资格链不变。isaacsim_lab 全量 `498 passed, 2 skipped`；未运行仿真。 / Only the provider output shape changed; gate and qualification are unchanged. Full isaacsim_lab suite `498 passed, 2 skipped`; no simulation was run.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `343503b3`; branch: `feature/planning-loop`. / Implementation commit: `343503b3`; branch: `feature/planning-loop`.
 
 ## v17.5.1 (2026-11-09 13:30) - codex
 
