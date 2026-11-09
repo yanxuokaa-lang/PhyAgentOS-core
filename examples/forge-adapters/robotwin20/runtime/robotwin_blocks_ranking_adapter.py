@@ -375,6 +375,81 @@ class StackBlocksThreeTaskAdapter:
             }],
         }
 
+    def postcondition_evidence(self, task: Any, goal: dict[str, Any]) -> dict[str, Any]:
+        """Measure the support-relation facts this Adapter can observe.
+
+        Returns one measurement per ``produced_evidence`` key of the goal.
+        ``satisfied`` requires upright blocks, a footprint overlap within the
+        support's world extent and a near-contact vertical gap; anything the
+        current geometry cannot prove stays ``unmeasured`` and never upgrades
+        to satisfied. This method only reports Adapter-measured facts and does
+        not change task state or authorize motion.
+        """
+        entity_ref = goal.get("execution_entity_ref")
+        target_ref = goal.get("relation_target_ref")
+        keys = list(goal.get("produced_evidence") or ())
+        if not isinstance(entity_ref, str) or not isinstance(target_ref, str) or not keys:
+            return {key: {"status": "unmeasured"} for key in keys} if keys else {}
+        entity_binding = next((row for row in self.entities if row[0] == entity_ref), None)
+        moving = getattr(task, entity_binding[1], None) if entity_binding else None
+        support = None
+        support_binding = next((row for row in self.entities if row[0] == target_ref), None)
+        if support_binding is not None:
+            support = getattr(task, support_binding[1], None)
+        elif target_ref == "surface://table":
+            support = getattr(task, "table", None)
+        if (moving is None or support is None
+                or not callable(getattr(moving, "get_pose", None))
+                or not callable(getattr(support, "get_pose", None))):
+            return {key: {"status": "unmeasured", "reason": "actor binding unavailable"} for key in keys}
+        moving_pose = _matrix(moving.get_pose())
+        moving_half = _half_extents(moving)
+        support_pose = _matrix(support.get_pose())
+        support_half = _half_extents(support)
+        if not moving_half or not support_half:
+            return {key: {"status": "unmeasured", "reason": "support extents unavailable"} for key in keys}
+        horizontal_offset = float(math.hypot(
+            moving_pose[0][3] - support_pose[0][3],
+            moving_pose[1][3] - support_pose[1][3],
+        ))
+        moving_extent_z = sum(abs(moving_pose[2][axis]) * moving_half[axis] for axis in range(3))
+        support_extent_world = [
+            sum(abs(support_pose[axis][local]) * support_half[local] for local in range(3))
+            for axis in range(3)
+        ]
+        support_top = float(support_pose[2][3] + support_extent_world[2])
+        moving_bottom = float(moving_pose[2][3] - moving_extent_z)
+        vertical_gap = moving_bottom - support_top
+        upright = abs(moving_pose[2][2]) >= 0.98
+        footprint_ok = horizontal_offset <= max(support_extent_world[0], support_extent_world[1])
+        contact_ok = -0.005 <= vertical_gap <= 0.01
+        support_ok = upright and footprint_ok and contact_ok
+        stable_ok = upright and -0.005 <= vertical_gap <= 0.01 and moving_pose[2][3] > support_top
+        measurements = {
+            "horizontal_offset_m": horizontal_offset,
+            "vertical_gap_m": vertical_gap,
+            "support_top_m": support_top,
+            "moving_bottom_m": moving_bottom,
+            "upright": upright,
+        }
+        evidence = {}
+        for key in keys:
+            if key == f"support-relation:{entity_ref}:{target_ref}":
+                evidence[key] = {
+                    "status": "satisfied" if support_ok else "violated",
+                    **measurements,
+                    "geometry_source": "simulator_actor_geometry",
+                }
+            elif key == f"stable-placement:{entity_ref}":
+                evidence[key] = {
+                    "status": "satisfied" if stable_ok else "violated",
+                    **measurements,
+                    "geometry_source": "simulator_actor_geometry",
+                }
+            else:
+                evidence[key] = {"status": "unmeasured", "reason": "unsupported evidence key"}
+        return evidence
+
     def benchmark_result(self, task: Any, *, seed: int, scene_revision: str) -> dict[str, Any]:
         return _benchmark_result(task, self.task_name, seed=seed, scene_revision=scene_revision)
 

@@ -266,3 +266,87 @@ def test_blocks_ranking_rgb_adapter_remains_motion_capable():
     adapter = adapters.task_adapter("blocks_ranking_rgb")
     assert adapter.motion_execution_supported is True
     assert adapter.entities[0] == ("entity://block-red-1", "block1", "red-slot")
+
+
+def _stack_evidence_task(poses: dict[str, tuple[float, float, float]]) -> SimpleNamespace:
+    def actor_at(position):
+        block_shape = SimpleNamespace(
+            get_half_size=lambda: [0.025, 0.025, 0.025],
+            get_local_pose=lambda: _pose(),
+        )
+        return SimpleNamespace(
+            get_pose=lambda: _pose(*position),
+            get_functional_point=lambda *_args: _pose(*position),
+            actor=SimpleNamespace(get_components=lambda: [SimpleNamespace(
+                get_collision_shapes=lambda: [block_shape],
+            )]),
+        )
+
+    return SimpleNamespace(
+        block1=actor_at(poses["block1"]),
+        block2=actor_at(poses["block2"]),
+        block3=actor_at(poses["block3"]),
+        table=SimpleNamespace(get_pose=lambda: _pose(z=0.74)),
+    )
+
+
+_STACK_GOAL = {
+    "subtask_id": "place_middle",
+    "execution_entity_ref": "entity://stack-block-2",
+    "relation_target_ref": "entity://stack-block-1",
+    "produced_evidence": [
+        "support-relation:entity://stack-block-2:entity://stack-block-1",
+        "stable-placement:entity://stack-block-2",
+    ],
+}
+
+
+def test_stack_postcondition_evidence_satisfied_for_resting_support():
+    adapter = adapters.StackBlocksThreeTaskAdapter()
+    # Block1 top at 0.79 (0.765 + 0.025); block2 bottom exactly at 0.79.
+    task = _stack_evidence_task({
+        "block1": (0.0, 0.0, 0.765),
+        "block2": (0.0, 0.0, 0.815),
+        "block3": (0.2, 0.0, 0.765),
+    })
+    evidence = adapter.postcondition_evidence(task, _STACK_GOAL)
+    assert evidence["support-relation:entity://stack-block-2:entity://stack-block-1"]["status"] == "satisfied"
+    assert evidence["stable-placement:entity://stack-block-2"]["status"] == "satisfied"
+    support = evidence["support-relation:entity://stack-block-2:entity://stack-block-1"]
+    assert support["vertical_gap_m"] == pytest.approx(0.0)
+    assert support["horizontal_offset_m"] == pytest.approx(0.0)
+    assert support["geometry_source"] == "simulator_actor_geometry"
+
+
+def test_stack_postcondition_evidence_violated_for_offset_and_floating_blocks():
+    adapter = adapters.StackBlocksThreeTaskAdapter()
+    offset = _stack_evidence_task({
+        "block1": (0.0, 0.0, 0.765),
+        "block2": (0.2, 0.0, 0.815),  # far outside the support footprint
+        "block3": (0.4, 0.0, 0.765),
+    })
+    evidence = adapter.postcondition_evidence(offset, _STACK_GOAL)
+    assert evidence["support-relation:entity://stack-block-2:entity://stack-block-1"]["status"] == "violated"
+
+    floating = _stack_evidence_task({
+        "block1": (0.0, 0.0, 0.765),
+        "block2": (0.0, 0.0, 0.9),  # 0.095 m above the support top
+        "block3": (0.4, 0.0, 0.765),
+    })
+    evidence = adapter.postcondition_evidence(floating, _STACK_GOAL)
+    assert evidence["support-relation:entity://stack-block-2:entity://stack-block-1"]["status"] == "violated"
+    assert evidence["stable-placement:entity://stack-block-2"]["status"] == "violated"
+
+
+def test_stack_postcondition_evidence_stays_unmeasured_without_bindings():
+    adapter = adapters.StackBlocksThreeTaskAdapter()
+    task = SimpleNamespace(block1=None, block2=None, block3=None, table=None)
+    evidence = adapter.postcondition_evidence(task, _STACK_GOAL)
+    assert all(item["status"] == "unmeasured" for item in evidence.values())
+
+    unknown_key = {**_STACK_GOAL, "produced_evidence": ["custom-evidence:example"]}
+    task = _stack_evidence_task({
+        "block1": (0.0, 0.0, 0.765), "block2": (0.0, 0.0, 0.815), "block3": (0.4, 0.0, 0.765),
+    })
+    evidence = adapter.postcondition_evidence(task, unknown_key)
+    assert evidence["custom-evidence:example"]["status"] == "unmeasured"

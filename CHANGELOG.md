@@ -49,6 +49,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.5.1 (2026-11-09 13:30) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] `StackBlocksThreeTaskAdapter.postcondition_evidence`：对 goal 的每个 `produced_evidence` 键实测支撑关系与稳定放置（直立、支撑足迹内水平偏移、近接触垂直净空），输出 satisfied/violated/unmeasured 测量并标 `geometry_source: simulator_actor_geometry`；不可测保持 unmeasured，绝不升格为满足，不改任务状态、不授权运动。 / Add `StackBlocksThreeTaskAdapter.postcondition_evidence`: measures support-relation and stable-placement facts per goal `produced_evidence` key (upright orientation, footprint-bounded horizontal offset, near-contact vertical gap) with satisfied/violated/unmeasured status and `geometry_source: simulator_actor_geometry`; unmeasurable facts stay unmeasured, task state and motion authorization are untouched.
+- [eval] [test] 3 项新测试：静止支撑满足、偏移/悬空违反、绑定缺失与未知键 unmeasured。 / Three new tests: resting support satisfied, offset/floating violated, missing bindings and unknown keys unmeasured.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py`：`StackBlocksThreeTaskAdapter.postcondition_evidence`（复用 `_matrix`/`_half_extents`，与 relation_target 相同的 actor 几何源）。 / `StackBlocksThreeTaskAdapter.postcondition_evidence` reusing `_matrix`/`_half_extents` and the same actor geometry source as `relation_target`.
+- [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py`（+3 测试）。 / Three additional tests.
+
+### 关键 Diff / Key Diff
+```diff
+before: stack goal produced_evidence keys (support-relation/stable-placement)
+        had no Adapter-side measurement
+after:  per-key measured geometry predicates with explicit tolerances;
+        unmeasurable stays unmeasured (fail-closed)
+```
+
+### 架构与验证 / Architecture and Validation
+- 证据只读测量归 Task Adapter；PAOS 任务状态、settlement 与 motion 授权不变。 / Evidence is a read-only Adapter measurement; PAOS task state, settlement and motion authorization are unchanged.
+- 验证：`test_robotwin_task_adapters.py` 13 passed（10 既有 + 3 新）；未运行仿真或运动。 / `test_robotwin_task_adapters.py` 13 passed (ten pre-existing plus three new); no simulation or motion was run.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v17.5.0 (2026-11-09 12:50) - codex
 
 ### 完成范围 / Completed Scope
@@ -179,25 +204,6 @@ still: no stack-specific route-preparation factory or controller qualification;
 
 ### Git 提交 / Git Commit
 - Implementation/diagnosis commit: `777cb547`; log-receipt commit: `f323c357`; branch: `feature/planning-loop`; both pushed successfully, verified 2026-11-08 18:34 Asia/Shanghai. / 实现与日志回执提交分别为 `777cb547`、`f323c357`；分支 `feature/planning-loop`；均已成功推送，2026-11-08 18:34 Asia/Shanghai 确认。
-
-## v17.3.13 (2026-11-08 15:45) - codex
-
-### 阶段结果 / Stage Result
-- [docs] [diag] 更正 RoboTwin Provider 定位：relation Runtime 注入链已存在；stack 缺少从目标 Query 候选到 grasp/assignment/qualified route 及单个可取消、可测量关系 Action 的 Adapter 组合。 / Correct the RoboTwin Provider diagnosis: relation Runtime injection exists; stack lacks Adapter composition from target Query candidate through grasp/assignment/qualified route to one cancellable, measured relation Action.
-- [policy] [diag] qualification artifacts 缺失，继续保持 `motion_execution_supported=False`；未添加代码或启动任务/Action/运动。 / Qualification artifacts are absent, so keep `motion_execution_supported=False`; no code or task/Action/motion was added or started.
-
-### 文件变更详情 / File Changes
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L484-L526；`changelog/2026-11_part2.md` L3-L25：更正注册链结论并保存本次 Provider 输入/输出边界诊断。 / Correct the registration-path finding and preserve this Provider input/output boundary diagnosis.
-
-### 关键 Diff / Key Diff
-```diff
-- missing: relation.establish Runtime injection
-+ present: relation.establish injection and relation-target Query
-+ missing: stack-specific qualified relation execution composition
-```
-
-### 验证 / Validation
-- `git diff --check` passed; no execution tests run because implementation files remain unchanged. / `git diff --check` 通过；实现文件未改，因此未运行执行测试。
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 
