@@ -77,7 +77,7 @@ added:  evaluation-only gripper_close_offset injection, engine-decided and
 - 验证：robotwin20 全套与 HEAD 基线失败集完全一致（12 grounding + 1 video，均为既有、与本次无关），新增 8 项全部通过；ruff、compileall 通过。未运行 RoboTwin 仿真、Action admission 或运动。 / The full robotwin20 suite matches the HEAD baseline failure set exactly (twelve grounding plus one video, all pre-existing and unrelated), all eight new tests pass, and ruff/compileall pass. No RoboTwin simulation, Action admission or motion was run.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `eb9eb5b4`; branch: `feature/planning-loop`. / Implementation commit: `eb9eb5b4`; branch: `feature/planning-loop`.
 
 ## v17.4.0 (2026-11-09 11:40) - codex
 
