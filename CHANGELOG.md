@@ -79,7 +79,7 @@ unchanged: route qualification, safety checks, settlement and recovery
 - 未运行仿真、PAOS task、Action 或运动。 / No simulation, PAOS task, Action or motion was run.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `64b97575`; branch: `feature/planning-loop`. / Implementation commit: `64b97575`; branch: `feature/planning-loop`.
 
 ## v17.3.14 (2026-11-08 18:15) - codex
 
