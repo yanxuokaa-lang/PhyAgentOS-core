@@ -49,6 +49,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.1 (2026-11-09 19:35) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] 修复 oracle run4 抓取资格全拒：瓶身深度分数从 (0.35, 0.50, 0.65) 加密为 0.05 步长 8 档（0.30-0.65），任何宽于一步的 gate 合法窗口都含候选；gate 阈值不变。live run4：R01 矮瓶窗口仅覆盖 0.36-0.47，粗采样全落窗外致 0 qualified。 / Fix oracle run4's all-rejected grasp qualification by densifying vessel depth fractions to eight samples at 0.05 steps; gate thresholds unchanged. Live run4: the squat R01 window covered only 0.36-0.47 and all coarse samples fell outside.
+
+### 架构与验证 / Architecture and Validation
+- 修复只在 Provider 机制层，gate 仍是唯一语义裁判；isaacsim 全量 `499 passed, 2 skipped`；未运行仿真。 / Provider-mechanism-only fix; the gate remains the sole judge. Full isaacsim suite `499 passed, 2 skipped`; no simulation ran.
+
+### Git 提交 / Git Commit
+- Implementation commit: (pending); branch: `feature/planning-loop`. / Implementation commit: (pending); branch: `feature/planning-loop`.
+
 ## v17.6.0 (2026-11-09 19:10) - codex
 
 ### 完成范围 / Completed Scope

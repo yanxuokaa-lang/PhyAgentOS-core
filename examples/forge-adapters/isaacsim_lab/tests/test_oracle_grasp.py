@@ -63,7 +63,9 @@ def test_bottle_candidates_target_semantic_body_band():
     points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
     rim = {"tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.03}
     candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0.0, 0.0))
-    assert [round(value["position_world_m"][2], 4) for value in candidates] == [0.13, 0.10, 0.07]
+    assert [round(value["position_world_m"][2], 4) for value in candidates] == [
+        0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07,
+    ]
     for value in candidates:
         position = np.asarray(value["position_world_m"])
         rotation = value["rotation_world"]
@@ -74,6 +76,35 @@ def test_bottle_candidates_target_semantic_body_band():
         assert np.allclose(rotation[:, 2], [0, 0, 1], atol=2e-3)
         assert np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-9)
         assert np.linalg.det(rotation) > 0
+
+
+def test_bottle_candidates_cover_squat_vessel_gate_window():
+    """Live run4 regression: R01 (0.08 m vessel, 0.0144 m rim, 0.06 m fingers).
+
+    The task-affordance gate accepts only projections between the opening
+    clearance max(2 x rim radius, 8% of extent) and the support clearance
+    max(12% of extent, 0.012 + half the finger height). Coarse fractions
+    (0.35/0.50/0.65) all fell outside that window; the dense body band must
+    keep at least one candidate inside whenever the window is wider than one
+    sampling step.
+    """
+    points = _cylinder(radius=0.032, height=0.08, center=(0.5, 0.0, 0.04))
+    rim = {"tip_world": [0.5, 0.0, 0.08], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.0144}
+    candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0.0, 0.0))
+    axis = np.asarray(rim["axis_world"], dtype=float)
+    tip = np.asarray(rim["tip_world"], dtype=float)
+    projections = (points - tip) @ axis
+    extent = float(np.ptp(projections))
+    support_projection = float(np.quantile(projections, 0.02))
+    opening_bound = -max(2 * rim["rim_radius_m"], extent * 0.08)
+    support_bound = support_projection + max(extent * 0.12, 0.012 + max(
+        GRIPPER["finger_height_m"], GRIPPER["finger_depth_m"]) * 0.5)
+    inside = [
+        candidate for candidate in candidates
+        if support_bound < float(np.dot(np.asarray(candidate["position_world_m"]) - tip, axis))
+        < opening_bound
+    ]
+    assert inside, "dense oracle body band must intersect the gate window of a squat vessel"
 
 
 def test_bottle_candidates_reject_unresolved_geometry():
@@ -158,7 +189,7 @@ def test_bottle_record_generates_provider_shaped_candidates(tmp_path):
     provider.bind_records(lambda calibration_ref: {record["entity_ref"]: record})
     output = provider.propose(_propose_request(record))
     assert output["provider_available"] is True
-    assert len(output["candidates"]) == 3
+    assert len(output["candidates"]) == 8
     # The snapshot must pass the generic grasp-proposal contract exactly.
     from PhyAgentOS.forge.capability_runtime.grasp_proposal import (
         normalize_snapshot,
@@ -168,10 +199,10 @@ def test_bottle_record_generates_provider_shaped_candidates(tmp_path):
     assert snapshot is not None
     assert validate_snapshot(snapshot, frame_id=record["frame_id"],
                              requested_entity_refs={record["entity_ref"]}) is None
-    assert output["funnel"] == {"decoded": 3, "canonicalized": 3, "deduplicated": 3, "retained": 3}
+    assert output["funnel"] == {"decoded": 8, "canonicalized": 8, "deduplicated": 8, "retained": 8}
     assert record["points_ref"] in output["produced_evidence_refs"]
     provider_from_tcp = np.array([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1]], dtype=float)
-    expected_depths = [0.13, 0.10, 0.07]
+    expected_depths = [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07]
     for candidate, depth in zip(output["candidates"], expected_depths):
         assert set(candidate) == {"candidate_ref", "entity_ref", "grasp_frame", "approach_direction",
                                   "score", "confidence", "provenance", "qualification", "grasp_geometry"}

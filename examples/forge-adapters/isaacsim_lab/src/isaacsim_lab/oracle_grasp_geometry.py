@@ -21,7 +21,15 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 _GRIPPER_KEYS = ("gripper_width_m", "finger_height_m", "finger_depth_m")
-_BOTTLE_DEPTH_FRACTIONS = (0.35, 0.50, 0.65)
+# The task-affordance gate only accepts grasps between the opening clearance
+# (max(2 x rim radius, 8% of extent)) and the support clearance (max(12% of
+# extent, support tolerance + half the finger height)). For squat vessels that
+# window can be narrower than 0.15 of the body extent, so coarse fractions can
+# miss it entirely (live run4: R01 window covered fractions 0.36-0.47 while the
+# coarse set was 0.35/0.50/0.65). Sample the body band densely enough that any
+# window wider than one step contains a candidate; the gate stays the sole
+# semantic judge.
+_BOTTLE_DEPTH_FRACTIONS = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65)
 _ROD_SHAFT_FRACTIONS = (0.30, 0.70)
 
 
