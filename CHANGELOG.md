@@ -79,7 +79,7 @@ unchanged: task-affordance gate, approach probe, route qualification,
 - 验证：isaacsim_lab 全量 `498 passed, 2 skipped`；ruff、compileall 通过。未运行 Isaac 仿真、PAOS task 或运动。 / Full isaacsim_lab suite `498 passed, 2 skipped`; ruff and compileall pass. No Isaac simulation, PAOS task or motion was run.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `faaadee2`; branch: `feature/planning-loop`. / Implementation commit: `faaadee2`; branch: `feature/planning-loop`.
 
 ## v17.3.15 (2026-11-09 10:20) - codex
 
