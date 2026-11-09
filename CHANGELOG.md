@@ -49,6 +49,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.4.1 (2026-11-09 11:55) - codex
+
+### 完成范围 / Completed Scope
+- [env] [fix] 修复 oracle 抓取 provider 输出与通用 grasp-proposal 契约的错配（run2 live 发现）：快照字段集改为封闭集合（移除输出级 `geometry_qualification`/`source`，血缘改由候选 provenance 与 `produced_evidence_refs` 携带），funnel 改为标准四阶段且 `retained == len(candidates)`。 / Fix the oracle grasp provider output to match the generic grasp-proposal contract exactly (found in live run2): the snapshot uses the closed field set (output-level lineage keys removed; lineage stays in candidate provenance and `produced_evidence_refs`) and the standard four-stage funnel with `retained == len(candidates)`.
+- [eval] [test] 测试直接经 `normalize_snapshot`/`validate_snapshot` 验证通用契约。 / The test now validates the generic contract directly through `normalize_snapshot`/`validate_snapshot`.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/oracle_grasp_geometry.py`：provider 输出形状修复。 / Provider output shape fix.
+- [修改] `examples/forge-adapters/isaacsim_lab/tests/test_oracle_grasp.py`：契约级断言。 / Contract-level assertions.
+
+### 关键 Diff / Key Diff
+```diff
+before: funnel={"targets","generated"} + extra output keys -> normalize_snapshot None
+        -> grasp.propose unavailable (live run2 failure)
+after:  closed snapshot fields + decoded/canonicalized/deduplicated/retained funnel
+        -> endpoint-level contract test green, 498 passed
+```
+
+### 架构与验证 / Architecture and Validation
+- 修复只改 provider 输出形状；gate/资格链不变。isaacsim_lab 全量 `498 passed, 2 skipped`；未运行仿真。 / Only the provider output shape changed; gate and qualification are unchanged. Full isaacsim_lab suite `498 passed, 2 skipped`; no simulation was run.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v17.5.1 (2026-11-09 13:30) - codex
 
 ### 完成范围 / Completed Scope
@@ -167,43 +191,6 @@ unchanged: route qualification, safety checks, settlement and recovery
 
 ### Git 提交 / Git Commit
 - Implementation commit: `64b97575`; branch: `feature/planning-loop`. / Implementation commit: `64b97575`; branch: `feature/planning-loop`.
-
-## v17.3.14 (2026-11-08 18:15) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] 新增 RoboTwin `StackRelationExecutionProvider`，将一条 Coordinator relation Action 组合为受当前 scene/assignment/candidate/approval 约束的 acquire -> place 阶段；成功要求区别于 acquire 的 scene revision、artifact evidence、有效 placement measurement、release、retreat、clear-of-target 和空夹爪。 / Add RoboTwin `StackRelationExecutionProvider` to compose one Coordinator relation Action into scene/assignment/candidate/approval-bound acquire -> place phases; success requires a scene revision distinct from acquire, artifact evidence, valid placement measurement, release, retreat, target clearance and empty gripper.
-- [env] [fix] 取消后的 acquire、cancel/place handoff 竞态、worker poll exception、place start uncertain 与不完整/非有限 placement feedback 均保持 unknown，不伪报成功或遗漏取消；Host factory 使用同一个 persistent client/deployment 创建可替换 Provider。 / Keep cancelled acquire, cancellation/place-handoff races, worker-poll exceptions, uncertain place start and incomplete/non-finite placement feedback unknown; do not report success or lose cancellation. The Host factory constructs a replaceable Provider from the same persistent client/deployment.
-- [eval] [test] 增加 Provider 与 Host integration 回归；Coordinator/AgentLoop/CapabilityRuntime 所有权和公共 Tool contract 不变。 / Add Provider and Host integration regressions; Coordinator/AgentLoop/CapabilityRuntime ownership and public Tool contracts remain unchanged.
-
-### 文件变更详情 / File Changes
-- [新增] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_execution.py` L1-L287：route/assignment/approval/scene 校验和持久 worker acquire/place 生命周期组合。 / Validate route/assignment/approval/scene and compose persistent-worker acquire/place lifecycle.
-- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L24, L393-L443, L931-L938；`examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L576-L598：接入 Host provider factory，并验证 factory 收到 host-owned client/deployment。 / Add the Host Provider factory and verify it receives the host-owned client/deployment.
-- [新增] `examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py` L1-L349：覆盖 route fail-closed、stale scene、acquire failure/cancel、cancel/place race、poll unknown、placement measurement/revision/evidence 和双阶段成功。 / Cover fail-closed routes, stale scenes, acquire failure/cancellation, cancel/place races, unknown polling, placement measurement/revision/evidence and successful two-phase composition.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L528-L559；`changelog/2026-11_part2.md` L3-L55：保存实施诊断、精确差异和验证结果。 / Preserve implementation diagnosis, exact changes and validation results.
-
-### 关键 Diff / Key Diff
-```diff
-before: no RoboTwin one-relation acquire/place Action composition
-after:  current relation + qualified Adapter route -> acquire -> confirmed holding
-        and fresh scene -> place -> measured placement/release/retreat/clearance
-cancel/unknown/partial result: never inferred as success
-still: no stack-specific route-preparation factory or controller qualification;
-       motion_execution_supported remains false and task is not executable
-```
-
-```diff
-- start place after an unlocked cancellation check
-+ lock cancellation against acquire-to-place transition
-- accept numeric placement residuals without finiteness checks
-+ require finite non-negative residuals and a new scene revision
-```
-
-### 架构与验证 / Architecture and Validation
-- 定向组合测试 `82 passed`；Ruff、compileall、scoped `git diff --check` 通过。 / Focused integration tests: `82 passed`; Ruff, compileall and scoped `git diff --check` pass.
-- 未创建 PAOS task、未调用 Gateway Action、未启动 RoboTwin 仿真或运动。当前只证明 contract/Provider 行为，不证明实际 controller route/contact/stop。 / No PAOS task or Gateway Action was created or invoked, and no RoboTwin simulation or motion was started. Evidence proves only contract/Provider behavior, not actual controller route/contact/stop behavior.
-
-### Git 提交 / Git Commit
-- Implementation/diagnosis commit: `777cb547`; log-receipt commit: `f323c357`; branch: `feature/planning-loop`; both pushed successfully, verified 2026-11-08 18:34 Asia/Shanghai. / 实现与日志回执提交分别为 `777cb547`、`f323c357`；分支 `feature/planning-loop`；均已成功推送，2026-11-08 18:34 Asia/Shanghai 确认。
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 

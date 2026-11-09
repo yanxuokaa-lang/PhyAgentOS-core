@@ -157,10 +157,19 @@ def test_bottle_record_generates_provider_shaped_candidates(tmp_path):
     provider = OracleSimulatorTruthGraspProvider(store, gripper_geometry=GRIPPER)
     provider.bind_records(lambda calibration_ref: {record["entity_ref"]: record})
     output = provider.propose(_propose_request(record))
-    assert output["geometry_qualification"] == "simulator_ground_truth"
-    assert output["source"] == "simulator_truth_oracle"
     assert output["provider_available"] is True
     assert len(output["candidates"]) == 3
+    # The snapshot must pass the generic grasp-proposal contract exactly.
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import (
+        normalize_snapshot,
+        validate_snapshot,
+    )
+    snapshot = normalize_snapshot(output)
+    assert snapshot is not None
+    assert validate_snapshot(snapshot, frame_id=record["frame_id"],
+                             requested_entity_refs={record["entity_ref"]}) is None
+    assert output["funnel"] == {"decoded": 3, "canonicalized": 3, "deduplicated": 3, "retained": 3}
+    assert record["points_ref"] in output["produced_evidence_refs"]
     provider_from_tcp = np.array([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1]], dtype=float)
     expected_depths = [0.13, 0.10, 0.07]
     for candidate, depth in zip(output["candidates"], expected_depths):

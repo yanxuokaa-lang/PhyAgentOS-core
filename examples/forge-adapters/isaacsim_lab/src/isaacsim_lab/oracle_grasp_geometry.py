@@ -315,11 +315,24 @@ class OracleSimulatorTruthGraspProvider:
                         "depth_m": self.gripper["finger_depth_m"],
                     },
                 })
+        # The snapshot field set and funnel stages are fixed by the generic
+        # grasp-proposal contract; lineage stays in candidate provenance and
+        # produced_evidence_refs instead of extra output keys.
         return {
             "candidates": candidates,
             "ambiguities": ambiguities,
-            "funnel": {"targets": len(request["targets"]), "generated": len(candidates)},
+            "funnel": {
+                "decoded": len(candidates),
+                "canonicalized": len(candidates),
+                "deduplicated": len(candidates),
+                "retained": len(candidates),
+            },
             "provider_available": True,
-            "geometry_qualification": "simulator_ground_truth",
-            "source": "simulator_truth_oracle",
+            "produced_evidence_refs": sorted({
+                ref
+                for record in records.values()
+                if record.get("calibration_ref") == request["calibration_ref"]
+                for ref in (record.get("points_ref"), record.get("geometry_ref"))
+                if isinstance(ref, str)
+            }),
         }
