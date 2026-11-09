@@ -49,6 +49,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.3.15 (2026-11-09 10:20) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] Isaac acquire 路线搜索新增两项正向证据剪枝：`acquire_min_reorient_radius_m` 把姿态变化前的 raised/staging 航点径向推出基座折叠区；`_sample_terminal_arm_branches` 在路线搜索前对最终抓取位姿采样确定性 IK 分支，"有解且全部碰撞"才以 `grasp_terminal_arm_infeasible` 剪掉候选（零解不剪），碰撞自由分支反哺 pre-grasp IK warm start。 / Add two positive-evidence prunings to the Isaac acquire route search: `acquire_min_reorient_radius_m` pushes raised/staging waypoints radially out of the near-base wrist-fold region before orientation change; `_sample_terminal_arm_branches` samples deterministic IK branches at the final grasp pose before search and prunes only on positive evidence (solutions exist and all collide) as `grasp_terminal_arm_infeasible`, feeding collision-free branches back as pre-grasp IK warm starts.
+- [env] [feat] `LabGraspTaskAffordanceProvider` 新增抓取漏斗统计（evaluated / geometry_qualified / gate_rejects / probe_rejects / qualified），持久化为 `grasp-affordance-funnel` artifact 并写入 diagnostics；新增离线回放脚本 `replay_task_affordance_funnel.py`。 / Add grasp funnel statistics to `LabGraspTaskAffordanceProvider` (evaluated / geometry_qualified / gate_rejects / probe_rejects / qualified), persisted as a `grasp-affordance-funnel` artifact with diagnostics, plus an offline replay script `replay_task_affordance_funnel.py`.
+- [eval] [test] 新增/扩展 phase_motion 与 visual_perception 回归覆盖新配置、径向外推、terminal branch 剪枝与漏斗计数。 / Add/extend phase_motion and visual_perception regressions covering the new knobs, radial push-out, terminal-branch pruning and funnel counts.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`：新增 `acquire_min_reorient_radius_m: 0.5`、`acquire_probe_terminal_seed_count: 8`。 / Add `acquire_min_reorient_radius_m: 0.5` and `acquire_probe_terminal_seed_count: 8`.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L259-L340, L424-L446, L470-L480, L1620-L1660：reorient 半径校验/外推、terminal IK 分支采样与正向证据剪枝、deterministic_ik_seeds。 / Reorient-radius validation/push-out, terminal IK branch sampling with positive-evidence pruning, and deterministic_ik_seeds.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L322-L510：gate/probe 拒绝按码计数并发布 funnel artifact。 / Count gate/probe rejects by code and publish the funnel artifact.
+- [新增] `examples/forge-adapters/isaacsim_lab/scripts/replay_task_affordance_funnel.py`：离线回放历史 run 的漏斗直方图。 / Offline replay of historical run funnels.
+- [修改] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`（+131）、`tests/test_visual_perception.py`（+27）。 / Regression additions in both test files.
+
+### 关键 Diff / Key Diff
+```diff
+before: every acquire variant enumerated through full corridor qualification
+        (R05: 65/104 variants, 600s route_search_timeout)
+after:  terminal pose IK branches sampled first; positive-evidence doomed
+        variants pruned as grasp_terminal_arm_infeasible; reorientation
+        moved to >=0.5m base radius; funnel counts persisted per run
+unchanged: route qualification, safety checks, settlement and recovery
+```
+
+### 架构与验证 / Architecture and Validation
+- 剪枝只发生在 Adapter 私有的运动几何层，且只凭正向证据（有解且全碰）剪枝；路线资格、接触窗口、settlement 与 v17.0.0 安全恢复不变。 / Pruning is Adapter-private motion geometry and positive-evidence only; route qualification, contact windows, settlement and v17.0.0 safe recovery are unchanged.
+- 定向 pytest：`PYTHONPATH=... .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests -q` -> `484 passed, 2 skipped`。 / Focused pytest over the full isaacsim_lab suite: `484 passed, 2 skipped`.
+- 未运行仿真、PAOS task、Action 或运动。 / No simulation, PAOS task, Action or motion was run.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending; branch: `feature/planning-loop`. / Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v17.3.14 (2026-11-08 18:15) - codex
 
 ### 完成范围 / Completed Scope
@@ -164,36 +196,6 @@ decision: no empty roots, guessed task handles, silent benchmark substitution or
 
 ### Git 提交 / Git Commit
 - Diagnosis commit: `3232614b`; receipt commit: `9d4ada95`; branch: `feature/planning-loop`; push stalled for 40 seconds and was interrupted, so both commits remain local (branch ahead 2). / Diagnosis commit: `3232614b`; receipt commit: `9d4ada95`; branch: `feature/planning-loop`; push stalled for 40 seconds and was interrupted, so both commits remain local (branch ahead 2).
-
-## v17.3.10 (2026-11-08 11:16) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] 将可选 `relation.establish` Provider/resolver 从生产 `build_persistent_host` 贯通到既有 Persistent Runtime Bundle；缺少其一或 Provider 缺少 `admit` 时在 host 资源启动前拒绝。 / Forward the optional `relation.establish` Provider/resolver from production `build_persistent_host` to the existing Persistent Runtime Bundle; reject a partial pair or a Provider without `admit` before host resources start.
-- [eval] [test] 覆盖 host 集成路径中 Provider 启用/省略、半配置拒绝和错误 Provider 拒绝。 / Cover enabled/omitted Provider composition and partial/invalid-provider rejection through the host integration path.
-- [docs] [diag] 保存 host 入口之前遗漏端口转发的诊断；stack 几何、route/contact qualification 和仿真证据仍未具备。 / Record the missing forwarding at the host entry point; stack geometry, route/contact qualification and simulation evidence remain unavailable.
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L393-L400, L408-L423, L926-L944：暴露并校验 Provider/resolver 注入，再转交 bundle。 / Expose and validate Provider/resolver injection, then forward to the bundle.
-- [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L291-L319, L468-L617：测试成对契约和启用/禁用 Provider 的 production-host 组合。 / Test the paired contract and production-host composition with and without the Provider.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L285-L309：追加 host 入口诊断和 PAOS 所有权边界。 / Add the host-entry diagnosis and PAOS ownership boundary.
-- [修改] `changelog/2026-11_part2.md` L644-L680：记录计划、详细 Diff、行号与验证。 / Record the plan, detailed diff, line references and validation.
-- [修改] `CHANGELOG.md` L52-L81：更新最近五版本。 / Update the latest-five index.
-
-### 关键 Diff / Key Diff
-```diff
-before: build_persistent_host -> Runtime Bundle without relation Provider/resolver
-after:  build_persistent_host(optional Provider/resolver) -> pair/port validation
-        -> Runtime Bundle -> optional relation.establish registration
-omitted: unchanged default Tool set; no Action endpoint is registered
-```
-
-### 架构与验证 / Architecture and Validation
-- Host 仅组合 Adapter Provider；通用 endpoint 校验 relation 和 evidence lineage；Runtime、Coordinator、AgentLoop 生命周期所有权不变。 / The host only composes the Adapter Provider; the generic endpoint validates relation/evidence lineage; Runtime, Coordinator and AgentLoop lifecycle ownership is unchanged.
-- 定向 pytest `49 passed, 1 warning`；Ruff、compileall 通过。warning 是 pytest 环境不识别 `asyncio_mode`。 / Focused pytest: `49 passed, 1 warning`; Ruff and compileall pass. The warning is the environment's unrecognized `asyncio_mode` option.
-- 无 task、Action admission、RoboTwin runtime、仿真或运动；stack 仍不可执行。 / No task, Action admission, RoboTwin runtime, simulation or motion; stack remains non-executable.
-
-### Git 提交 / Git Commit
-- Implementation: `c1bbd7e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 11:26 Asia/Shanghai. / Implementation: `c1bbd7e8`; branch: `feature/planning-loop`; push succeeded at 2026-11-08 11:26 Asia/Shanghai.
 
 ## v17.3.9 (2026-11-08 15:10) - codex
 

@@ -256,6 +256,42 @@ def acquire_axial_symmetry_angles(config):
     return tuple(dict.fromkeys(float(value) for value in values))
 
 
+def acquire_min_reorient_radius(config):
+    """Return the optional minimum base radius for orientation-changing waypoints.
+
+    Zero (the default) preserves the legacy raise/orient positions; a positive
+    value pushes the raised and staging waypoints radially outward from the
+    base before any orientation change, moving reorientation out of the
+    near-base wrist-fold region. Bounded, Adapter-private and geometry-only.
+    """
+    value = config.get("acquire_min_reorient_radius_m", 0.)
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value < 0.):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_min_reorient_radius_m must be a finite non-negative number",
+        )
+    return float(value)
+
+
+def acquire_probe_terminal_seed_count(config):
+    """Return the bounded deterministic IK seed count for terminal-pose sampling.
+
+    The probe samples several IK branches at the final grasp pose before any
+    route search: when every sampled branch collides for the whole arm, the
+    candidate is terminally doomed and corridor enumeration cannot rescue it.
+    Pruning happens only on positive evidence (solutions exist and all
+    collide); zero solutions never prunes.
+    """
+    value = config.get("acquire_probe_terminal_seed_count", 8)
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 32:
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_probe_terminal_seed_count must be an integer between 1 and 32",
+        )
+    return int(value)
+
+
 def acquire_failure_recovery_codes(config):
     """Return configured acquire failures eligible for measured safe retreat."""
     values = config.get("acquire_failure_recovery_codes", [])
@@ -269,6 +305,18 @@ def acquire_failure_recovery_codes(config):
             "acquire_failure_recovery_codes must contain distinct non-empty strings",
         )
     return tuple(values)
+
+
+def deterministic_ik_seeds(seed_joints, limits, count):
+    """Return a bounded deterministic warm-start set: current, midpoint, offsets."""
+    lower, upper = limits[:, 0], limits[:, 1]
+    span = upper - lower
+    midpoint = lower + span * 0.5
+    seeds = [np.asarray(seed_joints, dtype=float).copy(), midpoint]
+    for index in range(2, max(2, int(count))):
+        fraction = 0.25 * np.sin((index - 1) * 0.7 + np.arange(len(span)) * 0.9)
+        seeds.append(np.clip(midpoint + span * fraction, lower, upper))
+    return seeds[:max(2, int(count))]
 
 
 def acquire_staging_corridors(config):
@@ -373,8 +421,27 @@ def acquire_direct_route_waypoints(tcp, desired, approach, corridor, config):
     ]
 
 
+def _push_to_reorient_radius(pose, radius):
+    """Return a copy of the pose pushed horizontally outward to the given base radius."""
+    pose = pose.copy()
+    if radius <= 0.:
+        return pose
+    xy = pose[:2, 3]
+    current = float(np.linalg.norm(xy))
+    if current < radius and current > 1e-9:
+        pose[:2, 3] = xy * (radius / current)
+    return pose
+
+
 def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quaternion, corridor, config):
-    """Build one geometry-derived acquire corridor without robot or task labels."""
+    """Build one geometry-derived acquire corridor without robot or task labels.
+
+    With ``acquire_min_reorient_radius_m`` configured, the raised and staging
+    waypoints are pushed radially outward from the base before any orientation
+    change so reorientation happens at a comfortable radius instead of folding
+    the wrist high above the base. Final approach, grasp and lift poses are
+    unchanged, and every route still passes the unchanged qualification.
+    """
     tcp = np.asarray(tcp, dtype=float)
     desired = np.asarray(desired, dtype=float)
     approach = np.asarray(approach, dtype=float)
@@ -404,6 +471,9 @@ def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quatern
     staged[2, 3] = transit_height
     raised = tcp.copy()
     raised[2, 3] = transit_height
+    reorient_radius = acquire_min_reorient_radius(config)
+    raised = _push_to_reorient_radius(raised, reorient_radius)
+    staged = _push_to_reorient_radius(staged, reorient_radius)
     transport_ready = raised.copy()
     transport_ready[:3, :3] = Rotation.from_quat(transport_quaternion).as_matrix()
     transported = transport_ready.copy()
@@ -1547,6 +1617,48 @@ class IsaacPhaseMotion:
                 progress(stage, "completed", qualified_steps=len(steps))
         return {"start_joints": initial.tolist(), "steps": steps}
 
+    def _sample_terminal_arm_branches(self, variant_desired, source, candidate_relation,
+                                      seed_joints, seed_count):
+        """Sample whole-arm IK branches at one final grasp pose; never proves a route.
+
+        Returns a summary with ``solution_count`` (IK solutions found within
+        joint limits), ``collision_free_count`` and up to three collision-free
+        joint vectors for branch-preferred pre-grasp seeding. Zero solutions
+        is reported without any feasibility conclusion.
+        """
+        hand = variant_desired @ np.linalg.inv(self.hand_from_tcp)
+        position = hand[:3, 3]
+        quaternion = np.roll(Rotation.from_matrix(hand[:3, :3]).as_quat(), 1)
+        solution_count = 0
+        collision_free = []
+        last_detail, last_diagnostics = "", None
+        for warm in deterministic_ik_seeds(seed_joints, self.limits, seed_count):
+            joints, success = self.solver.compute_inverse_kinematics(
+                "panda_hand", position, quaternion,
+                warm_start=warm,
+                position_tolerance=self.config["position_tolerance_m"],
+                orientation_tolerance=.02,
+            )
+            joints = np.asarray(joints, dtype=float)
+            if (not success or joints.shape != self.limits.shape[:1]
+                    or not np.isfinite(joints).all()
+                    or np.any(joints < self.limits[:, 0]) or np.any(joints > self.limits[:, 1])):
+                continue
+            solution_count += 1
+            try:
+                self._collisions(joints, source, False, False, candidate_relation, False)
+            except PhaseMotionError as exc:
+                last_detail, last_diagnostics = str(exc), exc.diagnostics
+                continue
+            collision_free.append(joints)
+        return {
+            "solution_count": solution_count,
+            "collision_free_count": len(collision_free),
+            "collision_free_joints": collision_free[:3],
+            "last_collision_detail": last_detail,
+            "last_collision_diagnostics": last_diagnostics,
+        }
+
     def qualify_grasp_approach(self, arguments):
         """Probe final grasp orientation and its short approach without motion.
 
@@ -1555,6 +1667,13 @@ class IsaacPhaseMotion:
         collision-free pre-grasp pose and a continuous, collision-free short
         approach/close segment.  Full acquire preparation still rechecks the
         complete route from the measured articulation state.
+
+        Whole-arm terminal sampling runs before the distance loop: when every
+        sampled IK branch at a variant's final grasp pose collides, that
+        variant is rejected as terminally doomed instead of spending corridor
+        enumeration on a fixed fatal endpoint. Surviving collision-free
+        branches seed the pre-grasp IK so the validated chain connects to a
+        feasible terminal branch.
         """
         from .engine import _target_in_world
 
@@ -1581,6 +1700,8 @@ class IsaacPhaseMotion:
         failures = []
         candidates = []
         attempts = []
+        terminal_samples = []
+        terminal_seed_count = acquire_probe_terminal_seed_count(self.config)
         identity = {key: arguments[key] for key in (
             "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
         )}
@@ -1599,6 +1720,8 @@ class IsaacPhaseMotion:
                 self.check_final_gripper_pose(variant_desired, source)
             except PhaseMotionError as exc:
                 final_error = exc
+            terminal = None
+            branch_seeds = []
             for distance_order, distance in enumerate(approach_distances):
                 pre = variant_desired.copy()
                 pre[:3, 3] -= direction * distance
@@ -1620,12 +1743,30 @@ class IsaacPhaseMotion:
                             f"pre-grasp TCP={pre[:3, 3].tolist()} outside world workspace "
                             f"min={self.config['workspace_min_m']}, max={self.config['workspace_max_m']}",
                         )
+                    if terminal is None:
+                        terminal = self._sample_terminal_arm_branches(
+                            variant_desired, source, candidate_relation, seed_joints, terminal_seed_count
+                        )
+                        terminal_samples.append({
+                            "axial_symmetry_angle_rad": symmetry_angle,
+                            "solution_count": terminal["solution_count"],
+                            "collision_free_count": terminal["collision_free_count"],
+                        })
+                        branch_seeds = terminal["collision_free_joints"]
+                        if terminal["solution_count"] > 0 and terminal["collision_free_count"] == 0:
+                            raise PhaseMotionError(
+                                "grasp_terminal_arm_infeasible",
+                                f"terminal grasp pose sampled {terminal['solution_count']} whole-arm IK "
+                                f"branches and every branch collides: {terminal['last_collision_detail']}; "
+                                f"corridor enumeration cannot change the fixed final pose",
+                                diagnostics=terminal["last_collision_diagnostics"],
+                            )
                     hand = pre @ np.linalg.inv(self.hand_from_tcp)
                     pre_joints, success = self.solver.compute_inverse_kinematics(
                         "panda_hand",
                         hand[:3, 3],
                         np.roll(Rotation.from_matrix(hand[:3, :3]).as_quat(), 1),
-                        warm_start=seed_joints,
+                        warm_start=branch_seeds[0] if branch_seeds else seed_joints,
                         position_tolerance=self.config["position_tolerance_m"],
                         orientation_tolerance=.02,
                     )
@@ -1682,6 +1823,7 @@ class IsaacPhaseMotion:
             "finger_geometry_evidence": getattr(self, "finger_geometry_evidence", []),
             "palm_geometry_evidence": getattr(self, "palm_geometry_evidence", []),
             "attempts": attempts,
+            "terminal_sampling": terminal_samples,
         }
         if not candidates:
             counts = Counter(exc.code for _angle, _distance, exc in failures)
@@ -1700,6 +1842,11 @@ class IsaacPhaseMotion:
             public_detail = "; ".join(f"{code} count={counts[code]}" for code in sorted(counts))
             if final_count:
                 public_detail += f"; final_grasp rejected approaches={final_count}"
+            terminal_count = sum(
+                attempt.get("failure_code") == "grasp_terminal_arm_infeasible" for attempt in attempts
+            )
+            if terminal_count:
+                public_detail += f"; terminal_arm_infeasible variants={terminal_count}"
             evidence = self._artifact("grasp-approach-feasibility", {
                 **evidence_context,
                 "status": "unavailable",

@@ -1353,6 +1353,33 @@ def test_task_affordance_provider_rejects_bottle_grasp_near_support_end(tmp_path
     assert "too close to the support end" in result["error"]
 
 
+def test_task_affordance_provider_records_gate_funnel_statistics(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    bottle_points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                                for z in np.linspace(.45, .55, 16) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., .6],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .01}
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.05, 0., .49], source_category="reagent_bottle",
+        source_points=bottle_points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_geometry={"width_m": .04, "height_m": .02, "depth_m": .08},
+    )
+
+    result = provider.propose(request)
+
+    assert result["status"] == "unavailable"
+    candidate_set = provider.candidate_sets[result["candidate_set_ref"]]
+    funnel_ref = candidate_set["funnel_ref"]
+    assert funnel_ref.startswith("artifact://labutopia/grasp-affordance-funnel/")
+    funnel = json.loads(provider.perception.store.path(funnel_ref).read_bytes())
+    assert funnel["evaluated"] == 1
+    assert funnel["geometry_qualified"] == 0
+    assert funnel["qualified"] == 0
+    assert funnel["gate_rejects"] == {"bottle grasp is too close to the support end": 1}
+    assert funnel["probe_rejects"] == {}
+
+
 @pytest.mark.parametrize("value", [0, .5, float("nan"), "invalid"])
 def test_task_affordance_provider_rejects_invalid_bottle_support_clearance(value):
     with pytest.raises((TypeError, ValueError), match="task-affordance|support-clearance"):

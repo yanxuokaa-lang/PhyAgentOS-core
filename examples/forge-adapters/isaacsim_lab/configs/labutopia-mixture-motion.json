@@ -14,6 +14,8 @@
   "acquire_route_search_timeout_s": 600.0,
   "acquire_route_strategies": ["direct", "staged"],
   "acquire_timing": "stage_continuous",
+  "acquire_min_reorient_radius_m": 0.5,
+  "acquire_probe_terminal_seed_count": 8,
   "acquire_failure_recovery_codes": [
     "physical_grasp_lost",
     "grasp_not_confirmed",

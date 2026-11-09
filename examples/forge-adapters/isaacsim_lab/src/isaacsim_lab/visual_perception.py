@@ -322,6 +322,8 @@ class LabGraspTaskAffordanceProvider:
         destination_features = [(ref, feature) for ref, entity, feature in selected_features if entity == destination_ref]
         grasp_candidates = self._grasp_candidates(grasp_set, request, source_ref)
         qualified, failures = [], []
+        gate_rejects: Counter[str] = Counter()
+        probe_rejects: Counter[str] = Counter()
         if request["operation"] == "pour":
             if (len(source_features) != 1 or len(destination_features) != 1
                     or source_features[0][1].get("feature_kind") != "rim"
@@ -352,6 +354,7 @@ class LabGraspTaskAffordanceProvider:
                         }))
                     elif reason:
                         failures.append(reason)
+                        gate_rejects[reason] += 1
                 qualified.extend(item for _rank, _ref, item in sorted(
                     bottle_candidates, key=lambda value: (*value[0], value[1])
                 ))
@@ -370,7 +373,9 @@ class LabGraspTaskAffordanceProvider:
                                           "process_feature_refs": [working_ref, rims[0][0]]})
                     elif reason:
                         failures.append(reason)
+                        gate_rejects[reason] += 1
 
+        geometry_qualified = len(qualified)
         feasibility = {}
         if self.approach_feasibility is not None and qualified:
             captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
@@ -466,6 +471,7 @@ class LabGraspTaskAffordanceProvider:
                 else:
                     code = result.get("failure_code", "invalid_grasp_approach_probe_result")
                     probe_failures.append(str(code)[:100])
+                    probe_rejects[str(code)[:100]] += 1
                 feasibility[candidate_ref] = deepcopy(dict(result))
             qualified = admitted
             if probe_failures and not qualified:
@@ -491,6 +497,19 @@ class LabGraspTaskAffordanceProvider:
             "combinations": combinations,
             "feasibility": feasibility,
         }
+        funnel = {
+            "operation": request["operation"], **identity,
+            "evaluated": len(grasp_candidates),
+            "geometry_qualified": geometry_qualified,
+            "gate_rejects": dict(sorted(gate_rejects.items())),
+            "probe_rejects": dict(sorted(probe_rejects.items())),
+            "qualified": len(candidates),
+        }
+        funnel_ref = self.perception.store.write("grasp-affordance-funnel", funnel)
+        self.candidate_sets[candidate_set_ref]["funnel_ref"] = funnel_ref
+        diagnostics = getattr(self.perception, "diagnostics", None)
+        if isinstance(diagnostics, dict):
+            diagnostics[f"grasp_task_affordance_funnel:{candidate_set_ref}"] = funnel
         status = "available" if candidates else ("ambiguous" if any("ambiguous" in item for item in failures) else "unavailable")
         return {"status": status, "candidate_set_ref": candidate_set_ref,
                 "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],

@@ -13,6 +13,8 @@ from isaacsim_lab.phase_motion import (
     acquire_direct_route_waypoints,
     acquire_failure_recovery_codes,
     acquire_failure_summary,
+    acquire_min_reorient_radius,
+    acquire_probe_terminal_seed_count,
     acquire_route_search_timeout,
     acquire_route_strategies,
     acquire_route_waypoints,
@@ -775,6 +777,66 @@ def test_acquire_route_waypoints_apply_backoff_and_tangential_offset_before_appr
     assert grasp == pytest.approx(desired)
 
 
+def test_acquire_route_waypoints_push_reorientation_outward_when_configured():
+    tcp = pose_matrix([-.4, 0., 1.], Rotation.from_euler("xyz", [.1, .2, -.3]).as_quat())
+    desired = pose_matrix([-.45, .2, .8], [0., 0., 0., 1.])
+    waypoints = acquire_route_waypoints(
+        tcp,
+        desired,
+        np.asarray([0., -1., 0.]),
+        .1,
+        [0., 0., 0., 1.],
+        (.18, .08, .06),
+        {"lift_distance_m": .1, "settle_s": .6, "acquire_min_reorient_radius_m": .7},
+    )
+
+    raised, transport_ready, transported, staged = [waypoints[index][0] for index in (1, 2, 3, 4)]
+    pre, grasp, close, lifted = [waypoints[index][0] for index in (5, 6, 7, 8)]
+    assert np.linalg.norm(raised[:2, 3]) == pytest.approx(.7)
+    assert np.linalg.norm(staged[:2, 3]) == pytest.approx(.7)
+    assert raised[:2, 3] == pytest.approx(tcp[:2, 3] * (.7 / .4))
+    assert raised[2, 3] == pytest.approx(1.1)
+    assert raised[:3, :3] == pytest.approx(tcp[:3, :3])
+    assert transport_ready[:3, 3] == pytest.approx(raised[:3, 3])
+    assert transported[:2, 3] == pytest.approx(staged[:2, 3])
+    pre_legacy = desired.copy()
+    pre_legacy[:3, 3] -= np.asarray([0., -1., 0.]) * .18
+    assert pre[:3, 3] == pytest.approx(pre_legacy[:3, 3])
+    assert grasp == pytest.approx(desired)
+    assert lifted[2, 3] == pytest.approx(desired[2, 3] + .1)
+    assert [stage for _pose, _hold, stage in waypoints] == [
+        "open", "transit_raise", "transit_orient", "transit_cross",
+        "staging_reorient", "approach", "grasp", "close", "lift",
+    ]
+
+
+def test_acquire_route_waypoints_keep_legacy_positions_without_reorient_radius():
+    tcp = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    desired = pose_matrix([.4, .2, .8], [0., 0., 0., 1.])
+    waypoints = acquire_route_waypoints(
+        tcp,
+        desired,
+        np.asarray([0., -1., 0.]),
+        .1,
+        [1., 0., 0., 0.],
+        (.18, .08, .06),
+        {"lift_distance_m": .1, "settle_s": .6},
+    )
+
+    raised, staged = waypoints[1][0], waypoints[4][0]
+    assert raised[:2, 3] == pytest.approx([-.4, 0.])
+    assert staged[:3, 3] == pytest.approx([.46, .46, 1.1])
+
+
+def test_acquire_min_reorient_radius_validation():
+    assert acquire_min_reorient_radius({}) == 0.
+    assert acquire_min_reorient_radius({"acquire_min_reorient_radius_m": .55}) == pytest.approx(.55)
+    for value in (-.1, True, "wide", float("nan")):
+        with pytest.raises(PhaseMotionError) as captured:
+            acquire_min_reorient_radius({"acquire_min_reorient_radius_m": value})
+        assert captured.value.code == "invalid_motion_configuration"
+
+
 def test_direct_acquire_route_uses_continuous_pregrasp_without_fixed_transport_orientation():
     tcp = pose_matrix([-.4, 0., 1.], Rotation.from_euler("xyz", [.2, -.1, .3]).as_quat())
     desired = pose_matrix([.2, -.1, .8], Rotation.from_euler("xyz", [-.3, .4, -.2]).as_quat())
@@ -1262,6 +1324,75 @@ def test_grasp_approach_probe_fails_closed_when_all_final_approaches_are_unavail
     assert result["feasibility_ref"].startswith("artifact://")
     assert result["motion_authorized"] is False
     assert result["world_change_started"] is False
+
+
+def test_grasp_approach_probe_rejects_terminal_pose_when_all_sampled_branches_collide():
+    model, arguments = _grasp_approach_probe_fixture()
+    qualified = []
+
+    def qualify(*_args, **_kwargs):
+        qualified.append(1)
+        return {"start_joints": [0.] * 7, "steps": [{"joints": [0.] * 7, "stage": "grasp"}]}
+
+    model.qualify = qualify
+
+    def collisions(*_args, **_kwargs):
+        raise PhaseMotionError("route_collision", "link5 overlaps /World/table/surface/mesh")
+
+    model._collisions = collisions
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "grasp_approach_unavailable"
+    assert "grasp_terminal_arm_infeasible" in result["error"]
+    assert "terminal_arm_infeasible variants=2" in result["error"]
+    assert qualified == []  # short-route qualification is skipped for doomed endpoints
+
+
+def test_grasp_approach_probe_does_not_prune_when_terminal_sampling_finds_no_solution():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.solver = SimpleNamespace(
+        compute_inverse_kinematics=lambda *_args, **_kwargs: (np.zeros(0), False)
+    )
+    model.qualify = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        PhaseMotionError("inverse_kinematics_failed", "no pre-grasp IK solution")
+    )
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "unavailable"
+    assert "grasp_terminal_arm_infeasible" not in result["error"]
+    assert "inverse_kinematics_failed" in result["error"]
+
+
+def test_grasp_approach_probe_seeds_pregrasp_ik_from_collision_free_terminal_branch():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.limits = np.tile([-2., 1.], (7, 1))
+    warm_starts = []
+    model.solver = SimpleNamespace(
+        compute_inverse_kinematics=lambda *_args, **kwargs: (
+            warm_starts.append(np.asarray(kwargs["warm_start"], dtype=float).copy()),
+            (np.asarray(kwargs["warm_start"], dtype=float), True),
+        )[1]
+    )
+    model.qualify = lambda waypoints, *_args, initial_joints, initial_pose, **_kwargs: {
+        "start_joints": np.asarray(initial_joints).tolist(),
+        "steps": [{"joints": np.asarray(initial_joints).tolist(), "stage": "grasp"}],
+    }
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "available"
+    midpoint = np.full(7, -0.5)
+    assert any(np.allclose(seed, midpoint) for seed in warm_starts[2:])
+
+
+@pytest.mark.parametrize("value", [True, 0, 33, "8", 2.5])
+def test_acquire_probe_terminal_seed_count_rejects_invalid_values(value):
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_probe_terminal_seed_count({"acquire_probe_terminal_seed_count": value})
+    assert captured.value.code == "invalid_motion_configuration"
 
 
 def test_obstructed_final_gripper_pose_rejects_before_any_ik_search():
