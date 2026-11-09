@@ -62,3 +62,7 @@ failure_injection:
   mode: gripper_close_offset
   close_value: 0.2
   probability: 1.0
+  # Inject exactly one marginal-close failure per deployment: the engine
+  # records a marker artifact in the artifact root and every later acquire
+  # (including retries after safe recovery) executes clean.
+  apply_once: true

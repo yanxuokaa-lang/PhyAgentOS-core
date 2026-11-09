@@ -656,6 +656,10 @@ class RoboTwinPersistentEngine:
         simulation profiles. It is disabled by default, decided deterministically
         from the scene revision and invocation identity, and recorded in the
         action artifact so injected failures stay distinguishable in evidence.
+        With ``apply_once`` the engine also records a deployment-lifetime marker
+        artifact and skips injection once the marker exists, so only the first
+        acquire of an evaluation deployment is injected and retry acquires stay
+        clean (first grasp slips, re-grasp succeeds).
         """
         config = self.profile.get("failure_injection")
         if (not isinstance(config, Mapping) or not config.get("enabled", False)
@@ -664,20 +668,37 @@ class RoboTwinPersistentEngine:
         mode = config.get("mode")
         close_value = config.get("close_value")
         probability = config.get("probability", 1.0)
+        apply_once = config.get("apply_once", False)
         if (mode != "gripper_close_offset"
                 or isinstance(close_value, bool) or not isinstance(close_value, (int, float))
                 or not math.isfinite(float(close_value)) or not 0. < float(close_value) < 1.
                 or isinstance(probability, bool) or not isinstance(probability, (int, float))
-                or not math.isfinite(float(probability)) or not 0. <= float(probability) <= 1.):
+                or not math.isfinite(float(probability)) or not 0. <= float(probability) <= 1.
+                or not isinstance(apply_once, bool)):
             raise ValueError("failure_injection requires mode gripper_close_offset, "
-                             "close_value strictly between 0 and 1, and probability within [0, 1]")
+                             "close_value strictly between 0 and 1, probability within [0, 1], "
+                             "and boolean apply_once")
         import random
 
         scene_revision = self.backend.snapshot().get("scene_revision", "")
         rng = random.Random(f"{scene_revision}:{invocation_id}")
         if rng.random() >= float(probability):
             return None
-        return {"mode": mode, "close_value": float(close_value)}
+        injection = {"mode": mode, "close_value": float(close_value)}
+        if apply_once:
+            marker_ref = "artifact://persistent/failure-injection-applied"
+            if probe._artifact_path(self.root, marker_ref).exists():
+                return None
+            record = probe._json_artifact(self.root, marker_ref, {
+                "scene_revision": scene_revision,
+                "invocation_id": invocation_id,
+                "mode": mode,
+                "close_value": float(close_value),
+            })
+            injection["apply_once"] = True
+            injection["marker_ref"] = record["artifact_ref"]
+            injection["marker_sha256"] = record["sha256"]
+        return injection
 
     def execute(
         self,
@@ -694,6 +715,9 @@ class RoboTwinPersistentEngine:
         # before any early return or preparation failure can build a receipt.
         self._state.pop("placement_measurement", None)
         self._state.pop("placement_tolerance", None)
+        # The injection decision below is per-Action; never leak a prior
+        # acquire's resolved injection into a retry invocation.
+        self._state.pop("_failure_injection", None)
         start_steps = self._state.get("simulator_steps", 0)
         phases = []
         advancing = False

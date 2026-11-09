@@ -197,13 +197,14 @@ def test_execute_segment_records_command_log(monkeypatch):
     assert all(entry["arm"] == "left" and entry["phase"] == "approach" for entry in log)
 
 
-def _engine_with(config):
+def _engine_with(config, root=None):
     import robotwin_persistent_engine as engine_module
 
     engine = object.__new__(engine_module.RoboTwinPersistentEngine)
     from types import MappingProxyType
 
     engine.profile = {"failure_injection": config}
+    engine.root = Path(root) if root is not None else None
     engine.backend = SimpleNamespace(snapshot=lambda: MappingProxyType({"scene_revision": "scene-1"}))
     return engine
 
@@ -223,6 +224,44 @@ def test_failure_injection_resolution_is_config_gated():
         {"enabled": True, "mode": "gripper_close_offset", "close_value": 0.0},
         {"enabled": True, "mode": "gripper_close_offset", "close_value": 1.5},
         {"enabled": True, "mode": "gripper_close_offset", "close_value": 0.2, "probability": 1.5},
+        {"enabled": True, "mode": "gripper_close_offset", "close_value": 0.2, "apply_once": "yes"},
     ):
         with pytest.raises(ValueError):
             _engine_with(bad)._resolve_failure_injection("acquire", "inv-1")
+
+
+def test_failure_injection_apply_once_records_marker_and_gates_later_acquires(tmp_path):
+    config = {"enabled": True, "mode": "gripper_close_offset", "close_value": 0.2,
+              "probability": 1.0, "apply_once": True}
+    engine = _engine_with(config, root=tmp_path)
+    first = engine._resolve_failure_injection("acquire", "inv-1")
+    assert first is not None
+    assert first["mode"] == "gripper_close_offset"
+    assert first["close_value"] == 0.2
+    assert first["apply_once"] is True
+    marker = tmp_path / "persistent" / "failure-injection-applied.json"
+    assert marker.is_file()
+    import json as json_module
+
+    record = json_module.loads(marker.read_text(encoding="utf-8"))
+    assert record == {"scene_revision": "scene-1", "invocation_id": "inv-1",
+                      "mode": "gripper_close_offset", "close_value": 0.2}
+    assert first["marker_ref"] == "artifact://persistent/failure-injection-applied"
+    assert first["marker_sha256"] == probe_worker._sha_bytes(
+        marker.read_bytes()
+    )
+    # Retry acquires are new invocations and must stay clean: the marker gates
+    # the whole deployment to a single injected acquire.
+    assert engine._resolve_failure_injection("acquire", "inv-2") is None
+    fresh_engine = _engine_with(config, root=tmp_path)
+    assert fresh_engine._resolve_failure_injection("acquire", "inv-3") is None
+
+
+def test_failure_injection_without_apply_once_writes_no_marker(tmp_path):
+    config = {"enabled": True, "mode": "gripper_close_offset", "close_value": 0.2,
+              "probability": 1.0}
+    engine = _engine_with(config, root=tmp_path)
+    assert engine._resolve_failure_injection("acquire", "inv-1") == {
+        "mode": "gripper_close_offset", "close_value": 0.2,
+    }
+    assert not (tmp_path / "persistent" / "failure-injection-applied.json").exists()

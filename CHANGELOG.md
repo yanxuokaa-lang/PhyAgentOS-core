@@ -49,6 +49,18 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.0 (2026-11-09 19:10) - codex
+
+### 完成范围 / Completed Scope
+- [env] [feat] 恢复评测失败注入新增 `apply_once`：引擎在 artifact root 独占创建 marker artifact，整个部署只注入第一次 acquire，重试与后续 acquire 干净执行；同时修复注入决策粘性（每个 Action 开头清 `_failure_injection`，此前旧值会泄露到后续 acquire，也破坏 probability<1 统计口径）。skill 3.0.31 + node 1.0.21 重建安装。 / Add `apply_once` to the recovery-eval failure injection: the engine exclusively creates a marker artifact in the artifact root so exactly one acquire per deployment is injected and retries stay clean; also fix the sticky injection decision (cleared per Action; previously the stale value leaked into later acquires and corrupted probability<1 statistics). Skill 3.0.31 with node 1.0.21 rebuilt and installed.
+- [eval] [test] 3 项新测试（marker 独占创建/审计/跨引擎门控、非布尔拒绝、关闭时不写 marker）；定向 90 passed。 / Three new tests; focused suites 90 passed.
+
+### 架构与验证 / Architecture and Validation
+- marker 复用既有 artifact 约定（防逃逸/防符号链接/独占幂等），引擎与探针边界不变；未运行仿真或运动。live 回执：Isaac oracle run4 在抓取资格 gate 取消——oracle 契约生效，但 R01 矮瓶合法窗口仅 8.8mm，固定深度分数 0.35/0.50/0.65 全落窗外（详见 changelog/2026-11_part2.md v17.6.0）。 / The marker reuses existing artifact conventions with the engine/probe boundary unchanged; no simulation or motion ran. Live receipt: Isaac oracle run4 cancelled at the grasp gate — the oracle contract works, but the squat R01 leaves an 8.8 mm legal window and the fixed depth fractions all fall outside (details in changelog/2026-11_part2.md v17.6.0).
+
+### Git 提交 / Git Commit
+- Implementation commit: (pending); branch: `feature/planning-loop`. / Implementation commit: (pending); branch: `feature/planning-loop`.
+
 ## v17.5.2 (2026-11-09 12:10) - codex
 
 ### 完成范围 / Completed Scope
