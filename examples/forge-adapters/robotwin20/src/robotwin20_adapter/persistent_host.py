@@ -304,10 +304,17 @@ def load_persistent_host_profile(
             "assignment_store_path",
             "coordinator_workspace",
             "binding_request",
+            "acquire_safe_recovery",
+            "failure_injection",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
         raise PersistentHostConfigurationError("persistent host profile fields are invalid")
+    if not isinstance(profile.get("acquire_safe_recovery", False), bool):
+        raise PersistentHostConfigurationError("acquire_safe_recovery must be boolean")
+    failure_injection = profile.get("failure_injection")
+    if failure_injection is not None and not isinstance(failure_injection, Mapping):
+        raise PersistentHostConfigurationError("failure_injection must be an object")
     return profile
 
 
@@ -598,6 +605,14 @@ def build_persistent_host(
                 "simulation_action_mode": simulation_action_mode,
                 "goal_source": goal_source,
                 "start_state_tolerance_rad": start_state_tolerance_rad,
+                **(
+                    {"acquire_safe_recovery": profile["acquire_safe_recovery"]}
+                    if profile.get("acquire_safe_recovery") else {}
+                ),
+                **(
+                    {"failure_injection": dict(profile["failure_injection"])}
+                    if isinstance(profile.get("failure_injection"), Mapping) else {}
+                ),
                 "video": {
                     "enabled": video_settings["enabled"],
                     "fps": video_fps,

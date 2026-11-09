@@ -755,3 +755,103 @@ def test_serve_closes_persistent_world_when_http_bind_fails(monkeypatch):
         serve_persistent_host(host, "127.0.0.1", 19020)
 
     assert closed == [True]
+
+
+def _compose_host_with_recovery_fields(tmp_path, monkeypatch, profile):
+    class Client:
+        def __init__(self):
+            self._transport_lost = False
+
+        def query(self, command, arguments):
+            assert command == "snapshot"
+            return {"scene_revision": "scene", "holding_state": "empty"}
+
+        def close(self):
+            return None
+
+    client = Client()
+    import robotwin20_adapter.persistent_host as host_module
+    monkeypatch.setattr(host_module, "PersistentWorkerClient", lambda _worker: client)
+    monkeypatch.setattr(host_module, "load_perception_profile", lambda _path: {"depth_scale_to_m": 0.001})
+    monkeypatch.setattr(
+        host_module, "build_single_view_perception",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            infer=lambda _request: {}, readiness_summary=lambda: {
+                "ready": False, "provider_state": "unavailable",
+                "provider_error_class": "transport+timeout",
+                "binding_error": "scene_understanding_provider_unavailable",
+            },
+        ),
+    )
+    monkeypatch.setattr(host_module, "load_grasp_profile", lambda _path: {"provider_id": "graspgen"})
+    monkeypatch.setattr(
+        host_module, "build_grasp_provider",
+        lambda selected, **_kwargs: SimpleNamespace(propose=lambda _request: None),
+    )
+
+    class Provider:
+        def __init__(self):
+            self.client = client
+
+        def prepare(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def __call__(self, _phase, _request):
+            return {}
+
+    monkeypatch.setattr(
+        host_module, "build_persistent_deployment",
+        lambda **_kwargs: PersistentDeployment(Provider(), Provider(), Provider()),
+    )
+    host = build_persistent_host(profile, environ={"ROBOTWIN20_MODEL_API_KEY": "test-secret"})
+    return host, client
+
+
+def test_recovery_eval_fields_pass_through_to_worker_profile(tmp_path, monkeypatch):
+    profile, _environ = _profile(tmp_path)
+    profile.update(
+        {
+            "acquire_safe_recovery": True,
+            "failure_injection": {
+                "enabled": True,
+                "mode": "gripper_close_offset",
+                "close_value": 0.2,
+                "probability": 1.0,
+            },
+        }
+    )
+    host, _client = _compose_host_with_recovery_fields(tmp_path, monkeypatch, profile)
+    worker_profile = json.loads(
+        (tmp_path / "artifacts" / "persistent-host-runtime.json").read_text(encoding="utf-8")
+    )
+    assert worker_profile["acquire_safe_recovery"] is True
+    assert worker_profile["failure_injection"]["mode"] == "gripper_close_offset"
+    host.close()
+
+    (tmp_path / "default").mkdir()
+    default_profile, _environ = _profile(tmp_path / "default")
+    host, _client = _compose_host_with_recovery_fields(tmp_path, monkeypatch, default_profile)
+    worker_profile = json.loads(
+        (tmp_path / "default" / "artifacts" / "persistent-host-runtime.json").read_text(encoding="utf-8")
+    )
+    assert "acquire_safe_recovery" not in worker_profile
+    assert "failure_injection" not in worker_profile
+    host.close()
+
+
+def test_profile_loader_rejects_invalid_recovery_eval_fields(tmp_path):
+    profile, _environ = _profile(tmp_path)
+    profile["acquire_safe_recovery"] = "yes"
+    path = tmp_path / "invalid-recovery.yaml"
+    path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+    with pytest.raises(PersistentHostConfigurationError, match="acquire_safe_recovery"):
+        load_persistent_host_profile(path, environ={})
+
+    profile["acquire_safe_recovery"] = False
+    profile["failure_injection"] = ["not", "an", "object"]
+    path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+    with pytest.raises(PersistentHostConfigurationError, match="failure_injection"):
+        load_persistent_host_profile(path, environ={})
