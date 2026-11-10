@@ -441,6 +441,14 @@ def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quatern
     change so reorientation happens at a comfortable radius instead of folding
     the wrist high above the base. Final approach, grasp and lift poses are
     unchanged, and every route still passes the unchanged qualification.
+
+    ``transport_quaternion=None`` is the carry-as-grasped candidate: the raised
+    waypoint keeps the qualified grasp orientation, so ``transit_orient`` applies
+    zero rotation. A world-frame transport quaternion can demand 50-90 degrees of
+    wrist reorientation for tilted truth-derived grasp frames (or be unreachable
+    at the raised waypoint with joint jumps), while carrying the grasp orientation
+    needs none; every route still flows through the unchanged qualification and
+    collision checks.
     """
     tcp = np.asarray(tcp, dtype=float)
     desired = np.asarray(desired, dtype=float)
@@ -475,7 +483,11 @@ def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quatern
     raised = _push_to_reorient_radius(raised, reorient_radius)
     staged = _push_to_reorient_radius(staged, reorient_radius)
     transport_ready = raised.copy()
-    transport_ready[:3, :3] = Rotation.from_quat(transport_quaternion).as_matrix()
+    if transport_quaternion is None:
+        # Carry-as-grasped: hold the qualified grasp orientation through transit.
+        transport_ready[:3, :3] = desired[:3, :3]
+    else:
+        transport_ready[:3, :3] = Rotation.from_quat(transport_quaternion).as_matrix()
     transported = transport_ready.copy()
     transported[:2, 3] = staged[:2, 3]
     return [
@@ -831,6 +843,12 @@ class IsaacPhaseMotion:
         self.bodies = {}
         self.payload_geometry = {}
         self.body_from_observed = {}
+        # Adapter-private projection of available approach probes' variant
+        # selections, keyed by candidate; consumed by the
+        # simulator_truth_preselected collapse in prepare(). Freshness is
+        # re-checked against scene identity inside that collapse, never by
+        # wall-clock time.
+        self._probe_variant_selection = {}
         hand = self.stage.GetPrimAtPath(self.robot.prim_path + "/panda_hand")
         center = self.stage.GetPrimAtPath(self.robot.prim_path + "/panda_hand/tool_center")
         if not hand.IsValid() or not center.IsValid():
@@ -1195,7 +1213,11 @@ class IsaacPhaseMotion:
                 arguments["observation_model"].get("grasp_symmetry"),
                 acquire_axial_symmetry_angles(self.config),
             )
-            transport_orientations = acquire_transport_orientations(self.config)
+            # Carry-as-grasped is appended at the call site, never through
+            # configuration: configured world-frame candidates keep their order
+            # and the appended candidate takes transport_order equal to the
+            # number of configured candidates.
+            transport_orientations = acquire_transport_orientations(self.config) + (None,)
             staging_corridors = acquire_staging_corridors(self.config)
             direct_corridors = tuple(dict.fromkeys(
                 (corridor[0], 0., 0.) for corridor in staging_corridors
@@ -1205,15 +1227,35 @@ class IsaacPhaseMotion:
             clearances = acquire_transit_clearances(self.config)
             if policy == "simulator_truth_preselected":
                 # Oracle execution mode: the grasp pose already comes from
-                # simulator truth, so collapse every search dimension to its
-                # first configured element and qualify exactly one variant.
+                # simulator truth, so collapse every search dimension to one
+                # preselected element and qualify exactly one variant.
                 # Route qualification, contact checks and safety boundaries
                 # are unchanged; only the enumeration is skipped.
                 strategies = (strategies[0],)
-                variants = (variants[0],)
-                transport_orientations = (transport_orientations[0],)
+                # Preselection honours the approach probe's validated variant
+                # when its evidence identity still matches: the probe-qualified
+                # azimuth and approach distance are the answer, not enumeration
+                # order. Any candidate/scene drift, or a missing selection,
+                # falls back to the first configured element.
+                selection = getattr(self, "_probe_variant_selection", {}).get(target.get("candidate_ref"))
+                if (selection is not None
+                        and selection.get("scene_revision") == arguments.get("scene_revision")):
+                    variants = tuple(variant for variant in variants
+                                     if variant[0] is not None
+                                     and abs(variant[0] - selection["axial_symmetry_angle_rad"]) <= 1e-9
+                                     ) or (variants[0],)
+                    staging_corridors = tuple(corridor for corridor in staging_corridors
+                                              if abs(corridor[0] - selection["approach_distance_m"]) <= 1e-9
+                                              ) or (staging_corridors[0],)
+                else:
+                    variants = (variants[0],)
+                    staging_corridors = (staging_corridors[0],)
+                # Truth-derived grasp poses are carried in their own grasp
+                # orientation (carry-as-grasped), with no world-frame
+                # reorientation; preselection semantics treat the truth pose
+                # as the answer.
+                transport_orientations = (None,)
                 clearances = (clearances[0],)
-                staging_corridors = (staging_corridors[0],)
                 direct_corridors = tuple(dict.fromkeys(
                     (corridor[0], 0., 0.) for corridor in staging_corridors
                 ))
@@ -1363,7 +1405,11 @@ class IsaacPhaseMotion:
                         candidate["acquire_staging_tangential_offset_m"] = tangential_offset
                         if strategy == "staged":
                             candidate["acquire_transit_clearance_m"] = clearance
-                            candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
+                            # None records carry-as-grasped: the route carries the
+                            # grasp orientation instead of a world-frame quaternion.
+                            candidate["acquire_transport_orientation_xyzw"] = (
+                                None if transport_quaternion is None else list(transport_quaternion)
+                            )
                         if symmetry_angle is not None:
                             candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
                         candidate_target = deepcopy(target)
@@ -1883,6 +1929,16 @@ class IsaacPhaseMotion:
             }
         selected = min(candidates, key=lambda item: item[:3])
         _, _, _, angle, distance, route = selected
+        # Adapter-private projection consumed by the simulator_truth_preselected
+        # collapse: the probe-validated variant is the preselected answer, and
+        # its freshness is re-checked there against candidate and scene identity.
+        if not isinstance(getattr(self, "_probe_variant_selection", None), dict):
+            self._probe_variant_selection = {}
+        self._probe_variant_selection[arguments["candidate_ref"]] = {
+            "scene_revision": arguments["scene_revision"],
+            "axial_symmetry_angle_rad": angle,
+            "approach_distance_m": distance,
+        }
         evidence = self._artifact("grasp-approach-feasibility", {
             **evidence_context,
             "status": "available",

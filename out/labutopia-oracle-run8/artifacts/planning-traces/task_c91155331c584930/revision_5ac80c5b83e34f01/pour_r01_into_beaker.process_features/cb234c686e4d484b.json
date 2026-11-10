@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "de7df6da916d34b851ad48fc881374ff3e1f982e15f8d57125df8a12567a3c04",
+  "created_at": "2026-11-10T02:56:22.377518Z",
+  "decision_reason": "Use exact label-bound entities and observation fields from the active node.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:b675af3218ee45c58689cba51f43cf55:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "e236436121ae41fee402d71d9167e1b818690d57897d57aa44b864c198920359",
+  "node_id": "pour_r01_into_beaker.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_c91155331c584930/revision_5ac80c5b83e34f01/pour_r01_into_beaker.process_features/cb234c686e4d484b",
+      "input_binding_digest": "e236436121ae41fee402d71d9167e1b818690d57897d57aa44b864c198920359",
+      "node_digest": "a119b1730d5ea98fbbebef02f15f1f1d940af309a2c70971cbb2139068e942e0",
+      "node_id": "pour_r01_into_beaker.process_features",
+      "obligation_id": "pour_r01_into_beaker-process-features",
+      "revision_id": "revision_5ac80c5b83e34f01"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/a3483e990c194fac9915c166eb325723.json",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 665,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:b675af3218ee45c58689cba51f43cf55:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:b675af3218ee45c58689cba51f43cf55:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_5ac80c5b83e34f01",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:b675af3218ee45c58689cba51f43cf55:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_c91155331c584930"
+}

@@ -1,0 +1,50 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.prepare_grasp_task_affordance"
+  ],
+  "context_digest": "768754fbcfd278bf6f9f9722ca3b6c5f91465596c6b550991f38c30461f29ef8",
+  "created_at": "2026-11-10T03:16:44.532598Z",
+  "decision_reason": "Validate the first returned task-specific pour combination with exact direct-predecessor references before action admission.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:bb40d8532aa24b6391dcccffc217e076:0/tabletop_third_person",
+    "tool:tool_cf96d670e018470e",
+    "tool:tool_242ead99d2314b29",
+    "tool:tool_0c8f1500ee414e74"
+  ],
+  "input_binding_digest": "9796127eb6dad38ec9cbecb3479fc4f0026678e069e10c4997231ead7f8de4e7",
+  "node_id": "pour_reagent_a_into_beaker.prepare_grasp_task_affordance",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_1cab3ab1e9c74ae6/revision_7be70832b3244108/pour_reagent_a_into_beaker.prepare_grasp_task_affordance/7393a90a3eff480b",
+      "input_binding_digest": "9796127eb6dad38ec9cbecb3479fc4f0026678e069e10c4997231ead7f8de4e7",
+      "node_digest": "41aba854428f5f6c74850d12db0d19fe0a76064baec6b881828440a08e4e988d",
+      "node_id": "pour_reagent_a_into_beaker.prepare_grasp_task_affordance",
+      "obligation_id": "pour_reagent_a_into_beaker-task-affordance-preparation",
+      "revision_id": "revision_7be70832b3244108"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/efc25f3b67a0475dadff53d6d2d39cce.json",
+      "candidate_set_ref": "grasp-affordance-set://e115de56e03f478e9d13da0dbffcfa78",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 768,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:bb40d8532aa24b6391dcccffc217e076:0/tabletop_third_person",
+      "operation": "pour",
+      "process_feature_candidate_set_ref": "process-feature-set://ce7f7364eb09436ca1e994e7ad8479d9",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:bb40d8532aa24b6391dcccffc217e076:0",
+      "selected_combination_ref": "grasp-affordance://660c989c2dc44e1fa15402b69264dc88"
+    },
+    "tool_id": "manipulation.prepare_grasp_task_affordance"
+  },
+  "revision_id": "revision_7be70832b3244108",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:bb40d8532aa24b6391dcccffc217e076:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.prepare_grasp_task_affordance",
+  "task_id": "task_1cab3ab1e9c74ae6"
+}

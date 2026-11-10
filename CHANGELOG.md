@@ -49,6 +49,11 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.7 (2026-11-10 11:50) - codex
+
+### 完成范围 / Completed Scope
+- [feat][eval] oracle 三连修（倾角候选 / carry-as-grasped transport / 预选采用 probe 实证变体）后 run10 **首次实动**：32 评估→8 合格→6 probe available→路线资格全过（azimuth=−π/4）→65 秒 phase-video 实拍 acquire+倾倒，pour 已调用；终态 awaiting_replan 系 agent 40 次迭代预算被对账轮询耗尽（harness 边界，非链路缺陷）。508 passed / ruff clean；gate、probe、公共契约零改动。 / Oracle triple fix (tilt variants / carry-as-grasped transport / preselection honouring the probe's validated variant) → run10 moves the arm for the first time: full funnel→probe→route at azimuth −π/4, a 65-second phase video of acquire+pour, pour invoked; the awaiting_replan terminal comes from the agent's 40-iteration budget consumed by reconciliation polling (a harness boundary, not a chain defect). Gate, probe and public contracts untouched.
+
 ## v17.6.6 (2026-11-10 09:49) - codex
 
 ### 完成范围 / Completed Scope

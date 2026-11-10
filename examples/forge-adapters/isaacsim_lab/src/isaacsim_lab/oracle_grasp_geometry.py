@@ -10,9 +10,11 @@ below the rim, rod shaft leaving a working end free).
 The output keeps the provider-neutral candidate shape used by the model grasp
 providers. Every candidate still flows through the unchanged
 task-affordance qualification gate and the no-motion approach probe; this
-module never fabricates observations and never replaces qualification. All
-lineage is marked ``simulator_ground_truth`` and is never presented as
-sensor-derived geometry.
+module never fabricates observations and never replaces qualification.
+Configured tilt-angle variants are a provider-mechanism pose enumeration over
+the same contact points; the unchanged gate, not this module, stays the sole
+semantic judge of every tilted pose. All lineage is marked
+``simulator_ground_truth`` and is never presented as sensor-derived geometry.
 """
 
 from __future__ import annotations
@@ -30,6 +32,9 @@ _GRIPPER_KEYS = ("gripper_width_m", "finger_height_m", "finger_depth_m")
 # window wider than one step contains a candidate; the gate stays the sole
 # semantic judge.
 _BOTTLE_DEPTH_FRACTIONS = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65)
+# Default keeps the historical horizontal approach pose; configured tilt
+# variants are re-qualified individually by the unchanged task-affordance gate.
+_TILT_ANGLES = (0.,)
 _ROD_SHAFT_FRACTIONS = (0.30, 0.70)
 
 
@@ -45,6 +50,20 @@ def validate_depth_fractions(values, default):
             "oracle bottle_depth_fractions must be finite fractions strictly between 0.05 and 0.95",
         )
     return tuple(float(value) for value in values)
+
+
+def validate_tilt_angles(values, default):
+    """Return bounded non-negative approach-tilt angles below pi/2, deduplicated."""
+    if values is None:
+        return default
+    if (not isinstance(values, (list, tuple)) or not values
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not np.isfinite(float(value)) or not 0. <= float(value) < np.pi / 2
+                   for value in values)):
+        raise OracleGraspGeometryError(
+            "oracle tilt_angles_rad must be finite angles in [0, pi/2)",
+        )
+    return tuple(sorted({float(value) for value in values}))
 
 
 class OracleGraspGeometryError(ValueError):
@@ -133,13 +152,16 @@ def _median_radius(points, origin, axis):
 
 
 def bottle_grasp_candidates(world_points, rim_feature, *, gripper, base_xy,
-                            depth_fractions=None):
+                            depth_fractions=None, tilt_angles=None):
     """Semantic body-band grasp candidates for a vessel with a qualified rim.
 
     Positions sit on the near sidewall along a horizontal approach toward the
     robot base, at several depths below the rim inside the observed body. The
     provider z-axis spans the vessel axis so the TCP finger span follows it,
-    exactly as the task-affordance gate requires.
+    exactly as the task-affordance gate requires. Every configured tilt angle
+    rotates the approach toward the vessel base and the span axis by the same
+    amount while the contact point stays on the original sidewall; each tilted
+    variant is re-qualified individually by the unchanged gate downstream.
     """
     points = np.asarray(world_points, dtype=float)
     if points.ndim != 2 or points.shape[1] != 3 or len(points) < 20 or not np.isfinite(points).all():
@@ -155,14 +177,20 @@ def bottle_grasp_candidates(world_points, rim_feature, *, gripper, base_xy,
         raise OracleGraspGeometryError("vessel radial extent is unresolved")
     approach = _approach_perpendicular_to_axis(
         _horizontal_toward_base(points.mean(0), base_xy), axis)
-    rotation = _provider_rotation(approach, axis)
+    tilts = validate_tilt_angles(tilt_angles, _TILT_ANGLES)
     candidates = []
     for fraction in validate_depth_fractions(depth_fractions, _BOTTLE_DEPTH_FRACTIONS):
         axis_point = tip + axis * (-extent * fraction)
-        candidates.append({
-            "position_world_m": axis_point + approach * radius,
-            "rotation_world": rotation,
-        })
+        for tilt in tilts:
+            # Tilt the approach toward the vessel base and the span axis by the
+            # same angle about the closing direction; both stay orthonormal and
+            # tilt=0 reproduces the historical pose bit-for-bit.
+            tilted_approach = approach * np.cos(tilt) - axis * np.sin(tilt)
+            tilted_axis = axis * np.cos(tilt) + approach * np.sin(tilt)
+            candidates.append({
+                "position_world_m": axis_point + approach * radius,
+                "rotation_world": _provider_rotation(tilted_approach, tilted_axis),
+            })
     return candidates
 
 
@@ -208,7 +236,8 @@ class OracleSimulatorTruthGraspProvider:
     endpoint pair) recorded by the simulator-truth understanding path.
     """
 
-    def __init__(self, store, *, gripper_geometry, base_xy=(0., 0.), bottle_depth_fractions=None):
+    def __init__(self, store, *, gripper_geometry, base_xy=(0., 0.), bottle_depth_fractions=None,
+                 tilt_angles=None):
         self.store = store
         self.gripper = validate_gripper_geometry(gripper_geometry)
         self.base_xy = tuple(float(value) for value in base_xy)
@@ -216,6 +245,7 @@ class OracleSimulatorTruthGraspProvider:
             raise OracleGraspGeometryError("oracle approach base_xy must be finite")
         self.bottle_depth_fractions = validate_depth_fractions(
             bottle_depth_fractions, _BOTTLE_DEPTH_FRACTIONS)
+        self.tilt_angles = validate_tilt_angles(tilt_angles, _TILT_ANGLES)
         self._records_accessor = None
 
     def bind_records(self, accessor):
@@ -270,7 +300,7 @@ class OracleSimulatorTruthGraspProvider:
                     continue
                 generated = bottle_grasp_candidates(
                     world_points, rims[0], gripper=self.gripper, base_xy=self.base_xy,
-                    depth_fractions=self.bottle_depth_fractions)
+                    depth_fractions=self.bottle_depth_fractions, tilt_angles=self.tilt_angles)
             elif category == "stir_tool":
                 pairs = [item for item in features
                          if item.get("feature_kind") == "rod_endpoint_pair"]

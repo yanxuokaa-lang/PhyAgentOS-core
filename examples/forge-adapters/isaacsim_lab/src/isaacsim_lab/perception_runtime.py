@@ -63,7 +63,8 @@ def build_visual_providers(config_path, engine, artifact_root, inference, *, seg
             raise ValueError("oracle approach_base_xy_m must be a numeric 2-vector")
         oracle = OracleSimulatorTruthGraspProvider(
             store, gripper_geometry=oracle_config, base_xy=tuple(float(value) for value in base_xy),
-            bottle_depth_fractions=oracle_config.get("bottle_depth_fractions"))
+            bottle_depth_fractions=oracle_config.get("bottle_depth_fractions"),
+            tilt_angles=oracle_config.get("tilt_angles_rad"))
         grasp = RecordedGraspProvider(oracle, store)
     else:
         grasp = RecordedGraspProvider(GraspNetProposalProvider(

@@ -9,10 +9,15 @@ from scipy.spatial.transform import Rotation
 from isaacsim_lab.oracle_grasp_geometry import (
     OracleGraspGeometryError,
     OracleSimulatorTruthGraspProvider,
+    _approach_perpendicular_to_axis,
+    _horizontal_toward_base,
+    _median_radius,
+    _provider_rotation,
     bottle_grasp_candidates,
     rod_grasp_candidates,
     validate_depth_fractions,
     validate_gripper_geometry,
+    validate_tilt_angles,
 )
 from isaacsim_lab.perception_runtime import build_visual_providers
 from isaacsim_lab.phase_motion import IsaacPhaseMotion, PhaseMotionError, acquire_route_selection
@@ -117,6 +122,70 @@ def test_bottle_candidates_reject_unresolved_geometry():
         bottle_grasp_candidates(thin, rim, gripper=GRIPPER, base_xy=(0.0, 0.0))
 
 
+def test_bottle_tilt_zero_reproduces_legacy_poses_bitwise():
+    """Without tilt configuration the candidates equal the pre-tilt poses exactly.
+
+    The legacy reference rebuilds the historical single-pose construction with
+    the unchanged geometry helpers, so any deviation in the tilt=0 path (for
+    example accidental renormalization) breaks this test.
+    """
+    points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
+    rim = {"tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.03}
+    fractions = (0.3, 0.5)
+    tip = np.asarray(rim["tip_world"], dtype=float)
+    axis = np.asarray(rim["axis_world"], dtype=float)
+    extent = float(np.ptp((points - tip) @ axis))
+    approach = _approach_perpendicular_to_axis(_horizontal_toward_base(points.mean(0), (0., 0.)), axis)
+    radius = _median_radius(points, tip, axis)
+    legacy_rotation = _provider_rotation(approach, axis)
+    legacy = [{
+        "position_world_m": tip + axis * (-extent * fraction) + approach * radius,
+        "rotation_world": legacy_rotation,
+    } for fraction in fractions]
+    for tilts in (None, [0.0]):
+        candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0., 0.),
+                                             depth_fractions=fractions, tilt_angles=tilts)
+        assert len(candidates) == len(legacy)
+        for candidate, expected in zip(candidates, legacy):
+            assert np.array_equal(np.asarray(candidate["position_world_m"]),
+                                  expected["position_world_m"])
+            assert np.array_equal(candidate["rotation_world"], expected["rotation_world"])
+
+
+def test_bottle_tilt_variants_keep_contact_and_tilt_the_frame():
+    points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
+    rim = {"tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.03}
+    fractions = (0.4, 0.6)
+    tilts = [0.0, 0.2618, 0.5236, 0.6981]
+    candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0., 0.),
+                                         depth_fractions=fractions, tilt_angles=tilts)
+    assert len(candidates) == len(fractions) * len(tilts)
+    axis = np.asarray(rim["axis_world"], dtype=float)
+    for f_index, fraction in enumerate(fractions):
+        group = candidates[f_index * len(tilts):(f_index + 1) * len(tilts)]
+        for t_index, tilt in enumerate(tilts):
+            candidate = group[t_index]
+            position = np.asarray(candidate["position_world_m"])
+            rotation = np.asarray(candidate["rotation_world"])
+            # Outer fraction, inner tilt: depth bands stay contiguous per tilt group.
+            assert position[2] == pytest.approx(0.2 - 0.2 * fraction, abs=1e-9)
+            # The contact point never moves with the tilt; only the pose tilts.
+            assert np.array_equal(position, np.asarray(group[0]["position_world_m"]))
+            assert np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-9)
+            assert np.linalg.det(rotation) > 0
+            assert float(np.dot(rotation[:, 0], axis)) == pytest.approx(-np.sin(tilt), abs=1e-9)
+            assert float(np.dot(rotation[:, 2], axis)) == pytest.approx(np.cos(tilt), abs=1e-9)
+
+
+def test_validate_tilt_angles_bounds_and_ordering():
+    assert validate_tilt_angles(None, (0.,)) == (0.,)
+    assert validate_tilt_angles([0.5, 0.2, 0.5], (0.,)) == (0.2, 0.5)
+    assert validate_tilt_angles((0, 0.3), (0.,)) == (0.0, 0.3)
+    for invalid in ([-0.01], [np.pi / 2], [float("nan")], [float("inf")], [], [True], ["0.2"], 0.3):
+        with pytest.raises(OracleGraspGeometryError, match="oracle tilt_angles_rad"):
+            validate_tilt_angles(invalid, (0.,))
+
+
 def test_rod_candidates_leave_each_end_free():
     length = 0.2
     points = _cylinder(radius=0.005, height=length, center=(0.5, 0.0, 0.1), axis="x")
@@ -212,6 +281,38 @@ def test_bottle_record_generates_provider_shaped_candidates(tmp_path):
             candidate, np.asarray(record["world_from_camera"]), provider_from_tcp)
         assert np.allclose(pose[:3, 3], [0.47, 0.0, depth], atol=1e-3)
         assert np.allclose(approach, [-1, 0, 0], atol=1e-3)
+
+
+def test_provider_tilt_configuration_extends_bottle_candidates(tmp_path):
+    store = LabArtifactStore(tmp_path)
+    points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
+    transform = _world_from_camera()
+    camera_points = (points - transform[:3, 3]) @ transform[:3, :3]
+    rim = {"feature_kind": "rim", "tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0],
+           "rim_radius_m": 0.03}
+    record = _write_record(store, category="reagent_bottle", features=[rim],
+                           points=camera_points, transform=transform)
+    legacy = OracleSimulatorTruthGraspProvider(store, gripper_geometry=GRIPPER)
+    legacy.bind_records(lambda calibration_ref: {record["entity_ref"]: record})
+    legacy_output = legacy.propose(_propose_request(record))
+    assert len(legacy_output["candidates"]) == 8  # backward-compatible default count
+    tilted = OracleSimulatorTruthGraspProvider(store, gripper_geometry=GRIPPER,
+                                               tilt_angles=[0.0, 0.5236])
+    tilted.bind_records(lambda calibration_ref: {record["entity_ref"]: record})
+    tilted_output = tilted.propose(_propose_request(record))
+    assert tilted.tilt_angles == (0.0, 0.5236)
+    assert len(tilted_output["candidates"]) == 16
+    assert [item["candidate_ref"] for item in tilted_output["candidates"]] == [
+        f"candidate://simulator-truth-R01/{index}" for index in range(16)]
+    # With outer fraction / inner tilt ordering, every len(tilts)-th candidate
+    # is the tilt=0 pose; only candidate_ref differs (global numbering), so the
+    # remaining snapshot fields must equal the legacy candidates bit-for-bit.
+    for tilted_candidate, legacy_candidate in zip(tilted_output["candidates"][::2],
+                                                  legacy_output["candidates"]):
+        assert ({key: value for key, value in tilted_candidate.items() if key != "candidate_ref"}
+                == {key: value for key, value in legacy_candidate.items() if key != "candidate_ref"})
+    with pytest.raises(OracleGraspGeometryError, match="oracle tilt_angles_rad"):
+        OracleSimulatorTruthGraspProvider(store, gripper_geometry=GRIPPER, tilt_angles=[2.0])
 
 
 def test_provider_requires_same_capture_truth_record(tmp_path):
@@ -356,10 +457,125 @@ def test_preselected_policy_qualifies_exactly_one_variant():
     route, _evidence = model.prepare({"manipulation_target": target, "observation_model": observation_model,
                                       "scene_revision": "scene"})
     assert len(captured) == 1
+    # Preselection carries the truth-derived grasp orientation itself
+    # (carry-as-grasped): transit_orient applies no world-frame reorientation.
+    assert Rotation.from_matrix(captured[0][2][0][:3, :3]).as_quat() == pytest.approx([0., 0., 0., 1.])
     started = [value for kind, value in artifacts if kind == "acquire-search"
                and value.get("status") == "started"][0]
     assert started["policy"] == "simulator_truth_preselected"
     assert started["variant_count"] == 1
     assert route["acquire_route_selection"] == "simulator_truth_preselected"
     assert route["acquire_transit_clearance_m"] == pytest.approx(.04)
+    assert route["acquire_transport_orientation_xyzw"] is None
+    assert route["acquire_axial_symmetry_angle_rad"] == 0.0
+
+
+def _preselected_model(artifacts, captured):
+    """Bare IsaacPhaseMotion with the preselected policy and stubbed mechanisms."""
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_route_selection": "simulator_truth_preselected",
+        "acquire_transit_clearance_candidates_m": [.04, .08, .12],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.], [0., 1., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
+        "acquire_staging_corridor_candidates": [
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+            {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": .06},
+        ],
+        "acquire_route_strategies": ["staged"],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+        "acquire_timing": "stage_continuous",
+    }
+    model.scene = {"physics_evidence_ref": "artifact://labutopia/scene-physics/actual.json"}
+    model._time_acquire_route = lambda route: route.update(execution_steps=list(route["steps"]))
+    model.validate_grasp_aperture = lambda _target: None
+    current = np.eye(4)
+    current[:3, 3] = [-.45, 0., 1.0]
+    body = np.eye(4)
+    body[:3, 3] = [-.27, -.36, .82]
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda kind, data: artifacts.append((kind, data)) or "artifact://readiness/test.json"
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        return {"start_joints": [0.] * 7, "steps": [{"joints": [.2] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    return model
+
+
+def _preselected_target():
+    return {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/R03/Model",
+        "destination_prim_path": "/World/BEAKER/Model",
+        "object_pose": {"position_m": [-.27, -.36, .82], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [-.27, -.36, .86], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [-.08, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [-.27, -.36, .82], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+
+def test_preselected_policy_honours_matching_probe_variant_selection():
+    artifacts, captured = [], []
+    model = _preselected_model(artifacts, captured)
+    model._probe_variant_selection = {
+        "candidate://R03/0": {
+            "scene_revision": "scene",
+            "axial_symmetry_angle_rad": np.pi / 2,
+            "approach_distance_m": .18,
+        },
+        "candidate://R03/other": {
+            "scene_revision": "scene",
+            "axial_symmetry_angle_rad": 0.,
+            "approach_distance_m": .12,
+        },
+    }
+    target = _preselected_target()
+    target["candidate_ref"] = "candidate://R03/0"
+    observation_model = {"grasp_symmetry": {"kind": "axial", "axis_world": [0., 0., 1.],
+                                            "origin_world": [-.27, -.36, .82]}}
+    route, _evidence = model.prepare({"manipulation_target": target, "observation_model": observation_model,
+                                      "scene_revision": "scene"})
+    assert len(captured) == 1
+    # The probe-validated azimuth and approach distance are the preselected
+    # answer, not the first configured element of either dimension.
+    assert route["acquire_axial_symmetry_angle_rad"] == pytest.approx(np.pi / 2)
+    assert route["acquire_approach_distance_m"] == pytest.approx(.18)
+
+
+def test_preselected_policy_falls_back_when_probe_selection_identity_drifts():
+    artifacts, captured = [], []
+    model = _preselected_model(artifacts, captured)
+    model._probe_variant_selection = {
+        "candidate://R03/9": {
+            "scene_revision": "scene",
+            "axial_symmetry_angle_rad": np.pi / 2,
+            "approach_distance_m": .18,
+        },
+    }
+    target = _preselected_target()
+    target["candidate_ref"] = "candidate://R03/0"
+    observation_model = {"grasp_symmetry": {"kind": "axial", "axis_world": [0., 0., 1.],
+                                            "origin_world": [-.27, -.36, .82]}}
+    route, _evidence = model.prepare({"manipulation_target": target, "observation_model": observation_model,
+                                      "scene_revision": "scene"})
+    assert route["acquire_axial_symmetry_angle_rad"] == 0.0
+
+
+def test_preselected_policy_falls_back_without_probe_selection():
+    artifacts, captured = [], []
+    model = _preselected_model(artifacts, captured)
+    target = _preselected_target()
+    target["candidate_ref"] = "candidate://R03/0"
+    observation_model = {"grasp_symmetry": {"kind": "axial", "axis_world": [0., 0., 1.],
+                                            "origin_world": [-.27, -.36, .82]}}
+    route, _evidence = model.prepare({"manipulation_target": target, "observation_model": observation_model,
+                                      "scene_revision": "scene"})
     assert route["acquire_axial_symmetry_angle_rad"] == 0.0

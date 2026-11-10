@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "f2806b6a73f5cc7180204b81212d51dbbb00570130b68962f6a52138f04d1e6f",
+  "created_at": "2026-11-10T02:18:00.132628Z",
+  "decision_reason": "Query pour features using exact task-bound R01 and BEAKER observation identity.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:3ee9c91e82b4457795831051012f0327:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "1420b28a61c290b1cce6309c2f120bfe3fcf6e7a43ac05b6ef459b139ba5b0df",
+  "node_id": "pour_r01.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_7bbde139235640ee/revision_1f1584a4f015494a/pour_r01.process_features/6563046cd3f54472",
+      "input_binding_digest": "1420b28a61c290b1cce6309c2f120bfe3fcf6e7a43ac05b6ef459b139ba5b0df",
+      "node_digest": "bdc21d3818675dbdd6fb3ec1be8c79b799d1b4b26d1177b158a3903a872df519",
+      "node_id": "pour_r01.process_features",
+      "obligation_id": "pour_r01-process-features",
+      "revision_id": "revision_1f1584a4f015494a"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/669acf8174134c2094db3eff49abf7a8.json",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 596,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:3ee9c91e82b4457795831051012f0327:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:3ee9c91e82b4457795831051012f0327:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_1f1584a4f015494a",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:3ee9c91e82b4457795831051012f0327:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_7bbde139235640ee"
+}

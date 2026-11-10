@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "dea62b57e73b18976899b4b7a592fd1b88f83b7d95bbfed6187e2a177464c477",
+  "created_at": "2026-11-10T01:43:58.032165Z",
+  "decision_reason": "按当前节点绑定的R01和BEAKER及同次观测查询工艺特征。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:b232cbd036224d34972265af6673e7a7:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "4c88ca4a353b8b8608850b5beac6ae0c11ef31dbba1785ab58b6a82cd00bcbb3",
+  "node_id": "pour_r01_into_beaker.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_2721b7cff3f6452f/revision_4c864dbc77084eca/pour_r01_into_beaker.process_features/566345a1c8a94ab1",
+      "input_binding_digest": "4c88ca4a353b8b8608850b5beac6ae0c11ef31dbba1785ab58b6a82cd00bcbb3",
+      "node_digest": "c63eece3c988e7758811a7aaacc77aa82bcebb083927905e65c31cde7905daf3",
+      "node_id": "pour_r01_into_beaker.process_features",
+      "obligation_id": "pour_r01_into_beaker-process-features",
+      "revision_id": "revision_4c864dbc77084eca"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/54c203f9708b4912994dea1ff6d22eaf.json",
+      "entity_refs": [
+        "entity://simulator-truth-R01",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 726,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:b232cbd036224d34972265af6673e7a7:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:b232cbd036224d34972265af6673e7a7:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_4c864dbc77084eca",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:b232cbd036224d34972265af6673e7a7:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_2721b7cff3f6452f"
+}

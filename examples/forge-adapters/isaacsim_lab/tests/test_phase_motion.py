@@ -275,9 +275,13 @@ def test_grasp_aperture_uses_composed_finger_limits_and_rejects_oversized_candid
     assert captured.value.code == "gripper_aperture_exceeded"
 
 
-@pytest.mark.parametrize("policy,attempt_count,chosen", [(None, 3, .12), ("first_feasible", 2, .08)])
+# minimum_joint_travel qualifies every staged variant: 3 clearances x
+# (1 configured transport orientation + carry-as-grasped appended last).
+# selected_index pins the configured-transport route for the geometry checks.
+@pytest.mark.parametrize("policy,attempt_count,chosen,selected_index",
+                         [(None, 6, .12, 2), ("first_feasible", 2, .08, 1)])
 @pytest.mark.parametrize("timing", ["waypoint", "stage_continuous"])
-def test_acquire_preparation_searches_clearances_and_selects_admissible_route(policy, attempt_count, chosen, timing):
+def test_acquire_preparation_searches_clearances_and_selects_admissible_route(policy, attempt_count, chosen, selected_index, timing):
     model = object.__new__(IsaacPhaseMotion)
     model.config = {
         "approach_distance_m": .12,
@@ -355,7 +359,7 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route(po
     route, _evidence = model.prepare(arguments)
 
     assert len(captured) == attempt_count
-    selected = captured[attempt_count - 1]
+    selected = captured[selected_index]
     stages = [stage for _pose, _hold, stage in selected]
     assert stages[:6] == [
         "open", "transit_raise", "transit_orient", "transit_cross", "staging_reorient", "approach",
@@ -456,7 +460,8 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
         "search_ref": "artifact://acquire-search/1",
         "attempted_count": 1,
         "pruned_count": 0,
-        "variant_count": 3,
+        # direct: 1 corridor; staged: 2 clearances x (1 transport + carry-as-grasped).
+        "variant_count": 5,
         "failed_prefix_count": 0,
         "last_stage": "approach",
         "failure_counts": {},
@@ -531,11 +536,14 @@ def test_acquire_preparation_prunes_identical_failed_prefix_without_motion():
         model.prepare(arguments)
 
     assert captured.value.code == "self_collision"
-    assert qualified == ["transit_orient"]
-    assert captured.value.diagnostics["attempted_count"] == 1
-    assert captured.value.diagnostics["pruned_count"] == 1
+    # Both transport orientations are qualified once (the configured x-180
+    # quaternion and the carry-as-grasped grasp orientation); their repeated
+    # corridor prefixes are pruned without motion.
+    assert qualified == ["transit_orient", "transit_orient"]
+    assert captured.value.diagnostics["attempted_count"] == 2
+    assert captured.value.diagnostics["pruned_count"] == 2
     pruned = [value for kind, value in artifacts if kind == "acquire-search" and value.get("status") == "pruned"]
-    assert len(pruned) == 1
+    assert len(pruned) == 2
     assert pruned[0]["stage"] == "transit_orient"
     assert pruned[0]["source_failure_code"] == "self_collision"
     assert pruned[0]["source_attempt_ordinal"] == 1
@@ -561,9 +569,10 @@ def test_acquire_preparation_does_not_prune_route_diverging_before_failed_stage(
     with pytest.raises(PhaseMotionError) as captured:
         model.prepare(arguments)
 
-    assert len(raised_heights) == 2
-    assert raised_heights[0] != pytest.approx(raised_heights[1])
-    assert captured.value.diagnostics["attempted_count"] == 2
+    # Both clearances are attempted for the configured transport orientation
+    # and again for carry-as-grasped; no prefix repeats, so nothing is pruned.
+    assert raised_heights == pytest.approx([1.04, 1.08, 1.04, 1.08])
+    assert captured.value.diagnostics["attempted_count"] == 4
     assert captured.value.diagnostics["pruned_count"] == 0
 
 
@@ -580,9 +589,11 @@ def test_acquire_prefix_pruning_cache_is_scoped_to_one_prepare_call():
     for _ in range(2):
         with pytest.raises(PhaseMotionError) as captured:
             model.prepare(arguments)
-        assert captured.value.diagnostics["attempted_count"] == 1
-        assert captured.value.diagnostics["pruned_count"] == 1
-    assert qualified == ["attempt", "attempt"]
+        # Each transport orientation is attempted once per prepare call and its
+        # repeated corridor prefix is pruned inside that same call only.
+        assert captured.value.diagnostics["attempted_count"] == 2
+        assert captured.value.diagnostics["pruned_count"] == 2
+    assert qualified == ["attempt", "attempt", "attempt", "attempt"]
 
 
 def test_acquire_prefix_pruning_reaches_later_feasible_orientation():
@@ -638,7 +649,48 @@ def test_acquire_staged_enumeration_honors_transport_priority_before_clearance()
     assert observed[0][1] < observed[1][1]
     assert observed[2][1] < observed[3][1]
     assert captured.value.diagnostics["attempted_count"] == 4
-    assert captured.value.diagnostics["pruned_count"] == 0
+    # The carry-as-grasped candidate repeats the identity-transport prefixes
+    # (the grasp orientation is identity) and is pruned without qualification.
+    assert captured.value.diagnostics["pruned_count"] == 2
+
+
+def test_acquire_preparation_appends_carry_as_grasped_transport_last():
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_route_selection="minimum_joint_travel",
+        acquire_staging_corridor_candidates=[
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+        ],
+    )
+    model.config["acquire_transport_orientation_candidates_xyzw"] = [[0., 1., 0., 0.]]
+    target = arguments["manipulation_target"]
+    grasp_orientation = Rotation.from_euler("z", np.pi / 2).as_quat().tolist()
+    target["grasp_frame"]["orientation_xyzw"] = grasp_orientation
+    captured = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.4 - .1 * len(captured)] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    route, _evidence = model.prepare(arguments)
+
+    # The configured world-frame candidate is enumerated first and the
+    # carry-as-grasped candidate is appended last with transport_order equal
+    # to the number of configured candidates.
+    assert len(captured) == 2
+    assert captured[0][2][0][:3, :3] == pytest.approx(Rotation.from_quat([0., 1., 0., 0.]).as_matrix())
+    assert captured[1][2][0][:3, :3] == pytest.approx(Rotation.from_quat(grasp_orientation).as_matrix())
+    started = [value for kind, value in artifacts if kind == "acquire-search"
+               and value.get("status") == "started"][0]
+    assert started["variant_count"] == 2
+    orders = [value["transport_order"] for kind, value in artifacts
+              if kind == "acquire-search" and value.get("stage") == "route"
+              and value.get("status") == "started"]
+    assert orders == [0, 1]
+    # The lower joint travel of the carry-as-grasped route selects it.
+    assert route["acquire_route_attempted_count"] == 2
+    assert route["acquire_transport_orientation_xyzw"] is None
 
 
 def test_acquire_route_timeout_remains_fail_closed_for_unique_prefixes(monkeypatch):
@@ -722,7 +774,9 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail(poli
         model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
 
     assert captured.value.code == "route_unavailable"
-    assert attempts == pytest.approx([.24, .28])
+    # Every clearance is attempted for the configured orientation and again for
+    # the appended carry-as-grasped candidate.
+    assert attempts == pytest.approx([.24, .28, .24, .28])
     assert "clearance=0.04" in str(captured.value)
     assert "clearance=0.08" in str(captured.value)
     assert "self_collision" in str(captured.value)
@@ -826,6 +880,40 @@ def test_acquire_route_waypoints_keep_legacy_positions_without_reorient_radius()
     raised, staged = waypoints[1][0], waypoints[4][0]
     assert raised[:2, 3] == pytest.approx([-.4, 0.])
     assert staged[:3, 3] == pytest.approx([.46, .46, 1.1])
+
+
+def test_acquire_route_waypoints_carry_grasped_orientation_without_transport_quaternion():
+    tcp = pose_matrix([-.4, 0., 1.], Rotation.from_euler("xyz", [.1, .2, -.3]).as_quat())
+    desired = pose_matrix([-.45, .2, .8], Rotation.from_euler("xyz", [.4, -.2, .5]).as_quat())
+    corridor = (.18, .08, .06)
+    reorient_config = {"lift_distance_m": .1, "settle_s": .6, "acquire_min_reorient_radius_m": .7}
+    carried = acquire_route_waypoints(
+        tcp,
+        desired,
+        np.asarray([0., -1., 0.]),
+        .1,
+        None,
+        corridor,
+        reorient_config,
+    )
+    world = acquire_route_waypoints(
+        tcp,
+        desired,
+        np.asarray([0., -1., 0.]),
+        .1,
+        [0., 1., 0., 0.],
+        corridor,
+        reorient_config,
+    )
+
+    assert [stage for _pose, _hold, stage in carried] == [stage for _pose, _hold, stage in world]
+    for index in range(len(carried)):
+        assert carried[index][0][:3, 3] == pytest.approx(world[index][0][:3, 3])
+    assert carried[1][0][:3, :3] == pytest.approx(world[1][0][:3, :3])
+    assert carried[4][0][:3, :3] == pytest.approx(world[4][0][:3, :3])
+    assert carried[2][0][:3, :3] == pytest.approx(desired[:3, :3])
+    assert carried[3][0][:3, :3] == pytest.approx(desired[:3, :3])
+    assert world[2][0][:3, :3] == pytest.approx(Rotation.from_quat([0., 1., 0., 0.]).as_matrix())
 
 
 def test_acquire_min_reorient_radius_validation():
@@ -1054,7 +1142,8 @@ def test_acquire_preparation_qualifies_each_corridor_and_selects_offset_route():
         "scene_revision": "scene",
     })
 
-    assert len(staged_positions) == 2
+    # Two corridors x (one configured transport orientation + carry-as-grasped).
+    assert len(staged_positions) == 4
     assert staged_positions[0][:2] == pytest.approx([0., .12])
     assert staged_positions[1][:2] == pytest.approx([.06, .26])
     assert route["acquire_approach_distance_m"] == pytest.approx(.18)
@@ -1106,9 +1195,10 @@ def test_acquire_preparation_reports_each_failed_corridor_without_motion():
         model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
 
     assert captured.value.code == "route_collision"
-    assert len(attempts) == 2
+    # Two corridors x (one configured transport orientation + carry-as-grasped).
+    assert len(attempts) == 4
     assert "corridor=0" in str(captured.value)
-    assert "corridor_counts={0: 1, 1: 1}" in str(captured.value)
+    assert "corridor_counts={0: 2, 1: 2}" in str(captured.value)
 
 
 def test_acquire_failure_summary_bounds_repeated_route_diagnostics():
@@ -1217,7 +1307,8 @@ def test_acquire_preparation_ranks_geometry_equivalent_grasps_after_full_qualifi
         "scene_revision": "scene",
     })
 
-    assert len(captured) == 2
+    # Two symmetry variants x (one configured transport orientation + carry-as-grasped).
+    assert len(captured) == 4
     assert route["acquire_axial_symmetry_angle_rad"] == pytest.approx(np.pi / 2)
     assert route["target"]["grasp_frame"]["position_m"] == pytest.approx([0., .1, .9])
     assert route["target"]["approach_direction"]["vector"] == pytest.approx([0., 1., 0.])
