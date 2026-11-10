@@ -7,7 +7,7 @@
   "acquire_route_strategies": ["staged"],
   "acquire_timing": "stage_continuous",
   "acquire_min_reorient_radius_m": 0.5,
-  "acquire_probe_terminal_seed_count": 8,
+  "acquire_probe_terminal_seed_count": 16,
   "acquire_failure_recovery_codes": [
     "physical_grasp_lost",
     "grasp_not_confirmed",
@@ -40,7 +40,7 @@
     [1.0, 0.0, 0.0, 0.0],
     [0.0, 1.0, 0.0, 0.0]
   ],
-  "acquire_axial_symmetry_angles_rad": [0.0, 1.5707963267948966, -1.5707963267948966, 3.141592653589793],
+  "acquire_axial_symmetry_angles_rad": [0.0, 0.7853981633974483, 1.5707963267948966, 2.356194490192345, 3.141592653589793, -0.7853981633974483, -1.5707963267948966, -2.356194490192345],
   "lift_distance_m": 0.12,
   "process_clearance_m": 0.18,
   "pour_lip_clearance_m": 0.04,

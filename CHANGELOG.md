@@ -49,6 +49,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.6 (2026-11-10 09:49) - codex
+
+### 完成范围 / Completed Scope
+- [eval] [result] oracle run6 终局（out/labutopia-oracle-run6/，cancelled，指令与 run5 相同）：probe 侧加密枚举（轴向角 4→8、终端 IK 种子 8→16）验证「水平接近姿态族全圆周不可行」——朝基座侧 16 种子全 0 解、背基座侧 16 解全撞桌（panda_link6 vs /World/table/surface/mesh）；geometry_qualified=2 与 run5 一致。诊断修正：gate 阈值（approach_dot≤0.7、finger_dot≥0.7）联合允许 ≤44° 整体倾角，初稿"倾斜被显式拒绝"为误判已更正。LabUtopia 部署普查：28:2 桌装为主流，移动底盘仅 level5。 / oracle run6 verdict: probe-side dense enumeration (azimuths 4→8, terminal IK seeds 8→16) proves the horizontal-approach family infeasible around the whole circle — base-facing azimuths zero solutions across 16 seeds, away-facing all 16 solve yet all collide with the table; geometry_qualified=2 unchanged. Corrected diagnosis: the gate thresholds jointly admit ≤44° coherent tilts (the first draft's "tilt explicitly rejected" was wrong). Deployment survey: 28:2 configs are table-mounted; mobile base is level5-only.
+
+### 架构与验证 / Architecture and Validation
+- 变更仅 `configs/labutopia-oracle-motion.json` 两行（Adapter 私有配置）；gate 阈值与语义零改动；证据链=out/labutopia-oracle-run6/ funnel+feasibility artifacts（terminal_sampling 8×16 全记录）。出路裁决：A 倾角变体（用户已选）→ v17.6.7 实施。 / Two config lines only; gate untouched; evidence in run6 artifacts. Path ruling: A tilt variants (user-selected) → v17.6.7.
+
 ## v17.6.1 (2026-11-09 19:35) - codex
 
 ### 完成范围 / Completed Scope
