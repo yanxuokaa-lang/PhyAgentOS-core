@@ -1213,11 +1213,14 @@ class IsaacPhaseMotion:
                 arguments["observation_model"].get("grasp_symmetry"),
                 acquire_axial_symmetry_angles(self.config),
             )
-            # Carry-as-grasped is appended at the call site, never through
-            # configuration: configured world-frame candidates keep their order
-            # and the appended candidate takes transport_order equal to the
-            # number of configured candidates.
-            transport_orientations = acquire_transport_orientations(self.config) + (None,)
+            # Carry-as-grasped is a per-deployment opt-in fallback, never a silent
+            # default: with joint-travel-minimizing selection the zero-reorientation
+            # carry pose would otherwise silently outcompete configured world-frame
+            # transport poses (e.g. keep-open-vessels-upright task semantics).
+            if self.config.get("acquire_carry_as_grasped_fallback", False):
+                transport_orientations = acquire_transport_orientations(self.config) + (None,)
+            else:
+                transport_orientations = acquire_transport_orientations(self.config)
             staging_corridors = acquire_staging_corridors(self.config)
             direct_corridors = tuple(dict.fromkeys(
                 (corridor[0], 0., 0.) for corridor in staging_corridors
@@ -1239,7 +1242,8 @@ class IsaacPhaseMotion:
                 # falls back to the first configured element.
                 selection = getattr(self, "_probe_variant_selection", {}).get(target.get("candidate_ref"))
                 if (selection is not None
-                        and selection.get("scene_revision") == arguments.get("scene_revision")):
+                        and selection.get("scene_revision") == arguments.get("scene_revision")
+                        and selection.get("axial_symmetry_angle_rad") is not None):
                     variants = tuple(variant for variant in variants
                                      if variant[0] is not None
                                      and abs(variant[0] - selection["axial_symmetry_angle_rad"]) <= 1e-9
@@ -2410,6 +2414,16 @@ class IsaacPhaseMotion:
                         if contact_established and not held:
                             raise PhaseMotionError("physical_grasp_lost", "bilateral grip lost during closure settling")
                         if held:
+                            if not contact_established:
+                                # Freeze the grip at the measured bilateral-contact position rather
+                                # than the closure trajectory value: the trajectory targets full
+                                # closure, so a frozen trajectory target commands deeper travel than
+                                # the object's surface allows, and the sustained excess force
+                                # squeezes the object out of the fingers during lift.
+                                retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
+                                finger_target = np.maximum(
+                                    np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
+                                    0.0)
                             contact_established = True
                             stable_frames += 1
                     if (((operation != "acquire" and stage not in {"release", "retreat"})

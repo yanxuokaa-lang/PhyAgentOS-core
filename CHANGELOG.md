@@ -49,6 +49,11 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.8 (2026-11-11 10:15) - codex
+
+### 完成范围 / Completed Scope
+- [fix][feat] run10 复盘深化：`physical_grasp_lost` 真因=闭指轨迹冻结过压挤出（lift_dist=0、手指顶在 0.0251 vs 冻结 target 0.0237、attach_err 2.1→8.2mm），修正 v17.6.7 的"纯 harness 缺陷"结论。四项修复：closure 接触建立时冻结实测手指位置（可选 `finger_retain_overshoot_m`）；预选 None-angle fail-closed 防护；carry-as-grasped 改部署级显式开关（默认关，oracle 显式开）；`forge_tool_action_status/result` 新增 `wait_timeout_s` 长等待（默认 0 旧行为不变）消除 `exec sleep` 轮询；oracle 基座错位 [0,0]→[−0.45,0] 修正。附 v17.6.5-6.7 独立 code review（5 findings，高危 2 项本版已修）。`570 passed, 2 skipped`；gate/probe 零改动。 / run10 deep-dive: the true cause of `physical_grasp_lost` is closure-trajectory freeze over-squeeze (lift_dist=0, fingers at 0.0251 vs frozen target 0.0237, attach_err 2.1→8.2mm), correcting v17.6.7's harness-only verdict. Four fixes: freeze the finger target at measured contact (optional overshoot); preselection None-angle fail-closed guard; carry-as-grasped becomes an explicit per-deployment switch (default off, oracle opts in); `wait_timeout_s` long-wait on action read tools removes `exec sleep` polling; oracle base offset [0,0]→[−0.45,0]. Includes an independent code review of v17.6.5-6.7 (5 findings; both high ones fixed here). 570 passed, 2 skipped; gate/probe untouched.
+
 ## v17.6.7 (2026-11-10 11:50) - codex
 
 ### 完成范围 / Completed Scope

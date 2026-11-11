@@ -8,6 +8,9 @@ import pytest
 
 from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
 from PhyAgentOS.agent.tools.forge_tool_api import (
+    WAIT_POLL_INTERVAL_S,
+    ForgeToolActionResultTool,
+    ForgeToolActionStatusTool,
     ForgeToolContextTool,
     ForgeToolQueryTool,
     ForgeToolStartActionTool,
@@ -1095,3 +1098,79 @@ def test_held_selection_executes_through_real_coordinator_persistence(tmp_path, 
     assert saved.response["data"]["status"] == "available"
     assert saved.response["data"]["carried_forward"][0]["carry_state"] == "held"
     assert client.calls == 1
+
+
+def test_action_read_waits_until_terminal(monkeypatch):
+    responses = [
+        {"ok": True, "data": {"status": "pending"}},
+        {"ok": True, "data": {"status": "pending"}},
+        {"ok": True, "data": {"status": "succeeded"}},
+    ]
+    observed = []
+    required = []
+
+    class Coordinator:
+        def require_action_invocation(self, task_id, invocation_id):
+            required.append((task_id, invocation_id))
+
+        async def read_invocation(self, task_id, invocation_id, *, result):
+            assert result is False
+            return responses[len(observed)]
+
+        def observe_action(self, task_id, invocation_id, response, *, reconcile_settlement):
+            assert reconcile_settlement is False
+            observed.append(response)
+
+    sleeps = []
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
+
+    output = json.loads(asyncio.run(ForgeToolActionStatusTool(
+        object(), Coordinator()
+    ).execute("task-1", "invocation-1", wait_timeout_s=60)))
+
+    assert output == responses[-1]
+    assert required == [("task-1", "invocation-1")]
+    assert observed == responses
+    assert sleeps == [WAIT_POLL_INTERVAL_S, WAIT_POLL_INTERVAL_S]
+
+
+def test_action_read_wait_timeout_returns_pending(monkeypatch):
+    response = {"ok": True, "data": {"status": "pending"}}
+    reads = []
+    observed = []
+
+    class Coordinator:
+        def require_action_invocation(self, task_id, invocation_id):
+            pass
+
+        async def read_invocation(self, task_id, invocation_id, *, result):
+            assert result is True
+            reads.append(invocation_id)
+            return response
+
+        def observe_action(self, task_id, invocation_id, observed_response, *, reconcile_settlement):
+            assert reconcile_settlement is True
+            observed.append(observed_response)
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(loop, "time", lambda: clock["now"])
+
+        async def advance_sleep(seconds):
+            clock["now"] += seconds
+
+        monkeypatch.setattr(asyncio, "sleep", advance_sleep)
+        return await ForgeToolActionResultTool(
+            object(), Coordinator()
+        ).execute("task-1", "invocation-1", wait_timeout_s=0.001)
+
+    output = json.loads(asyncio.run(exercise()))
+
+    assert output == response
+    assert reads == ["invocation-1", "invocation-1"]
+    assert observed == [response, response]

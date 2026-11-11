@@ -288,6 +288,7 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route(po
         "acquire_transit_clearance_candidates_m": [.04, .08, .12],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -419,6 +420,7 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
         "acquire_transit_clearance_candidates_m": [.04, .08],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0.],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -523,7 +525,9 @@ def acquire_prefix_pruning_fixture(**config_overrides):
 
 
 def test_acquire_preparation_prunes_identical_failed_prefix_without_motion():
-    model, arguments, artifacts = acquire_prefix_pruning_fixture()
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_carry_as_grasped_fallback=True,
+    )
     qualified = []
 
     def reject(_waypoints, *_args, progress, **_kwargs):
@@ -553,6 +557,7 @@ def test_acquire_preparation_prunes_identical_failed_prefix_without_motion():
 
 def test_acquire_preparation_does_not_prune_route_diverging_before_failed_stage():
     model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_carry_as_grasped_fallback=True,
         acquire_staging_corridor_candidates=[
             {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
         ],
@@ -577,7 +582,9 @@ def test_acquire_preparation_does_not_prune_route_diverging_before_failed_stage(
 
 
 def test_acquire_prefix_pruning_cache_is_scoped_to_one_prepare_call():
-    model, arguments, _artifacts = acquire_prefix_pruning_fixture()
+    model, arguments, _artifacts = acquire_prefix_pruning_fixture(
+        acquire_carry_as_grasped_fallback=True,
+    )
     qualified = []
 
     def reject(_waypoints, *_args, progress, **_kwargs):
@@ -625,6 +632,7 @@ def test_acquire_prefix_pruning_reaches_later_feasible_orientation():
 def test_acquire_staged_enumeration_honors_transport_priority_before_clearance():
     orientations = [[1., 0., 0., 0.], [0., 0., 0., 1.]]
     model, arguments, _artifacts = acquire_prefix_pruning_fixture(
+        acquire_carry_as_grasped_fallback=True,
         acquire_staging_corridor_candidates=[
             {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
         ],
@@ -657,6 +665,7 @@ def test_acquire_staged_enumeration_honors_transport_priority_before_clearance()
 def test_acquire_preparation_appends_carry_as_grasped_transport_last():
     model, arguments, artifacts = acquire_prefix_pruning_fixture(
         acquire_route_selection="minimum_joint_travel",
+        acquire_carry_as_grasped_fallback=True,
         acquire_staging_corridor_candidates=[
             {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
         ],
@@ -691,6 +700,74 @@ def test_acquire_preparation_appends_carry_as_grasped_transport_last():
     # The lower joint travel of the carry-as-grasped route selects it.
     assert route["acquire_route_attempted_count"] == 2
     assert route["acquire_transport_orientation_xyzw"] is None
+
+
+def test_carry_as_grasped_fallback_requires_opt_in():
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_route_selection="minimum_joint_travel",
+        acquire_staging_corridor_candidates=[
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+        ],
+    )
+    model.config["acquire_transport_orientation_candidates_xyzw"] = [[0., 1., 0., 0.]]
+    target = arguments["manipulation_target"]
+    target["grasp_frame"]["orientation_xyzw"] = Rotation.from_euler("z", np.pi / 2).as_quat().tolist()
+    captured = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.4 - .1 * len(captured)] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    route, _evidence = model.prepare(arguments)
+
+    # Without the explicit fallback flag, only the configured world-frame
+    # candidate is enumerated: no carry-as-grasped candidate is appended for
+    # joint-travel-minimizing selection to silently outcompete it.
+    assert len(captured) == 1
+    assert captured[0][2][0][:3, :3] == pytest.approx(Rotation.from_quat([0., 1., 0., 0.]).as_matrix())
+    started = [value for kind, value in artifacts if kind == "acquire-search"
+               and value.get("status") == "started"][0]
+    assert started["variant_count"] == 1
+    assert route["acquire_route_attempted_count"] == 1
+    assert route["acquire_transport_orientation_xyzw"] == [0., 1., 0., 0.]
+
+
+def test_preselection_with_none_angle_falls_back():
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_route_selection="simulator_truth_preselected",
+        acquire_axial_symmetry_angles_rad=[0., np.pi / 2],
+    )
+    arguments["observation_model"]["grasp_symmetry"] = {
+        "kind": "axial", "axis_world": [0., 0., 1.], "origin_world": [0., 0., .8],
+    }
+    model._probe_variant_selection = {arguments["manipulation_target"]["candidate_ref"]: {
+        "scene_revision": arguments["scene_revision"],
+        "axial_symmetry_angle_rad": None,
+        "approach_distance_m": .12,
+    }}
+    captured = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [0.] * 7, "stage": "lift"}]}
+
+    model.qualify = qualify
+    route, _evidence = model.prepare(arguments)
+
+    # A probe selection without a validated angle cannot match a variant, so
+    # the collapse falls back to the first configured element instead of
+    # raising a TypeError on the None angle.
+    assert len(captured) == 1
+    grasp = next(pose for pose, _hold, stage in captured[0] if stage == "grasp")
+    assert grasp[:3, :3] == pytest.approx(np.eye(3))
+    assert route["acquire_axial_symmetry_angle_rad"] == pytest.approx(0.)
+    assert route["acquire_approach_distance_m"] == pytest.approx(.12)
+    started = [value for kind, value in artifacts if kind == "acquire-search"
+               and value.get("status") == "started"][0]
+    assert started["variant_count"] == 1
 
 
 def test_acquire_route_timeout_remains_fail_closed_for_unique_prefixes(monkeypatch):
@@ -742,6 +819,7 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail(poli
         "acquire_transit_clearance_candidates_m": [.04, .08],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0.],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -1104,6 +1182,7 @@ def test_acquire_preparation_qualifies_each_corridor_and_selects_offset_route():
         "acquire_transit_clearance_candidates_m": [.04],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0.],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -1164,6 +1243,7 @@ def test_acquire_preparation_reports_each_failed_corridor_without_motion():
         "acquire_transit_clearance_candidates_m": [.04],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0.],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -1266,6 +1346,7 @@ def test_acquire_preparation_ranks_geometry_equivalent_grasps_after_full_qualifi
         "acquire_transit_clearance_candidates_m": [.04],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
         "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
+        "acquire_carry_as_grasped_fallback": True,
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -2408,6 +2489,74 @@ def test_measured_fingers_keep_gap_and_bound_opening_uncertainty():
     assert first[0][1] == pytest.approx(.011)
     assert second[1][1] == pytest.approx(-.011)
     assert first[1][1] < list(model.finger_boxes())[0][1][1]
+
+
+def test_closure_freezes_finger_target_at_measured_contact(monkeypatch):
+    blocked = .0251
+
+    def run(**config_extra):
+        model, arguments, commands, _artifacts = execution_fixture(monkeypatch)
+        model.config.update(config_extra)
+        positions = model._test_positions_ref
+
+        def step(**_kwargs):
+            for callback in model.world.physics_callbacks.values():
+                callback(model.dt)
+            positions[:] = commands[-1]
+            # The grasped body's surface stops both fingers at the measured
+            # block, whatever deeper closure the command requests.
+            positions[7:] = np.clip(positions[7:], blocked, .04)
+            model.world.current_time += model.dt
+            model.world.steps += 1
+
+        model.world.step = step
+
+        def contact_frame():
+            fingers_at_object = np.max(positions[7:]) <= blocked + 1e-9
+            contacts = ([{
+                "body0": "/World/source/mesh",
+                "body1": "/World/Franka/finger",
+                "impulse": [1., 0., 0.],
+            }] if fingers_at_object else [])
+            return {"time": model.world.current_time, "contacts": contacts}
+
+        model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+        # The grasped body rises with the arm during lift so the measured
+        # grasp relation stays constant while the object leaves its support.
+        rise = lambda: max(0., float(positions[0]))
+        model.tcp = lambda *_: pose_matrix([.1, 0., 1. + rise()], [0., 0., 0., 1.])
+        model.body_pose = lambda _path: pose_matrix([.1, 0., .9 + rise()], [0., 0., 0., 1.])
+        model.observed_pose = model.body_pose
+        result = model.execute(arguments, Event())
+        return result, [np.asarray(command) for command in commands]
+
+    def freeze_index(commands):
+        # The closure trajectory strictly decreases the finger command every
+        # frame; the frozen grip is the final constant run of finger commands.
+        fingers = np.asarray([command[7] for command in commands])
+        changed = np.where(np.diff(fingers) != 0.)[0]
+        return changed[-1] + 1
+
+    result, commands = run()
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    # The closure trajectory issues exactly one squeeze command below the
+    # measured contact position; the grip then freezes at that measured
+    # position instead of continuing the trajectory toward full closure.
+    squeeze = [index for index, command in enumerate(commands) if np.min(command[7:]) < blocked]
+    assert len(squeeze) == 1
+    frozen = freeze_index(commands)
+    assert commands[frozen - 1][7] < blocked
+    assert all(command[7:] == pytest.approx([blocked, blocked])
+               for command in commands[frozen:])
+
+    result, commands = run(finger_retain_overshoot_m=.0005)
+    assert result["status"] == "succeeded"
+    # A configured retain overshoot backs the frozen target off the measured
+    # contact position instead of pressing into it.
+    frozen = freeze_index(commands)
+    assert all(command[7:] == pytest.approx([blocked - .0005] * 2)
+               for command in commands[frozen:])
 
 
 def test_local_ik_finds_nearby_solution_and_rejects_unreachable_target():

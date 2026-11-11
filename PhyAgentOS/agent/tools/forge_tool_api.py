@@ -17,7 +17,11 @@ from PhyAgentOS.agent.planning_facts import (
     response_facts,
 )
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
+from PhyAgentOS.forge.task import (
+    TERMINAL_TOOL_STATUSES,
+    AgentTaskCoordinator,
+    AgentTaskError,
+)
 from PhyAgentOS.forge.tool_client import (
     ForgeToolAPIError,
     ForgeToolAPITimeoutError,
@@ -473,6 +477,17 @@ class ForgeToolStartActionTool(Tool):
         return await _call(start)
 
 
+# Long-wait budget for Action read tools.  run10 exhausted the agent's tool
+# iteration budget on action_reconciliation sleep-polling; wait_timeout_s lets
+# one status/result call block until terminal instead of burning iterations on
+# exec sleep hacks.
+MAX_WAIT_TIMEOUT_S = 300.0
+WAIT_POLL_INTERVAL_S = 2.0
+# The Gateway snapshot's terminal statuses are exactly the Coordinator's
+# terminal tool statuses; aliasing keeps the wait loop and settlement in sync.
+TERMINAL_INVOCATION_STATUSES = TERMINAL_TOOL_STATUSES
+
+
 class _ActionReadTool(Tool):
     operation = ""
 
@@ -482,22 +497,32 @@ class _ActionReadTool(Tool):
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return _owned_invocation_schema()
+        return _owned_invocation_schema(include_wait_timeout=True)
 
-    async def execute(self, task_id: str, invocation_id: str) -> str:
+    async def execute(self, task_id: str, invocation_id: str, wait_timeout_s: float = 0) -> str:
         async def read() -> dict[str, Any]:
             # Reject cross-task identifiers before disclosing Gateway state.
             self.coordinator.require_action_invocation(task_id, invocation_id)
-            response = await self.coordinator.read_invocation(
-                task_id, invocation_id, result=self.operation == "result"
-            )
-            self.coordinator.observe_action(
-                task_id,
-                invocation_id,
-                response,
-                reconcile_settlement=self.operation == "result",
-            )
-            return response
+            timeout = max(0.0, min(float(wait_timeout_s), MAX_WAIT_TIMEOUT_S))
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + timeout
+            while True:
+                response = await self.coordinator.read_invocation(
+                    task_id, invocation_id, result=self.operation == "result"
+                )
+                # Observe every snapshot exactly as a manual poll would; the
+                # terminal round's observe triggers settlement for the result
+                # endpoint.
+                self.coordinator.observe_action(
+                    task_id,
+                    invocation_id,
+                    response,
+                    reconcile_settlement=self.operation == "result",
+                )
+                status = (response.get("data") or {}).get("status")
+                if status in TERMINAL_INVOCATION_STATUSES or loop.time() >= deadline:
+                    return response
+                await asyncio.sleep(WAIT_POLL_INTERVAL_S)
 
         return await _call(read)
 
@@ -513,7 +538,8 @@ class ForgeToolActionStatusTool(_ActionReadTool):
     def description(self) -> str:
         return (
             "Read and persist Action progress without settling the planning node; "
-            "the result endpoint owns terminal settlement facts."
+            "the result endpoint owns terminal settlement facts. "
+            "Pass wait_timeout_s to block inside the call until terminal or timeout instead of sleep-polling."
         )
 
 
@@ -526,7 +552,10 @@ class ForgeToolActionResultTool(_ActionReadTool):
 
     @property
     def description(self) -> str:
-        return "Read and persist this task's Action result; pending and unknown are not success."
+        return (
+            "Read and persist this task's Action result; pending and unknown are not success. "
+            "Pass wait_timeout_s to block inside the call until terminal or timeout instead of sleep-polling."
+        )
 
 
 class ForgeToolCancelActionTool(Tool):
@@ -714,13 +743,23 @@ def _single_schema(name: str) -> dict[str, Any]:
     }
 
 
-def _owned_invocation_schema() -> dict[str, Any]:
+def _owned_invocation_schema(*, include_wait_timeout: bool = False) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "task_id": {"type": "string", "minLength": 1},
+        "invocation_id": {"type": "string", "minLength": 1},
+    }
+    if include_wait_timeout:
+        properties["wait_timeout_s"] = {
+            "type": "number",
+            "default": 0,
+            "description": (
+                "Seconds to wait inside this call for a terminal status before "
+                "returning the latest snapshot; 0 returns immediately"
+            ),
+        }
     return {
         "type": "object",
-        "properties": {
-            "task_id": {"type": "string", "minLength": 1},
-            "invocation_id": {"type": "string", "minLength": 1},
-        },
+        "properties": properties,
         "required": ["task_id", "invocation_id"],
         "additionalProperties": False,
     }
