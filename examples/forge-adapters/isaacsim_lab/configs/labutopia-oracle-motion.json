@@ -42,6 +42,7 @@
   ],
   "acquire_axial_symmetry_angles_rad": [0.0, 0.7853981633974483, 1.5707963267948966, 2.356194490192345, 3.141592653589793, -0.7853981633974483, -1.5707963267948966, -2.356194490192345],
   "acquire_carry_as_grasped_fallback": true,
+  "finger_retain_overshoot_m": 0.0005,
   "lift_distance_m": 0.12,
   "process_clearance_m": 0.18,
   "pour_lip_clearance_m": 0.04,
