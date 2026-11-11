@@ -49,6 +49,11 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.6.9 (2026-11-11 10:45) - claude
+
+### 完成范围 / Completed Scope
+- [fix] motion 配置标量校验误拒布尔键（`bool⊂int`）：v17.6.8 的 `acquire_carry_as_grasped_fallback: true` 使 phase_motion 构造必败 → capabilities provider_unavailable（run11/11b 双复现，A/B 证明 base_xy 无辜）。修复=校验循环跳过 bool 键，数值校验逐字不变。附评测目标切换（用户裁决）：R01（后排 0.59m，被 R03 挡）→ R05（前排 0.40m 无阻挡）；实测确认 BEAKER manifest 条目陈旧、实际在基座正前方 0.37m。`167 passed`；run12 以 R05 验证。 / The scalar config check rejected boolean keys (`bool⊂int`), so v17.6.8's switch made every phase_motion construction fail → capabilities provider_unavailable (reproduced twice; A/B cleared base_xy). Fix = skip bools in the check, numeric validation byte-identical. Also the user-ruled evaluation target switch R01 (back row, blocked) → R05 (front row, clear); measured geometry confirms the BEAKER manifest entry is stale and the real beaker sits 0.37m ahead of the base. 167 passed; run12 verifies with R05.
+
 ## v17.6.8 (2026-11-11 10:15) - codex
 
 ### 完成范围 / Completed Scope

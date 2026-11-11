@@ -814,7 +814,12 @@ class IsaacPhaseMotion:
         self.session, self.profile = session, profile
         self.config = json.loads(Path(profile.motion_config_path).read_text(encoding="utf-8"))
         for key, value in self.config.items():
-            if isinstance(value, (int, float)) and (isinstance(value, bool) or not math.isfinite(value) or value <= 0):
+            if isinstance(value, bool):
+                # Boolean switches (e.g. acquire_carry_as_grasped_fallback) are
+                # consumed through fail-closed .get() defaults; scalar
+                # positivity semantics do not apply to them.
+                continue
+            if isinstance(value, (int, float)) and (not math.isfinite(value) or value <= 0):
                 raise PhaseMotionError("invalid_motion_configuration", f"{key} must be finite and positive")
         lower, upper = np.asarray(self.config["workspace_min_m"]), np.asarray(self.config["workspace_max_m"])
         if lower.shape != (3,) or upper.shape != (3,) or not np.isfinite([lower, upper]).all() or np.any(lower >= upper):
