@@ -1,0 +1,52 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.grasp_task_affordances"
+  ],
+  "context_digest": "1d7207812ed2d947fc8c57201689fc919ba43e821cf5cd0c90a488e41c915898",
+  "created_at": "2026-11-11T04:17:27.485691Z",
+  "decision_reason": "使用直接前驱已校验的瓶口及容器开口特征，筛选适用于倾倒和放回的抓取组合。",
+  "evidence_refs": [
+    "tool:tool_afb9dc1dc7ef4749",
+    "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+    "tool:tool_fe4ff706274e4a1a"
+  ],
+  "input_binding_digest": "ac44218e920315a8b8cf83774cb45b7aac7d5331fea6b1c820ba4cf2a381b118",
+  "node_id": "pour_reagent_e_into_beaker.grasp_task_affordances",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_f5ce89c7b983470f/revision_03bd5a504b884164/pour_reagent_e_into_beaker.grasp_task_affordances/312ca84444a141f9",
+      "input_binding_digest": "ac44218e920315a8b8cf83774cb45b7aac7d5331fea6b1c820ba4cf2a381b118",
+      "node_digest": "e38f277c6f78b77f698af1845a156408bda2512ee81403e64a170244a605bd56",
+      "node_id": "pour_reagent_e_into_beaker.grasp_task_affordances",
+      "obligation_id": "pour_reagent_e_into_beaker-task-affordance-candidates",
+      "revision_id": "revision_03bd5a504b884164"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/d9b6565b024e4dec994ac246f9761711.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 567,
+      "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+      "operation": "pour",
+      "process_feature_candidate_set_ref": "process-feature-set://f24a5988cd6645bd8031b62e5ca248e6",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+      "selected_process_feature_refs": [
+        "process-feature://d0fa04b374554a8a8f9a0b4dfb5edaef",
+        "process-feature://3568f24b1e10488fbf3ab684f51044af"
+      ]
+    },
+    "tool_id": "manipulation.grasp_task_affordances"
+  },
+  "revision_id": "revision_03bd5a504b884164",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.grasp_task_affordances",
+  "task_id": "task_f5ce89c7b983470f"
+}

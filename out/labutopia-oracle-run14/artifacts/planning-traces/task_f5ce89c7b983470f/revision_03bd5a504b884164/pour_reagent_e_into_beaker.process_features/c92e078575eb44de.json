@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "5908963fe1f072145cd15482c9c04f966e64c17c626e4c61b4007bcc7653ebc6",
+  "created_at": "2026-11-11T04:16:32.791040Z",
+  "decision_reason": "读取已绑定 R05 与 BEAKER 的倾倒过程特征，确保瓶口与容器开口的语义匹配。",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "9c7a6040d30deb3cfd582691f4be946929007ee5214c1ac21beba4ff37732962",
+  "node_id": "pour_reagent_e_into_beaker.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_f5ce89c7b983470f/revision_03bd5a504b884164/pour_reagent_e_into_beaker.process_features/c92e078575eb44de",
+      "input_binding_digest": "9c7a6040d30deb3cfd582691f4be946929007ee5214c1ac21beba4ff37732962",
+      "node_digest": "a37da2473a036e76f7e51c093196106252e76cf0277aa1d5d20fcaf2c0a90753",
+      "node_id": "pour_reagent_e_into_beaker.process_features",
+      "obligation_id": "pour_reagent_e_into_beaker-process-features",
+      "revision_id": "revision_03bd5a504b884164"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/d9b6565b024e4dec994ac246f9761711.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 567,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_03bd5a504b884164",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_f5ce89c7b983470f"
+}

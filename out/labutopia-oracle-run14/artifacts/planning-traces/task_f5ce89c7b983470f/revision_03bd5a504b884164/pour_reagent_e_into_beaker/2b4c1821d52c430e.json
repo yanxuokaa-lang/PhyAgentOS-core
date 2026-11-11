@@ -1,0 +1,1555 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.execute_subtask"
+  ],
+  "context_digest": "9c90163fdd5ff2d5a0dcc0c9fe9acd10c0ad917cec733bb4525a37027e1bf311",
+  "created_at": "2026-11-11T04:21:51.999549Z",
+  "decision_reason": "按用户要求执行一次 R05 到 BEAKER 的 1.0 rad、2.0 s 对准倾倒并原位放回；使用既有计划参数及唯一成功直接前驱的合格不透明引用，由 Runtime 在任何控制器运动前资格检查完整路线。",
+  "evidence_refs": [
+    "tool:tool_fe4ff706274e4a1a",
+    "tool:tool_2178a6bcd7054e25",
+    "tool:tool_afb9dc1dc7ef4749",
+    "tool:tool_08641b2536c94c07",
+    "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "1642bd6ff6a5755fafb460384360af3ea9cbf4f5906c1864cc0abce5574a8cc6",
+  "node_id": "pour_reagent_e_into_beaker",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_f5ce89c7b983470f/revision_03bd5a504b884164/pour_reagent_e_into_beaker/2b4c1821d52c430e",
+      "input_binding_digest": "1642bd6ff6a5755fafb460384360af3ea9cbf4f5906c1864cc0abce5574a8cc6",
+      "node_digest": "50b19e388ffd2e9390ca0340702cc6eb8b8c1e3a123cfd12dca64fd7485f2b4f",
+      "node_id": "pour_reagent_e_into_beaker",
+      "obligation_id": "pour_reagent_e_into_beaker",
+      "revision_id": "revision_03bd5a504b884164"
+    },
+    "semantics": "action",
+    "tool_arguments": {
+      "affordance_selection": "task_qualified",
+      "binding": {
+        "binding_ref": "artifact://labutopia/rgb/96ba44b649e54dfa9a84c54b108d6534.png",
+        "calibration_ref": "artifact://labutopia/calibration/d9b6565b024e4dec994ac246f9761711.json",
+        "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-0",
+        "candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "capability_snapshot_ref": "artifact://labutopia/capabilities/53b76c271b43470583637d14574904a7.json",
+        "category": "reagent_bottle",
+        "confidence": 1.0,
+        "destination_category": "mixing_vessel",
+        "destination_pose": {
+          "frame_id": "tabletop_third_person",
+          "orientation_xyzw": null,
+          "position_m": [
+            -6.79663941412223e-08,
+            0.0559691776438605,
+            2.056811551362154
+          ],
+          "source": "spatial_envelope_center",
+          "unit": "m"
+        },
+        "destination_ref": "destination://simulator-truth-BEAKER",
+        "destination_semantic_label": "BEAKER",
+        "entity_ref": "entity://simulator-truth-R05",
+        "frame_id": "tabletop_third_person",
+        "freshness_ms": 567,
+        "grasp_candidate": {
+          "approach_direction": {
+            "frame_id": "tabletop_third_person",
+            "unit": "unitless",
+            "vector": [
+              0.6450942569781405,
+              0.3389129158054196,
+              -0.6848294934610283
+            ]
+          },
+          "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-0",
+          "confidence": 1.0,
+          "entity_ref": "entity://simulator-truth-R05",
+          "grasp_frame": {
+            "frame_id": "tabletop_third_person",
+            "orientation_xyzw": [
+              0.7705136595194024,
+              0.3578833111694523,
+              -0.22219902586941856,
+              0.47838878434082144
+            ],
+            "position_m": [
+              -0.3940224847163459,
+              0.044841037443682286,
+              2.000078997117227
+            ],
+            "unit": "m"
+          },
+          "grasp_geometry": {
+            "depth_m": 0.05,
+            "height_m": 0.06,
+            "width_m": 0.08
+          },
+          "provenance": [
+            "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+            "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+            "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+          ],
+          "qualification": "proposed",
+          "score": 1.0
+        },
+        "grasp_candidate_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "grasp_candidates": [
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-0",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.3940224847163459,
+                0.044841037443682286,
+                2.000078997117227
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-1",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.3940224847163459,
+                0.044841037443682286,
+                2.000078997117227
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-2",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.3940224847163459,
+                0.044841037443682286,
+                2.000078997117227
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-3",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.3940224847163459,
+                0.044841037443682286,
+                2.000078997117227
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-4",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.3940224844583944,
+                0.0500019677854433,
+                2.0026330724505748
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-5",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.3940224844583944,
+                0.0500019677854433,
+                2.0026330724505748
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-6",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.3940224844583944,
+                0.0500019677854433,
+                2.0026330724505748
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-7",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.3940224844583944,
+                0.0500019677854433,
+                2.0026330724505748
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-8",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.3940224842004429,
+                0.05516289812720421,
+                2.0051871477839223
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-9",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.3940224842004429,
+                0.05516289812720421,
+                2.0051871477839223
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-10",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.3940224842004429,
+                0.05516289812720421,
+                2.0051871477839223
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-11",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.3940224842004429,
+                0.05516289812720421,
+                2.0051871477839223
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-12",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.3940224839424914,
+                0.06032382846896511,
+                2.00774122311727
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-13",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.3940224839424914,
+                0.06032382846896511,
+                2.00774122311727
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-14",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.3940224839424914,
+                0.06032382846896511,
+                2.00774122311727
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-15",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.3940224839424914,
+                0.06032382846896511,
+                2.00774122311727
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-16",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.39402248368453996,
+                0.06548475881072602,
+                2.010295298450618
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-17",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.39402248368453996,
+                0.06548475881072602,
+                2.010295298450618
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-18",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.39402248368453996,
+                0.06548475881072602,
+                2.010295298450618
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-19",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.39402248368453996,
+                0.06548475881072602,
+                2.010295298450618
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-20",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.39402248342658847,
+                0.07064568915248692,
+                2.0128493737839657
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-21",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.39402248342658847,
+                0.07064568915248692,
+                2.0128493737839657
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-22",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.39402248342658847,
+                0.07064568915248692,
+                2.0128493737839657
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-23",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.39402248342658847,
+                0.07064568915248692,
+                2.0128493737839657
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-24",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.39402248316863697,
+                0.07580661949424783,
+                2.0154034491173136
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-25",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.39402248316863697,
+                0.07580661949424783,
+                2.0154034491173136
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-26",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.39402248316863697,
+                0.07580661949424783,
+                2.0154034491173136
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-27",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.39402248316863697,
+                0.07580661949424783,
+                2.0154034491173136
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6450942569781405,
+                0.3389129158054196,
+                -0.6848294934610283
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-28",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7705136595194024,
+                0.3578833111694523,
+                -0.22219902586941856,
+                0.47838878434082144
+              ],
+              "position_m": [
+                -0.3940224829106855,
+                0.08096754983600873,
+                2.0179575244506616
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.6231131125852523,
+                0.5593325166845029,
+                -0.5466966112056105
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-29",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.7929246377586832,
+                0.41726396713449,
+                -0.11972562565533326,
+                0.4275828283828612
+              ],
+              "position_m": [
+                -0.3940224829106855,
+                0.08096754983600873,
+                2.0179575244506616
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.5586676418489623,
+                0.7416343536403991,
+                -0.37130708510787475
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-30",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.8017683922443801,
+                0.4695050875915583,
+                -0.015203677224994851,
+                0.3694607775154801
+              ],
+              "position_m": [
+                -0.3940224829106855,
+                0.08096754983600873,
+                2.0179575244506616
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          },
+          {
+            "approach_direction": {
+              "frame_id": "tabletop_third_person",
+              "unit": "unitless",
+              "vector": [
+                0.4941840443993405,
+                0.8357077121928159,
+                -0.23953026957476542
+              ]
+            },
+            "candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-31",
+            "confidence": 1.0,
+            "entity_ref": "entity://simulator-truth-R05",
+            "grasp_frame": {
+              "frame_id": "tabletop_third_person",
+              "orientation_xyzw": [
+                0.800043410169798,
+                0.49991372190924044,
+                0.05471972630761477,
+                0.3271430330047556
+              ],
+              "position_m": [
+                -0.3940224829106855,
+                0.08096754983600873,
+                2.0179575244506616
+              ],
+              "unit": "m"
+            },
+            "grasp_geometry": {
+              "depth_m": 0.05,
+              "height_m": 0.06,
+              "width_m": 0.08
+            },
+            "provenance": [
+              "artifact://labutopia/object-point-cloud/1626b91356bd448cb31b84f36b2bec96.npy",
+              "artifact://labutopia/observed-geometry/4d97c5792a5a409eb2d2805203806ff7.json",
+              "artifact://labutopia/grasp-predictions/2e9c345f15ba4db49fdcad531837a404.json"
+            ],
+            "qualification": "proposed",
+            "score": 1.0
+          }
+        ],
+        "max_age_ms": 1000,
+        "measured_geometry": {
+          "frame_id": "tabletop_third_person",
+          "size_m": [
+            0.0851619873099343,
+            0.14099167610910146,
+            0.12740822357961923
+          ],
+          "source": "spatial_envelope",
+          "unit": "m"
+        },
+        "measured_pose": {
+          "frame_id": "tabletop_third_person",
+          "orientation_xyzw": null,
+          "position_m": [
+            -0.4058074200918196,
+            0.05900344852230155,
+            2.0226678032850094
+          ],
+          "source": "spatial_envelope_center",
+          "unit": "m"
+        },
+        "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "process_frame": "tabletop_third_person",
+        "provenance": "query-chain:observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+        "semantic_label": "R05"
+      },
+      "grasp_task_affordance_candidate_set_ref": "grasp-affordance-set://89cda09d502b406e8eea8cc9f77d6ac3",
+      "grasp_task_affordance_ref": "grasp-affordance://457ef5627acc4cb08f0f0992525f1204",
+      "intent": {
+        "allowed_arms": [
+          "franka"
+        ],
+        "calibration_ref": "artifact://labutopia/calibration/d9b6565b024e4dec994ac246f9761711.json",
+        "candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "constraints": [
+          "Select by visible R05 label, not fixed position.",
+          "Maintain bottle-mouth alignment with BEAKER opening.",
+          "Execute exactly one pour and return the bottle.",
+          "No liquid volume or chemistry assertions."
+        ],
+        "coordination_mode": "single_arm",
+        "entity_ref": "entity://simulator-truth-R05",
+        "goal": "Acquire visible-label R05 (user-specified REAGENT E), align bottle mouth with BEAKER opening during one 1.0 rad pour held for 2.0 seconds, then return bottle to original location.",
+        "motion_authorized": false,
+        "node_digest": "50b19e388ffd2e9390ca0340702cc6eb8b8c1e3a123cfd12dca64fd7485f2b4f",
+        "node_id": "pour_reagent_e_into_beaker",
+        "observation_frame_id": "tabletop_third_person",
+        "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0/tabletop_third_person",
+        "revision_id": "revision_03bd5a504b884164",
+        "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+        "success_criteria": [
+          "Terminal Runtime feedback confirms acquire, aligned pour at tilt_rad=1.0 and hold_s=2.0, and return to original location."
+        ],
+        "task_id": "task_f5ce89c7b983470f",
+        "version": "manipulation_intent_v2"
+      },
+      "operation": "pour",
+      "parameters": {
+        "hold_s": 2,
+        "tilt_rad": 1
+      },
+      "process_feature_candidate_set_ref": "process-feature-set://f24a5988cd6645bd8031b62e5ca248e6",
+      "process_feature_refs": [
+        "process-feature://d0fa04b374554a8a8f9a0b4dfb5edaef",
+        "process-feature://3568f24b1e10488fbf3ab684f51044af"
+      ],
+      "qualified_grasp_candidate_refs": [
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-16",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-0",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-4",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-8",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-12",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-21",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-1",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-25",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-13",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-17",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-5",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-9",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-18",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-22",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-2",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-14",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-6",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-26",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-10",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-3",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-23",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-27",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-7",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-11",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-19",
+        "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-15"
+      ],
+      "selected_grasp_candidate_ref": "candidate://simulator-truth-R05/2e9c345f15ba4db49fdcad531837a404-16",
+      "subtask_id": "pour_reagent_e_into_beaker",
+      "tool_sequence": [
+        {
+          "arguments": {},
+          "phase": "prepare",
+          "tool_id": "manipulation.prepare"
+        },
+        {
+          "arguments": {},
+          "phase": "acquire",
+          "tool_id": "object.acquire"
+        },
+        {
+          "arguments": {
+            "operation": "pour"
+          },
+          "phase": "prepare",
+          "tool_id": "manipulation.prepare_held"
+        },
+        {
+          "arguments": {
+            "operation": "pour"
+          },
+          "phase": "process",
+          "tool_id": "object.pour"
+        },
+        {
+          "arguments": {
+            "operation": "place"
+          },
+          "phase": "prepare",
+          "tool_id": "manipulation.prepare_held"
+        },
+        {
+          "arguments": {},
+          "phase": "place",
+          "tool_id": "object.place"
+        }
+      ]
+    },
+    "tool_id": "manipulation.execute_subtask"
+  },
+  "revision_id": "revision_03bd5a504b884164",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:889ffddd17db452e9dc29b974a625a95:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.execute_subtask",
+  "task_id": "task_f5ce89c7b983470f"
+}
