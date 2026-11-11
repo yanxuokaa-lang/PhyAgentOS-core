@@ -1,0 +1,52 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.grasp_task_affordances"
+  ],
+  "context_digest": "fc32e93bf1a9a65bee36a53d7440315dface30b0e259aabfe36d24a066d03cc6",
+  "created_at": "2026-11-11T03:15:30.187973Z",
+  "decision_reason": "Provide frozen node observation identity and grasp set; Coordinator copies exact process feature references from the successful direct predecessor.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0/tabletop_third_person",
+    "tool:tool_3170b8e9d8524236",
+    "tool:tool_60b3a727d359470c"
+  ],
+  "input_binding_digest": "ab7bffc82e6db62f00e2efb770e35e9f1512870489cbb4d0238303eb577189c9",
+  "node_id": "pour_reagent_e.grasp_task_affordances",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_9c9634b6db53487f/revision_b29fcf24446f4e8b/pour_reagent_e.grasp_task_affordances/7cbff5c90b474e9c",
+      "input_binding_digest": "ab7bffc82e6db62f00e2efb770e35e9f1512870489cbb4d0238303eb577189c9",
+      "node_digest": "b3d6085650b01158d7b2be54b3fd014f0148f6c260e73fabda26dd85198df875",
+      "node_id": "pour_reagent_e.grasp_task_affordances",
+      "obligation_id": "pour_reagent_e-task-affordance-candidates",
+      "revision_id": "revision_b29fcf24446f4e8b"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/a6face64e5464e73960a87899aedfad5.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 771,
+      "grasp_candidate_set_ref": "candidate-set://labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0/tabletop_third_person",
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0/tabletop_third_person",
+      "operation": "pour",
+      "process_feature_candidate_set_ref": "process-feature-set://b1bca666f03940f5884dc1bffc5b4bb0",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0",
+      "selected_process_feature_refs": [
+        "process-feature://23502a4e7f8b4700ab3a1f47ebbde8a7",
+        "process-feature://f0d8738eb923480698758ea3bc2c80b8"
+      ]
+    },
+    "tool_id": "manipulation.grasp_task_affordances"
+  },
+  "revision_id": "revision_b29fcf24446f4e8b",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.grasp_task_affordances",
+  "task_id": "task_9c9634b6db53487f"
+}

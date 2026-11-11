@@ -1,0 +1,44 @@
+{
+  "candidate_tool_ids": [
+    "manipulation.process_features"
+  ],
+  "context_digest": "0b54e1266852696bfca509d5f600ad4e0752d86aa2be380672e2d81068efea00",
+  "created_at": "2026-11-11T03:14:12.635825Z",
+  "decision_reason": "Use task-bound label-selected R05 and BEAKER to propose current-scene pour features without motion.",
+  "evidence_refs": [
+    "observation://labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0/tabletop_third_person"
+  ],
+  "input_binding_digest": "fdddd2dc9e21f924db35ede2930d9baa8fcb23b18990782279c59f3a2ea1d9df",
+  "node_id": "pour_reagent_e.process_features",
+  "result_status": null,
+  "resumable_selection": {
+    "planning_binding": {
+      "decision_trace_ref": "artifact://planning-traces/task_9c9634b6db53487f/revision_b29fcf24446f4e8b/pour_reagent_e.process_features/a76954937f614741",
+      "input_binding_digest": "fdddd2dc9e21f924db35ede2930d9baa8fcb23b18990782279c59f3a2ea1d9df",
+      "node_digest": "2506fc9fb9d01f7b5baa050f1fc3b1ba020d83183d40fbb274ee0494b75defd8",
+      "node_id": "pour_reagent_e.process_features",
+      "obligation_id": "pour_reagent_e-process-features",
+      "revision_id": "revision_b29fcf24446f4e8b"
+    },
+    "semantics": "query",
+    "tool_arguments": {
+      "calibration_ref": "artifact://labutopia/calibration/a6face64e5464e73960a87899aedfad5.json",
+      "entity_refs": [
+        "entity://simulator-truth-R05",
+        "entity://simulator-truth-BEAKER"
+      ],
+      "frame_id": "tabletop_third_person",
+      "freshness_ms": 771,
+      "max_age_ms": 1000,
+      "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0/tabletop_third_person",
+      "operation": "pour",
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0"
+    },
+    "tool_id": "manipulation.process_features"
+  },
+  "revision_id": "revision_b29fcf24446f4e8b",
+  "scene_revision": "labutopia-tabletop-rod-rack-v1:8a12ec64603a4f018243a5856e622f51:0",
+  "schema_version": "paos-decision-trace/v1",
+  "selected_tool_id": "manipulation.process_features",
+  "task_id": "task_9c9634b6db53487f"
+}

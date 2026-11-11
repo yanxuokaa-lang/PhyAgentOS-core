@@ -11,6 +11,6 @@
     {"paths": ["/World/table"], "material": "table"}
   ],
   "drives": [
-    {"joint_path": "/World/Franka/panda_hand/panda_finger_joint1", "max_force_n": 2.0, "max_velocity_m_s": 0.02}
+    {"joint_path": "/World/Franka/panda_hand/panda_finger_joint1", "max_force_n": 20.0, "max_velocity_m_s": 0.02}
   ]
 }
