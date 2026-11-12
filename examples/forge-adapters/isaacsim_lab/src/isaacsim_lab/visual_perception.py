@@ -715,7 +715,21 @@ class LabGraspTaskAffordanceProvider:
         width_tolerance = min(.003, self.support_tolerance_m * .25)
         if width + width_tolerance < upper - lower:
             return False, "bottle grasp opening is narrower than the observed sidewall", ()
-        rank = (approach_dot, center_error / half_span, closing_dot, -finger_dot)
+        # Flat grasps on a tapered band (radius changes with height) slide as the finger
+        # pads retreat on lift, so rank local taper below approach fit and above centering.
+        neighborhood = np.abs(projections - candidate_projection) <= .01
+        taper_slope = 1.
+        if int(np.count_nonzero(neighborhood)) >= 6:
+            local_axial = projections[neighborhood]
+            radii = np.linalg.norm(
+                (points[neighborhood] - tip) - np.outer(local_axial, axis), axis=1)
+            axial_spread = local_axial - float(np.mean(local_axial))
+            denominator = float(np.dot(axial_spread, axial_spread))
+            if denominator > 1e-12:
+                slope = float(np.dot(axial_spread, radii - float(np.mean(radii))) / denominator)
+                if np.isfinite(slope):
+                    taper_slope = abs(slope)
+        rank = (approach_dot, taper_slope, center_error / half_span, closing_dot, -finger_dot)
         return True, "", rank
 
     def _working_endpoint(self, candidate, record, endpoints):

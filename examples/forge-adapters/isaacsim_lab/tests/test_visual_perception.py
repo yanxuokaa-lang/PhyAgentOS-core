@@ -1462,6 +1462,96 @@ def test_task_affordance_provider_orders_equally_stable_opaque_grasps_determinis
     assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [preferred_ref, grasp_ref]
 
 
+def test_task_affordance_ranks_equal_radius_band_above_tapered_band_with_better_centering(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    cylinder = [[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                for z in np.linspace(.45, .56, 12) for angle in theta]
+    cone = [[(.05 - .125 * (z - .6)) * np.cos(angle), (.05 - .125 * (z - .6)) * np.sin(angle), z]
+            for z in np.linspace(.64, .80, 17) for angle in theta]
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, cylinder_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.004, 0., .505], source_category="reagent_bottle",
+        source_points=np.asarray(cylinder + cone),
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+    cone_ref = "candidate://source/cone-band-grasp"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[cone_ref] = {
+        **captured[cylinder_ref], "candidate_ref": cone_ref,
+        "grasp_frame": {**captured[cylinder_ref]["grasp_frame"], "position_m": [0., 0., .72]},
+    }
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(cone_ref)
+
+    result = provider.propose(request)
+
+    # The cone-band grasp is better centered, but its local radius slope must rank it after
+    # the equal-radius band grasp at the same approach fit.
+    assert result["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [cylinder_ref, cone_ref]
+
+
+def test_task_affordance_taper_tie_keeps_centering_as_secondary_order_key(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 51) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, centered_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .70], source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+    off_center_ref = "candidate://source/off-center-grasp"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[off_center_ref] = {
+        **captured[centered_ref], "candidate_ref": off_center_ref,
+        "grasp_frame": {**captured[centered_ref]["grasp_frame"], "position_m": [.004, 0., .70]},
+    }
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(off_center_ref)
+
+    result = provider.propose(request)
+
+    # Both grasps sit on the same equal-radius band, so the order must degrade to the
+    # previous secondary key (centering quality).
+    assert result["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [centered_ref, off_center_ref]
+
+
+def test_task_affordance_keeps_candidate_with_insufficient_taper_neighborhood_ranked_last(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    dense = [[.05 * np.cos(angle), .05 * np.sin(angle), z]
+             for z in np.linspace(.45, .56, 12) for angle in theta]
+    sparse = [[.05 * np.cos(angle), .05 * np.sin(angle), z] for z in (.689, .711) for angle in theta]
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, dense_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .53], source_category="reagent_bottle",
+        source_points=np.asarray(dense + sparse),
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+    sparse_ref = "candidate://source/sparse-neighborhood-grasp"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[sparse_ref] = {
+        **captured[dense_ref], "candidate_ref": sparse_ref,
+        "grasp_frame": {**captured[dense_ref]["grasp_frame"], "position_m": [0., 0., .70]},
+    }
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(sparse_ref)
+
+    result = provider.propose(request)
+
+    # No observed point lies within +-10 mm of the sparse grasp along the bottle axis; it
+    # must stay qualified (worst taper evidence) instead of being rejected or dropped.
+    assert result["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [dense_ref, sparse_ref]
+
+
 def test_task_affordance_selects_rod_endpoint_opposite_the_shaft_grasp(tmp_path):
     rod = np.asarray([[x, y, z] for x in np.linspace(0., .3, 80)
                       for y in (-.001, .001) for z in (-.001, .001)])
