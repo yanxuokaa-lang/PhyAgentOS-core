@@ -2559,6 +2559,197 @@ def test_closure_freezes_finger_target_at_measured_contact(monkeypatch):
                for command in commands[frozen:])
 
 
+def recession_hold_fixture(monkeypatch, *, follow=False, retain=.0005, decay=.0003,
+                           lose_grip_after=None):
+    """The freeze-test mock with a receding grasped surface.
+
+    Mirrors test_closure_freezes_finger_target_at_measured_contact's robot and
+    contact construction; after both pads reach the surface the measured finger
+    positions sink a fixed ``decay`` further on every step (a taper letting the
+    pads track the receding surface), whatever the command requests.
+    """
+    model, arguments, commands, _artifacts = execution_fixture(monkeypatch)
+    model.config.update({"finger_retain_overshoot_m": retain})
+    if follow:
+        model.config["finger_hold_follow"] = True
+    blocked = .0251
+    positions = model._test_positions_ref
+    surface = {"reached": False, "steps": 0}
+    grip = {"lost": False}
+    measured = []
+
+    def step(**_kwargs):
+        if lose_grip_after is not None and surface["steps"] >= lose_grip_after:
+            grip["lost"] = True
+        for callback in model.world.physics_callbacks.values():
+            callback(model.dt)
+        positions[:] = commands[-1]
+        positions[7:] = np.clip(positions[7:], blocked, .04)
+        if not grip["lost"] and np.max(positions[7:]) <= blocked + 1e-9:
+            surface["reached"] = True
+        if surface["reached"] and not grip["lost"]:
+            surface["steps"] += 1
+            positions[7:] = np.maximum(np.full(2, blocked) - decay * surface["steps"], 0.)
+        measured.append(positions[7:].copy())
+        model.world.current_time += model.dt
+        model.world.steps += 1
+
+    model.world.step = step
+
+    def contact_frame():
+        fingers_at_object = (not grip["lost"]
+                             and np.max(positions[7:]) <= blocked + 1e-9)
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if fingers_at_object else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+    # The grasped body rises with the arm during lift so the measured grasp
+    # relation stays constant while the object leaves its support.
+    rise = lambda: max(0., float(positions[0]))
+    model.tcp = lambda *_: pose_matrix([.1, 0., 1. + rise()], [0., 0., 0., 1.])
+    model.body_pose = lambda _path: pose_matrix([.1, 0., .9 + rise()], [0., 0., 0., 1.])
+    model.observed_pose = model.body_pose
+    return model, arguments, commands, blocked, measured
+
+
+def recession_squeeze_index(commands, blocked):
+    # The closure trajectory strictly decreases the finger command every frame;
+    # the first command below the surface stop opens the held sequence.
+    return next(index for index, command in enumerate(commands) if np.min(command[7:]) < blocked)
+
+
+def test_default_hold_keeps_first_frozen_target_under_finger_recession(monkeypatch):
+    decay, retain = .0003, .0005
+    model, arguments, commands, blocked, measured = recession_hold_fixture(monkeypatch, retain=retain)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    squeeze = recession_squeeze_index(commands, blocked)
+    # The one-time freeze reads the measured pads of the first held step, by
+    # which point the surface has already receded one decay increment.
+    frozen = blocked - decay - retain
+    assert all(command[7:] == pytest.approx([frozen, frozen])
+               for command in commands[squeeze + 1:squeeze + 11])
+    # The mock's pads keep receding well below the frozen target while the
+    # command stays put: the legacy hold must not follow the recession.
+    assert min(float(value[0]) for value in measured[squeeze + 4:]) < frozen
+
+
+def test_finger_hold_follow_refreezes_target_on_measured_recession(monkeypatch):
+    decay, retain = .0003, .0005
+    model, arguments, commands, blocked, measured = recession_hold_fixture(
+        monkeypatch, follow=True, retain=retain, decay=decay)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    squeeze = recession_squeeze_index(commands, blocked)
+    # Every held command re-freezes at the previous step's measured pads minus
+    # retain, so the commanded target sinks one decay per step in lockstep with
+    # the receding surface instead of staying at the first frozen value.
+    for index in range(squeeze + 1, squeeze + 11):
+        expected = blocked - (index - squeeze) * decay - retain
+        assert commands[index][7:] == pytest.approx([expected, expected])
+    assert min(float(value[0]) for value in measured[squeeze + 4:]) < blocked - 2 * decay - retain
+
+
+def test_finger_hold_follow_clamps_target_at_zero(monkeypatch):
+    decay, retain = .002, .02
+    model, arguments, commands, blocked, _measured = recession_hold_fixture(
+        monkeypatch, follow=True, retain=retain, decay=decay)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    squeeze = recession_squeeze_index(commands, blocked)
+    # The earliest re-freezes still command positive travel.
+    assert commands[squeeze + 1][7:] == pytest.approx([blocked - decay - retain] * 2)
+    assert commands[squeeze + 2][7:] == pytest.approx([blocked - 2 * decay - retain] * 2)
+    # Once the receded pads sit closer to closure than retain, the commanded
+    # target clamps at zero instead of requesting negative finger travel.
+    assert all(command[7:] == pytest.approx([0., 0.])
+               for command in commands[squeeze + 3:squeeze + 9])
+
+
+def test_finger_hold_follow_lost_bilateral_hold_reports_physical_grasp_lost(monkeypatch):
+    model, arguments, commands, blocked, _measured = recession_hold_fixture(
+        monkeypatch, follow=True, lose_grip_after=3)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "failed"
+    assert result["outcome_known"] is True
+    # Re-freezing the hold never masks a lost bilateral grip: the established
+    # failure code and its recovery boundary stay exactly as before.
+    assert result["failure_code"] == "physical_grasp_lost"
+
+
+def lift_start_index(commands):
+    # The close stage holds the arm at its zero goal; the first moving arm
+    # command opens the attached lift segment.
+    return next(index for index, command in enumerate(commands) if command[0] > 1e-9)
+
+
+def test_finger_hold_follow_tracks_recession_during_lift(monkeypatch):
+    decay, retain = .0003, .0005
+    model, arguments, commands, blocked, measured = recession_hold_fixture(
+        monkeypatch, follow=True, retain=retain, decay=decay)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    squeeze = recession_squeeze_index(commands, blocked)
+    lift_start = lift_start_index(commands)
+    assert lift_start > squeeze
+    # During attached lift every held command re-freezes at that step's
+    # measured pads minus retain, tracking the taper instead of holding the
+    # close-stage frozen value while the surface recedes away under it.
+    for index in range(lift_start, lift_start + 6):
+        expected = float(measured[index - 1][0]) - retain
+        assert commands[index][7:] == pytest.approx([expected, expected])
+        assert expected == pytest.approx(blocked - (index - squeeze) * decay - retain)
+    assert min(float(value[0]) for value in measured[lift_start:lift_start + 6]) < blocked - decay - retain
+
+
+def test_finger_hold_follow_disabled_keeps_lift_target_frozen(monkeypatch):
+    decay, retain = .0003, .0005
+    model, arguments, commands, blocked, measured = recession_hold_fixture(
+        monkeypatch, retain=retain, decay=decay)
+    result = model.execute(arguments, Event())
+    assert result["status"] == "succeeded"
+    assert result["possession_state"] == "holding"
+    squeeze = recession_squeeze_index(commands, blocked)
+    lift_start = lift_start_index(commands)
+    assert lift_start > squeeze
+    # Without the follow flag the one-time close-stage freeze persists through
+    # lift even though the mock's pads keep sinking below the held target.
+    frozen = blocked - decay - retain
+    assert all(command[7:] == pytest.approx([frozen, frozen])
+               for command in commands[lift_start:lift_start + 6])
+    assert min(float(value[0]) for value in measured[lift_start:lift_start + 6]) < frozen
+
+
+def test_finger_hold_follow_does_not_override_release_opening(monkeypatch):
+    model, arguments, commands, blocked, measured = recession_hold_fixture(monkeypatch, follow=True)
+    arguments["phase_route"]["steps"] = [
+        arguments["phase_route"]["steps"][0],
+        {"joints": np.zeros(7).tolist(), "stage": "release", "hold_s": .1,
+         "allow_contact": False, "attached": False, "support_contact": False}]
+    result = model.execute(arguments, Event())
+    # A synthetic acquire route without a lift cannot meet the held-and-lifted
+    # postcondition; the release-stage behavior is what this test pins down.
+    assert result["failure_code"] == "measured_postcondition_failed"
+    squeeze = recession_squeeze_index(commands, blocked)
+    # The release stage retargets the gripper open at stage start; the follow
+    # re-freeze must never pull that opening target back onto the pads.
+    release_start = next(index for index, command in enumerate(commands)
+                         if index > squeeze and np.min(command[7:]) >= .04 - 1e-9)
+    assert all(command[7:] == pytest.approx([.04, .04])
+               for command in commands[release_start:release_start + 8])
+    # The pads kept receding against those open commands, so only the stage
+    # exclusion stopped the re-freeze from overriding the opening target.
+    assert min(float(value[0]) for value in measured[release_start:]) < blocked
+
+
 def test_local_ik_finds_nearby_solution_and_rejects_unreachable_target():
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 

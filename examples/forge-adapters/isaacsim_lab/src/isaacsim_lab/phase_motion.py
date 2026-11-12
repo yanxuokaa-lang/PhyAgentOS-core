@@ -2253,6 +2253,7 @@ class IsaacPhaseMotion:
         # Retain an established grip for lift/pour/stir; never squeeze it back to zero.
         finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
             self.robot.get_joint_positions())[finger_indices].copy()
+        hold_follow_active = False
         step_count = 0
         last_stage = None
         lift_grip_confirmed = False
@@ -2345,6 +2346,7 @@ class IsaacPhaseMotion:
                 closure = None
                 contact_established = False
                 stable_frames = 0
+                follow_hold = bool(self.config.get("finger_hold_follow", False))
                 if stage == "close":
                     closure = list(smooth_joint_segment(
                         np.asarray(self.robot.get_joint_positions())[finger_indices], np.zeros(2), self.dt,
@@ -2408,6 +2410,19 @@ class IsaacPhaseMotion:
                             # the existing support-departure boundary is crossed.
                             measured_sample["support_manifold_continuity_used"] = True
                             support_manifold_continuity = True
+                    if (hold_follow_active and point["attached"] and held
+                            and stage not in {"open", "release", "retreat"}):
+                        # Keep the hold tracking surface recession during attached motion
+                        # (lift/carry): the same bounded re-freeze as the close settle, so
+                        # normal force does not decay on a tapering body. Commanded
+                        # penetration stays at retain_overshoot while held is true; if the
+                        # grip degrades the update stops and the existing failure paths
+                        # decide the outcome. The stage exclusion protects the release
+                        # opening target set at stage start.
+                        retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
+                        finger_target = np.maximum(
+                            np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
+                            0.0)
                     if operation == "acquire" and stage in {"approach", "grasp", "close"}:
                         drift, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
                         if (drift > self.config["grasp_position_tolerance_m"]
@@ -2419,17 +2434,20 @@ class IsaacPhaseMotion:
                         if contact_established and not held:
                             raise PhaseMotionError("physical_grasp_lost", "bilateral grip lost during closure settling")
                         if held:
-                            if not contact_established:
-                                # Freeze the grip at the measured bilateral-contact position rather
-                                # than the closure trajectory value: the trajectory targets full
-                                # closure, so a frozen trajectory target commands deeper travel than
-                                # the object's surface allows, and the sustained excess force
-                                # squeezes the object out of the fingers during lift.
+                            # Hold the grip at the measured bilateral-contact position minus a
+                            # bounded retain overshoot. With finger_hold_follow enabled the hold
+                            # re-freezes on every held step so the pads keep tracking surface
+                            # recession (e.g. a bottle shoulder taper) and normal force does not
+                            # decay during lift; penetration stays bounded at retain_overshoot,
+                            # so commanded force cannot exceed stiffness * retain. Default False
+                            # keeps the legacy one-time freeze at first contact.
+                            if not contact_established or follow_hold:
                                 retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
                                 finger_target = np.maximum(
                                     np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
                                     0.0)
                             contact_established = True
+                            hold_follow_active = follow_hold
                             stable_frames += 1
                     if (((operation != "acquire" and stage not in {"release", "retreat"})
                          or stage == "lift") and not held and not support_manifold_continuity):
