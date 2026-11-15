@@ -157,7 +157,7 @@ class SubtaskPreparationEndpoint:
 
 def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False,
                                   validate_production_schemas=False, assignment_store=None,
-                                  acquire_result=None):
+                                  acquire_result=None, preparation_endpoint=None):
     runtime = CapabilityRuntime()
     for tool_id, result in {
         "object.acquire": acquire_result or {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
@@ -185,7 +185,7 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
         )
     runtime.register_tool(
         MANIPULATION_TOOL_SPEC,
-        SubtaskPreparationEndpoint(),
+        preparation_endpoint or SubtaskPreparationEndpoint(),
     )
     runtime.register_tool(
         PREPARE_HELD_TOOL_SPEC if validate_production_schemas else {
@@ -831,6 +831,143 @@ def test_preparation_can_select_second_candidate_and_acquire_keeps_that_selectio
     response['assignments'][0]['candidate_ref'] = 'candidate://reagent-a/unobserved'
     with pytest.raises(ValueError, match='outside'):
         RuntimeSubtaskDriver._prepared_arguments(spec, response, context)
+
+
+def test_subtask_result_and_acquire_receipt_carry_effective_candidate_and_rejections():
+    from copy import deepcopy
+
+    first = binding().grasp_candidate
+    second = deepcopy(first)
+    second['candidate_ref'] = 'candidate://reagent-a/route-survivor'
+    second['grasp_frame']['position_m'][0] += .025
+    observed = binding(grasp_candidates=[first, second])
+    rejected = [{
+        "candidate_ref": first["candidate_ref"],
+        "failure_code": "route_collision",
+        "error": "route link5 collides with the table",
+    }]
+
+    class RouteSwitchingInvoker(Invoker):
+        selected = None
+
+        def invoke(self, tool_id, arguments):
+            if tool_id == "manipulation.prepare":
+                candidates = arguments["candidates"]
+                self.selected = candidates[1] if len(candidates) > 1 else candidates[0]
+                response = Invoker.invoke(self, tool_id, {**arguments, "candidates": [self.selected]})
+                response["assignments"] = [{"candidate_ref": self.selected["candidate_ref"]}]
+                response["rejected_candidates"] = rejected
+                return response
+            self.calls.append((tool_id, arguments))
+            if tool_id == "object.acquire":
+                return {**dict(self.values[tool_id]), "candidate_ref": self.selected["candidate_ref"]}
+            return dict(self.values[tool_id])
+
+    result = SubtaskExecutor(RouteSwitchingInvoker(responses())).execute(
+        SubtaskSpec(subtask_id='pour-a', operation='pour', binding=observed, parameters=pour_parameters())
+    )
+    assert result.status == "completed"
+    assert result.effective_grasp_candidate_ref == 'candidate://reagent-a/route-survivor'
+    assert result.rejected_grasp_candidates == rejected
+    acquire = next(item for item in result.receipts if item.tool_id == "object.acquire")
+    assert acquire.response["candidate_ref"] == 'candidate://reagent-a/route-survivor'
+    assert acquire.response["rejected_grasp_candidates"] == rejected
+
+    baseline = SubtaskExecutor(Invoker(responses())).execute(
+        SubtaskSpec(subtask_id='pour-a', operation='pour', binding=binding(), parameters=pour_parameters())
+    )
+    assert baseline.status == "completed"
+    assert baseline.effective_grasp_candidate_ref == 'candidate://reagent-a/0'
+    assert baseline.rejected_grasp_candidates is None
+    dumped = baseline.model_dump(mode="json")
+    assert dumped["effective_grasp_candidate_ref"] == 'candidate://reagent-a/0'
+    assert "rejected_grasp_candidates" not in dumped
+
+
+def test_runtime_subtask_record_pairs_effective_candidate_with_prepare_rejections():
+    from copy import deepcopy
+
+    class RejectionRecordingPreparationEndpoint(SubtaskPreparationEndpoint):
+        def invoke(self, arguments):
+            candidates = arguments["candidates"]
+            trimmed = (
+                {**arguments, "candidates": candidates[1:]} if len(candidates) > 1 else arguments
+            )
+            response = super().invoke(trimmed)
+            response["rejected_candidates"] = [{
+                "candidate_ref": candidates[0]["candidate_ref"],
+                "failure_code": "route_collision",
+                "error": "route link5 collides with the table",
+            }]
+            return response
+
+    def drain(runtime, outer):
+        result = None
+        for _ in range(20):
+            result = runtime.invocation_result(outer)
+            if result["status"] != "pending":
+                break
+        return result
+
+    def refresh(current, revision):
+        return current.model_copy(update={
+            "scene_revision": revision,
+            "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
+            "candidate_set_ref": f"candidate-set://{revision}/reagent-a",
+            "grasp_candidate_ref": f"candidate-set://{revision}/reagent-a",
+            "candidate_ref": f"candidate://{revision}/reagent-a/0",
+            "grasp_candidates": tuple(
+                dict(item, candidate_ref=f"candidate://{revision}/reagent-a/{index}")
+                for index, item in enumerate(current.grasp_candidates)
+            ),
+            "freshness_ms": 0,
+        })
+
+    first = binding().grasp_candidate
+    second = deepcopy(first)
+    second['candidate_ref'] = 'candidate://reagent-a/route-survivor'
+    second['grasp_frame']['position_m'][0] += .025
+    observed = binding(grasp_candidates=[first, second])
+    runtime = runtime_with_subtask_endpoint(
+        refresh,
+        preparation_endpoint=RejectionRecordingPreparationEndpoint(),
+    )
+    spec = SubtaskSpec(
+        subtask_id='pour-a', operation='pour', binding=observed, parameters=pour_parameters(),
+    )
+    outer = runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(spec),
+        caller_id="paos:task-1:revision-1:record-1",
+    )["invocation_id"]
+    result = drain(runtime, outer)
+    assert result["status"] == "succeeded"
+    record = result["result"]["subtask_result"]
+    assert record["effective_grasp_candidate_ref"] == 'candidate://reagent-a/route-survivor'
+    assert record["rejected_grasp_candidates"] == [{
+        "candidate_ref": 'candidate://reagent-a/0',
+        "failure_code": "route_collision",
+        "error": "route link5 collides with the table",
+    }]
+    acquire = next(item for item in record["receipts"] if item["tool_id"] == "object.acquire")
+    assert acquire["response"]["candidate_ref"] == 'candidate://reagent-a/route-survivor'
+    assert acquire["response"]["rejected_grasp_candidates"] == record["rejected_grasp_candidates"]
+
+    baseline_runtime = runtime_with_subtask_endpoint(refresh)
+    plain = SubtaskSpec(
+        subtask_id='pour-a', operation='pour', binding=binding(), parameters=pour_parameters(),
+    )
+    outer = baseline_runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(plain),
+        caller_id="paos:task-1:revision-1:record-2",
+    )["invocation_id"]
+    result = drain(baseline_runtime, outer)
+    assert result["status"] == "succeeded"
+    record = result["result"]["subtask_result"]
+    assert record["effective_grasp_candidate_ref"] == 'candidate://reagent-a/0'
+    assert "rejected_grasp_candidates" not in record
+    acquire = next(item for item in record["receipts"] if item["tool_id"] == "object.acquire")
+    assert "rejected_grasp_candidates" not in acquire["response"]
 
 
 def test_task_qualified_runtime_preparation_receives_only_ordered_qualified_grasps():

@@ -943,6 +943,48 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     assert len(prepared) == 1
 
 
+def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path):
+    profile = _profile(tmp_path)
+    binding = _binding(profile)
+    candidates = [
+        {"candidate_ref": "candidate://observed-reagent-a/rejected", "entity_ref": binding["entity_ref"],
+         "grasp_frame": {"position_m": [0.0, 0.2, 0.3]}},
+        {"candidate_ref": "candidate://observed-reagent-a/selected", "entity_ref": binding["entity_ref"],
+         "grasp_frame": {"position_m": [0.01, 0.2, 0.3]}},
+    ]
+
+    class Resolver:
+        def resolve(self, observed, request):
+            target = _resolved_target(observed)
+            target["candidate_ref"] = observed["candidate_ref"]
+            return target
+
+    class Engine:
+        def prepare_manipulation(self, request):
+            if request["candidate_ref"].endswith("/rejected"):
+                return {"status": "unavailable", "failure_code": "route_collision"}
+            return {"status": "available", "route_arguments": {"candidate_ref": request["candidate_ref"]}}
+
+    provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
+    result = provider.prepare({
+        "perception_binding": binding, "process_type": "pour", "candidates": candidates,
+    })
+    rejected = result["rejected_candidates"]
+    assert rejected == [{
+        "candidate_ref": "candidate://observed-reagent-a/rejected",
+        "failure_code": "route_collision",
+        "error": None,
+    }]
+    assert result["route_arguments"]["rejected_candidates"] == rejected
+    assert result["route_arguments"]["candidate_ref"] == "candidate://observed-reagent-a/selected"
+
+    first_available = provider.prepare({
+        "perception_binding": binding, "process_type": "pour", "candidates": candidates[1:],
+    })
+    assert first_available["rejected_candidates"] == []
+    assert first_available["route_arguments"]["rejected_candidates"] == []
+
+
 @pytest.mark.parametrize("failure_code,recommended_action", [
     ("route_collision", "select_alternative_candidate"),
     ("ik_discontinuity", "select_alternative_candidate"),

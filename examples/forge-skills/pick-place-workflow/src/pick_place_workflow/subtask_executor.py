@@ -16,7 +16,7 @@ from typing import Any, Literal, Protocol
 
 from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
 from PhyAgentOS.planning import NodeSettlement
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 from .operation_parameters import PROCESS_PARAMETER_PROPERTIES, validate_process_parameters
 
@@ -404,6 +404,22 @@ class SubtaskExecutionResult(BaseModel):
     scene_revision: str | None = None
     recommended_action: str
     requires_replan: bool = False
+    # Evidence lineage: the candidate that actually received the assignment and
+    # the candidates the Adapter rejected before it.  ``None`` means the
+    # preparation carried no such record; the serialized response omits the
+    # keys instead of inventing values.
+    effective_grasp_candidate_ref: str | None = None
+    rejected_grasp_candidates: list[dict[str, Any]] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_selection_evidence(self, handler):
+        data = handler(self)
+        for key in ("effective_grasp_candidate_ref", "rejected_grasp_candidates"):
+            # Selection evidence appears in the serialized response record only
+            # when the preparation actually carried it; no fabricated values.
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
 
     def to_node_settlement(
         self,
@@ -459,6 +475,7 @@ class SubtaskExecutionContext:
     last_response: Mapping[str, Any] | None = None
     trusted_intent: Mapping[str, Any] | None = None
     prepared_arguments: Mapping[str, Any] | None = None
+    effective_grasp_candidate_ref: str | None = None
 
 
 def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> None:
@@ -476,6 +493,25 @@ def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> Non
         "preparation_ref": response.get("preparation_ref"),
         "route_arguments": dict(route_arguments),
     })
+
+
+def _prepare_rejected_candidates(
+    receipts: list[ToolReceipt] | tuple[ToolReceipt, ...],
+) -> list[dict[str, Any]] | None:
+    """Pass through the Adapter's route-search rejections unchanged.
+
+    The preparation response records, per the evidence lineage, which
+    candidates were tried and rejected before the first available route.  The
+    list is surfaced verbatim on the subtask result and beside the acquire
+    receipt; when the preparation carries no such record the ``None`` return
+    keeps every key absent instead of inventing an empty history.
+    """
+    for receipt in receipts:
+        if receipt.tool_id != "manipulation.prepare":
+            continue
+        rejected = receipt.response.get("rejected_candidates")
+        return list(rejected) if isinstance(rejected, list) else None
+    return None
 
 
 def _known_no_motion_prepare_replan_action(
@@ -597,6 +633,16 @@ class SubtaskExecutor:
                     raise SubtaskExecutionError("internal Tool returned a non-object result")
                 response = dict(raw)
                 status, known = self._status(call, response)
+                receipt_response = {
+                    key: value for key, value in response.items() if key != "route_arguments"
+                }
+                if call.tool_id == "object.acquire":
+                    # Keep the preparation rejections next to the executed
+                    # candidate so the acquire receipt alone carries the full
+                    # selection evidence.
+                    rejected = _prepare_rejected_candidates(receipts)
+                    if rejected is not None:
+                        receipt_response.setdefault("rejected_grasp_candidates", rejected)
                 receipt = ToolReceipt(
                     sequence_index=index,
                     tool_id=call.tool_id,
@@ -605,7 +651,7 @@ class SubtaskExecutor:
                     attempt_id=self._text(response.get("attempt_id")),
                     status=status,
                     outcome_known=known,
-                    response={key: value for key, value in response.items() if key != "route_arguments"},
+                    response=receipt_response,
                     error=response.get("error") if isinstance(response.get("error"), dict) else None,
                 )
             except Exception as exc:
@@ -623,9 +669,11 @@ class SubtaskExecutor:
                     call.phase, "reconcile_before_retry",
                 )
             receipts.append(receipt)
+            effective_ref = context.effective_grasp_candidate_ref
             try:
                 if call.tool_id == "manipulation.prepare" and status == "available":
                     prepared_arguments = self._prepared_arguments(spec, response, context)
+                    effective_ref = self._text(prepared_arguments.get("candidate_ref"))
                     if context.trusted_intent is not None:
                         self._persist_assignment(response)
                 elif call.phase == "prepare" and status == "available":
@@ -647,6 +695,7 @@ class SubtaskExecutor:
                 last_response=response,
                 trusted_intent=context.trusted_intent,
                 prepared_arguments=prepared_arguments,
+                effective_grasp_candidate_ref=effective_ref,
             )
             if not known or status == "unknown":
                 return self._result(spec, receipts, completed, context, "outcome_unknown", False, call.phase, "reconcile_before_retry")
@@ -866,6 +915,8 @@ class SubtaskExecutor:
             scene_revision=context.scene_revision,
             recommended_action=recommended_action,
             requires_replan=requires_replan,
+            effective_grasp_candidate_ref=context.effective_grasp_candidate_ref,
+            rejected_grasp_candidates=_prepare_rejected_candidates(receipts),
         )
 
 
@@ -991,25 +1042,35 @@ class RuntimeSubtaskDriver:
         known = response.get("outcome_known") is True
         if call.phase == "prepare" and status in {"available", "unavailable", "invalid", "stale", "empty"}:
             known = True
+        receipt_response = {key: value for key, value in response.items() if key != "route_arguments"}
+        if call.tool_id == "object.acquire":
+            # Keep the preparation rejections next to the executed candidate so
+            # the acquire receipt alone carries the full selection evidence.
+            rejected = _prepare_rejected_candidates(self.receipts)
+            if rejected is not None:
+                receipt_response.setdefault("rejected_grasp_candidates", rejected)
         receipt = ToolReceipt(
             sequence_index=self.index, tool_id=call.tool_id, phase=call.phase,
             invocation_id=self._text(raw.get("invocation_id") or response.get("invocation_id")),
             attempt_id=self._text(raw.get("attempt_id") or response.get("attempt_id")),
             status=str(status or "unknown"), outcome_known=known,
-            response={key: value for key, value in response.items() if key != "route_arguments"},
+            response=receipt_response,
             error=response.get("error") if isinstance(response.get("error"), dict) else None,
         )
         self.receipts.append(receipt)
         self.active_invocation = None
         self.active_tool = None
+        effective_ref = self.context.effective_grasp_candidate_ref
         try:
             prepared_arguments = (
                 self._prepared_arguments(self.spec, response, self.context)
                 if call.tool_id == "manipulation.prepare" and status == "available"
                 else self.context.prepared_arguments
             )
-            if call.tool_id == "manipulation.prepare" and status == "available" and self.context.trusted_intent is not None:
-                self._persist_assignment(response)
+            if call.tool_id == "manipulation.prepare" and status == "available":
+                effective_ref = self._text(prepared_arguments.get("candidate_ref"))
+                if self.context.trusted_intent is not None:
+                    self._persist_assignment(response)
         except Exception as exc:
             return self._finish(
                 "outcome_unknown", False, call.phase, "reconcile_before_retry", error=str(exc)
@@ -1024,6 +1085,7 @@ class RuntimeSubtaskDriver:
             last_response=response,
             trusted_intent=self.context.trusted_intent,
             prepared_arguments=prepared_arguments,
+            effective_grasp_candidate_ref=effective_ref,
         )
         if self.cancel_requested:
             if status == "cancelled" and known:

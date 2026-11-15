@@ -715,6 +715,10 @@ output_schema:
       pattern: ^destination://[^/]+.*$
     route_arguments:
       type: object
+    rejected_candidates:
+      type: array
+      items:
+        type: object
 robot_frame_profile:
   observation_frame: observation
   unit: m

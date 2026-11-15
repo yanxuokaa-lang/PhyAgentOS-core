@@ -10,6 +10,7 @@
   "simulation_truth_manifest_path": "labutopia-simulator-truth.json",
   "oracle_grasp": {
     "gripper_width_m": 0.08,
+    "tcp_pad_span_offset_m": 0.00787,
     "finger_height_m": 0.06,
     "finger_depth_m": 0.05,
     "approach_base_xy_m": [-0.45, 0.0],

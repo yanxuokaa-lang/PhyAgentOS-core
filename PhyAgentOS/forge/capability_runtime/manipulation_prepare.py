@@ -97,6 +97,11 @@ class PreparationSnapshot:
     # It is optional because readiness-only providers do not produce an
     # executable route.
     route_arguments: dict[str, Any] | None = None
+    # Provider-owned route-search diagnostics: the candidates rejected before
+    # the first available route.  Absent means the provider recorded nothing;
+    # it is carried through verbatim for evidence-lineage consumers and never
+    # alters selection or settlement.
+    rejected_candidates: tuple[dict[str, Any], ...] | None = None
 
 
 MANIPULATION_TOOL_SPEC: dict[str, Any] = {
@@ -389,6 +394,7 @@ MANIPULATION_TOOL_SPEC["output_schema"]["properties"].update({
         ref_template="#/properties/assignments/items/$defs/{model}")},
     "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
     "route_arguments": {"type": "object"},
+    "rejected_candidates": {"type": "array", "items": {"type": "object"}},
 })
 
 
@@ -619,7 +625,8 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
         return snapshot
     if not isinstance(snapshot, Mapping):
         return None
-    allowed = {"prepared_candidates", "provider_available", "assignments", "destination_ref", "route_arguments"}
+    allowed = {"prepared_candidates", "provider_available", "assignments", "destination_ref", "route_arguments",
+               "rejected_candidates"}
     if set(snapshot) - allowed or not {"prepared_candidates", "provider_available"} <= set(snapshot):
         return None
     prepared = snapshot.get("prepared_candidates")
@@ -634,12 +641,22 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
     route_arguments = snapshot.get("route_arguments")
     if route_arguments is not None and not isinstance(route_arguments, Mapping):
         return None
+    rejected_candidates = snapshot.get("rejected_candidates")
+    if rejected_candidates is not None and (
+        not isinstance(rejected_candidates, (list, tuple))
+        or any(not isinstance(item, Mapping) for item in rejected_candidates)
+    ):
+        return None
     return PreparationSnapshot(
         prepared_candidates=tuple(dict(item) for item in prepared),
         provider_available=provider_available,
         assignments=tuple(dict(item) for item in assignments),
         destination_ref=snapshot.get("destination_ref"),
         route_arguments=dict(route_arguments) if route_arguments is not None else None,
+        rejected_candidates=(
+            None if rejected_candidates is None
+            else tuple(dict(item) for item in rejected_candidates)
+        ),
     )
 
 
@@ -831,7 +848,7 @@ class ManipulationPreparationEndpoint:
             for ref in item["evidence"]:
                 if ref not in evidence:
                     evidence.append(ref)
-        return {
+        result = {
             "status": "available" if prepared else "empty",
             **route_result,
             "preparation_ref": preparation_ref,
@@ -845,6 +862,12 @@ class ManipulationPreparationEndpoint:
             "evidence": evidence,
             "motion_authorized": False,
         }
+        if snapshot.rejected_candidates is not None:
+            # Diagnostics only: the rejections ride beside the selected route
+            # so downstream evidence chains stay consistent with what actually
+            # ran.  They never change selection, admission or settlement.
+            result["rejected_candidates"] = [dict(item) for item in snapshot.rejected_candidates]
+        return result
 
 
 __all__ = [

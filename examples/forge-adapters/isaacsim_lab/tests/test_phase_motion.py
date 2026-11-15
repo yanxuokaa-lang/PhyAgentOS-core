@@ -381,7 +381,7 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route(po
     assert route["acquire_approach_distance_m"] == pytest.approx(.12)
     assert route["acquire_staging_backoff_m"] == pytest.approx(0.)
     assert route["acquire_staging_tangential_offset_m"] == pytest.approx(0.)
-    assert artifacts[0][1]["status"] == "started"
+    assert [value for kind, value in artifacts if kind == "acquire-search"][0]["status"] == "started"
     attempts = [value for kind, value in artifacts if kind == "acquire-search" and value.get("stage") == "route"]
     assert attempts[1]["failure_code"] == "route_collision"
     assert attempts[-1]["status"] == "available"
@@ -459,7 +459,7 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
     assert captured.value.code == "route_search_timeout"
     assert attempts == ["started"]
     assert captured.value.diagnostics == {
-        "search_ref": "artifact://acquire-search/1",
+        "search_ref": "artifact://acquire-search/2",
         "attempted_count": 1,
         "pruned_count": 0,
         # direct: 1 corridor; staged: 2 clearances x (1 transport + carry-as-grasped).
@@ -469,7 +469,7 @@ def test_acquire_route_search_timeout_stops_before_transport_timeout(monkeypatch
         "failure_counts": {},
         "elapsed_s": pytest.approx(1.1),
         "timeout_s": 1.,
-        "timeout_evidence_ref": "artifact://acquire-search/3",
+        "timeout_evidence_ref": "artifact://acquire-search/4",
     }
     timeout = artifacts[-1][1]
     assert timeout["status"] == "unavailable"

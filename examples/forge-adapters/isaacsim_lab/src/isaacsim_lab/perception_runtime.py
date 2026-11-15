@@ -64,7 +64,8 @@ def build_visual_providers(config_path, engine, artifact_root, inference, *, seg
         oracle = OracleSimulatorTruthGraspProvider(
             store, gripper_geometry=oracle_config, base_xy=tuple(float(value) for value in base_xy),
             bottle_depth_fractions=oracle_config.get("bottle_depth_fractions"),
-            tilt_angles=oracle_config.get("tilt_angles_rad"))
+            tilt_angles=oracle_config.get("tilt_angles_rad"),
+            pad_span_offset_m=oracle_config.get("tcp_pad_span_offset_m"))
         grasp = RecordedGraspProvider(oracle, store)
     else:
         grasp = RecordedGraspProvider(GraspNetProposalProvider(

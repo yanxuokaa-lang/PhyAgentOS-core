@@ -162,10 +162,16 @@ class LabUtopiaCycleProvider:
             value.pop("motion_authorized", None)
             value["provider_available"] = True
             value.setdefault("destination_ref", request.get("destination_ref"))
-            # Store failed candidate diagnostics with the selected route, not in
-            # a second public selection or settlement mechanism.
+            # Route-search diagnostics are recorded twice on purpose: beside
+            # the selected route arguments and at the top of this response, so
+            # the task layer can write the effective candidate plus every
+            # rejected predecessor into its execution record and keep the
+            # evidence lineage (candidate -> preparation -> execution feedback)
+            # internally consistent.  Diagnostic only: the first available
+            # candidate still wins, and no second selection mechanism exists.
             if isinstance(value.get("route_arguments"), dict):
                 value["route_arguments"]["rejected_candidates"] = rejected
+            value["rejected_candidates"] = rejected
             return value
         raise PreparationProviderError(
             "no_admissible_grasp",

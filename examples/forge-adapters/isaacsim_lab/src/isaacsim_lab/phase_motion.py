@@ -924,6 +924,60 @@ class IsaacPhaseMotion:
         self.payload_geometry[source] = observed_point_boxes(local_points)
         return model_pose, relation
 
+    def collider_profile_artifact(self, source, desired, scene_revision, candidate_ref):
+        """Read-only cooked-collider radial profile at acquire; this never gates.
+
+        Writes one collider-profile artifact carrying the source body's PhysX
+        cooked convex vertices ring-aggregated into r(z) along the grasp span
+        axis, so a diagnostic run can reconcile the commanded band against the
+        composed collider (e.g. the V-HACD shoulder taper) without launching
+        Kit. Any cooked-query failure is recorded honestly as status
+        "unavailable"; acquire qualification is unchanged.
+        """
+        record = {
+            "status": "unavailable", "operation": "acquire",
+            "scene_revision": scene_revision, "candidate_ref": candidate_ref,
+            "source_path": source,
+        }
+        # Outside Kit (unit tests, offline replay) no stage is attached; the
+        # telemetry records that honestly instead of raising into the
+        # unchanged acquire qualification.
+        stage = getattr(self, "stage", None)
+        if stage is None:
+            record["reason"] = "no usd stage attached"
+            return self._artifact("collider-profile", record)
+        try:
+            from pxr import Usd, UsdPhysics
+
+            from .finger_collision import RADIAL_PROFILE_BIN_M, cooked_body_boxes, radial_profile
+
+            prim = stage.GetPrimAtPath(source)
+            matches = [item for item in Usd.PrimRange(prim) if item.HasAPI(UsdPhysics.RigidBodyAPI)] \
+                if prim.IsValid() else []
+            if len(matches) != 1:
+                raise ValueError(f"expected one physical body under {source}")
+            body_path = str(matches[0].GetPath())
+            _boxes, evidence = cooked_body_boxes(
+                stage, matches[0], self.config["collision_margin_m"])
+            record["colliders"] = [{"collider_path": item["collider_path"],
+                                    "representation": item["representation"]} for item in evidence]
+            cooked = [np.asarray(points, dtype=float) for item in evidence
+                      for points in item.get("body_frame_convexes_m", [])]
+            if not cooked:
+                record["reason"] = "no physx cooked convex evidence on the source body"
+                return self._artifact("collider-profile", record)
+            pose = self.body_pose(body_path)
+            world_points = (pose[:3, :3] @ np.concatenate(cooked, axis=0).T).T + pose[:3, 3]
+            span_axis = desired[:3, :3][:, 2]
+            rings = radial_profile(world_points, desired[:3, 3], span_axis, RADIAL_PROFILE_BIN_M)
+            return self._artifact("collider-profile", {**record, "status": "cooked",
+                "grasp_position_m": np.asarray(desired[:3, 3]).tolist(),
+                "span_axis_world": np.asarray(span_axis).tolist(),
+                "bin_size_m": RADIAL_PROFILE_BIN_M, "profile": rings})
+        except (ValueError, RuntimeError) as exc:
+            record["reason"] = str(exc)
+            return self._artifact("collider-profile", record)
+
     def _artifact(self, kind, value):
         from PhyAgentOS.utils.atomic_file import atomic_write_bytes
 
@@ -1211,6 +1265,10 @@ class IsaacPhaseMotion:
             waypoints = process_waypoints(operation, arguments["parameters"], tcp, body,
                                           tcp_from_object, target, self.config)
         if operation == "acquire":
+            # Read-only collider telemetry runs once, before any route search,
+            # so the profile exists even when qualification later fails.
+            collider_profile_ref = self.collider_profile_artifact(
+                source, desired, arguments["scene_revision"], target.get("candidate_ref"))
             failures, candidates = [], []
             variants = acquire_grasp_variants(
                 desired,
@@ -1478,6 +1536,7 @@ class IsaacPhaseMotion:
                 acquire_search_ref=search_ref,
                 acquire_route_attempted_count=attempted_count,
                 acquire_route_pruned_count=pruned_count,
+                collider_profile_ref=collider_profile_ref,
             )
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]

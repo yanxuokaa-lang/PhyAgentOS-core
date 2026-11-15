@@ -70,6 +70,52 @@ def convex_slice_boxes(vertices, maximum_slice_m):
     return boxes
 
 
+# Ring width for collider radial-profile telemetry; fine enough to resolve the
+# R05 shoulder taper (~0.36 mm radius recession per mm of height) over the
+# +-30 mm finger pad window.
+RADIAL_PROFILE_BIN_M = 0.002
+
+
+def radial_profile(points, origin, axis, bin_size_m=RADIAL_PROFILE_BIN_M):
+    """Ring-aggregate the radial distance r(z) of points along a span axis.
+
+    Read-only collider telemetry: points are projected onto ``axis`` relative
+    to ``origin``, grouped into ``bin_size_m`` rings ordered from lowest to
+    highest span coordinate, and each ring records the median radius and point
+    count. The axis need not pass through ``origin``'s neighbours; the radius
+    is measured from the axis line itself, so a bottle collider produces its
+    true r(z) taper profile.
+    """
+    points = _points(points)
+    origin = np.asarray(origin, dtype=float)
+    if origin.shape != (3,) or not np.isfinite(origin).all():
+        raise ValueError("radial profile origin must be a finite 3-vector")
+    axis = np.asarray(axis, dtype=float)
+    if axis.shape != (3,) or not np.isfinite(axis).all():
+        raise ValueError("radial profile axis must be a finite 3-vector")
+    norm = float(np.linalg.norm(axis))
+    if not math.isfinite(bin_size_m) or bin_size_m <= 0:
+        raise ValueError("radial profile bin extent must be finite and positive")
+    if norm <= 1e-9:
+        raise ValueError("radial profile axis is unresolved")
+    axis = axis / norm
+    offsets = points - origin
+    span = offsets @ axis
+    radial = offsets - np.outer(span, axis)
+    radius = np.linalg.norm(radial, axis=1)
+    rings = []
+    lowest = float(span.min())
+    indices = np.floor((span - lowest) / bin_size_m).astype(int)
+    for index in np.unique(indices):
+        inside = indices == index
+        rings.append({
+            "span_center_m": lowest + (float(index) + 0.5) * bin_size_m,
+            "median_radius_m": float(np.median(radius[inside])),
+            "point_count": int(np.count_nonzero(inside)),
+        })
+    return rings
+
+
 def cooked_body_boxes(stage, body, maximum_slice_m):
     """Read current composed rigid-body colliders; return private bounds/evidence."""
     from omni.physx import get_physx_cooking_interface

@@ -7,11 +7,11 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 from isaacsim_lab.oracle_grasp_geometry import (
+    DEFAULT_TCP_PAD_SPAN_OFFSET_M,
     OracleGraspGeometryError,
     OracleSimulatorTruthGraspProvider,
     _approach_perpendicular_to_axis,
     _horizontal_toward_base,
-    _median_radius,
     _provider_rotation,
     bottle_grasp_candidates,
     rod_grasp_candidates,
@@ -68,14 +68,15 @@ def test_bottle_candidates_target_semantic_body_band():
     points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
     rim = {"tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.03}
     candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0.0, 0.0))
-    assert [round(value["position_world_m"][2], 4) for value in candidates] == [
-        0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07,
-    ]
+    bands = [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07]
+    assert [value["position_world_m"][2] for value in candidates] == pytest.approx(
+        [band + DEFAULT_TCP_PAD_SPAN_OFFSET_M for band in bands])
     for value in candidates:
         position = np.asarray(value["position_world_m"])
         rotation = value["rotation_world"]
-        # Approach horizontally toward the base, positioned on the near sidewall.
-        assert position[0] == pytest.approx(0.47, abs=1e-4)
+        # Approach horizontally toward the base, placed on the raised span axis.
+        assert position[0] == pytest.approx(0.5, abs=1e-4)
+        assert position[1] == pytest.approx(0.0, abs=1e-4)
         assert np.allclose(rotation[:, 0], [-1, 0, 0], atol=2e-3)
         # The provider z-axis spans the vessel axis, so the TCP finger span follows it.
         assert np.allclose(rotation[:, 2], [0, 0, 1], atol=2e-3)
@@ -122,12 +123,13 @@ def test_bottle_candidates_reject_unresolved_geometry():
         bottle_grasp_candidates(thin, rim, gripper=GRIPPER, base_xy=(0.0, 0.0))
 
 
-def test_bottle_tilt_zero_reproduces_legacy_poses_bitwise():
-    """Without tilt configuration the candidates equal the pre-tilt poses exactly.
+def test_bottle_tilt_zero_keeps_rotation_but_raises_position_on_axis():
+    """With tilt 0 the candidates keep the legacy frame and only raise the pose.
 
-    The legacy reference rebuilds the historical single-pose construction with
-    the unchanged geometry helpers, so any deviation in the tilt=0 path (for
-    example accidental renormalization) breaks this test.
+    The reference rebuilds the historical frame with the unchanged geometry
+    helpers and moves the legacy sidewall point onto the span axis raised by
+    the pad-span offset, so any deviation in the tilt=0 path (for example
+    accidental renormalization) breaks this test.
     """
     points = _cylinder(radius=0.03, height=0.2, center=(0.5, 0.0, 0.1))
     rim = {"tip_world": [0.5, 0.0, 0.2], "axis_world": [0.0, 0.0, 1.0], "rim_radius_m": 0.03}
@@ -136,20 +138,19 @@ def test_bottle_tilt_zero_reproduces_legacy_poses_bitwise():
     axis = np.asarray(rim["axis_world"], dtype=float)
     extent = float(np.ptp((points - tip) @ axis))
     approach = _approach_perpendicular_to_axis(_horizontal_toward_base(points.mean(0), (0., 0.)), axis)
-    radius = _median_radius(points, tip, axis)
     legacy_rotation = _provider_rotation(approach, axis)
-    legacy = [{
-        "position_world_m": tip + axis * (-extent * fraction) + approach * radius,
+    expected = [{
+        "position_world_m": tip + axis * (-extent * fraction) + axis * DEFAULT_TCP_PAD_SPAN_OFFSET_M,
         "rotation_world": legacy_rotation,
     } for fraction in fractions]
     for tilts in (None, [0.0]):
         candidates = bottle_grasp_candidates(points, rim, gripper=GRIPPER, base_xy=(0., 0.),
                                              depth_fractions=fractions, tilt_angles=tilts)
-        assert len(candidates) == len(legacy)
-        for candidate, expected in zip(candidates, legacy):
+        assert len(candidates) == len(expected)
+        for candidate, want in zip(candidates, expected):
             assert np.array_equal(np.asarray(candidate["position_world_m"]),
-                                  expected["position_world_m"])
-            assert np.array_equal(candidate["rotation_world"], expected["rotation_world"])
+                                  want["position_world_m"])
+            assert np.array_equal(candidate["rotation_world"], want["rotation_world"])
 
 
 def test_bottle_tilt_variants_keep_contact_and_tilt_the_frame():
@@ -161,16 +162,20 @@ def test_bottle_tilt_variants_keep_contact_and_tilt_the_frame():
                                          depth_fractions=fractions, tilt_angles=tilts)
     assert len(candidates) == len(fractions) * len(tilts)
     axis = np.asarray(rim["axis_world"], dtype=float)
+    tip = np.asarray(rim["tip_world"], dtype=float)
+    approach = _approach_perpendicular_to_axis(_horizontal_toward_base(points.mean(0), (0., 0.)), axis)
+    extent = float(np.ptp((points - tip) @ axis))
     for f_index, fraction in enumerate(fractions):
         group = candidates[f_index * len(tilts):(f_index + 1) * len(tilts)]
+        axis_point = tip + axis * (-extent * fraction)
         for t_index, tilt in enumerate(tilts):
             candidate = group[t_index]
             position = np.asarray(candidate["position_world_m"])
             rotation = np.asarray(candidate["rotation_world"])
             # Outer fraction, inner tilt: depth bands stay contiguous per tilt group.
-            assert position[2] == pytest.approx(0.2 - 0.2 * fraction, abs=1e-9)
-            # The contact point never moves with the tilt; only the pose tilts.
-            assert np.array_equal(position, np.asarray(group[0]["position_world_m"]))
+            tilted_axis = axis * np.cos(tilt) + approach * np.sin(tilt)
+            # The on-axis placement travels with the tilted span axis.
+            assert position == pytest.approx(axis_point + tilted_axis * DEFAULT_TCP_PAD_SPAN_OFFSET_M)
             assert np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-9)
             assert np.linalg.det(rotation) > 0
             assert float(np.dot(rotation[:, 0], axis)) == pytest.approx(-np.sin(tilt), abs=1e-9)
@@ -271,15 +276,15 @@ def test_bottle_record_generates_provider_shaped_candidates(tmp_path):
     assert output["funnel"] == {"decoded": 8, "canonicalized": 8, "deduplicated": 8, "retained": 8}
     assert record["points_ref"] in output["produced_evidence_refs"]
     provider_from_tcp = np.array([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1]], dtype=float)
-    expected_depths = [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07]
-    for candidate, depth in zip(output["candidates"], expected_depths):
+    expected_bands = [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07]
+    for candidate, band in zip(output["candidates"], expected_bands):
         assert set(candidate) == {"candidate_ref", "entity_ref", "grasp_frame", "approach_direction",
                                   "score", "confidence", "provenance", "qualification", "grasp_geometry"}
         assert candidate["grasp_frame"]["frame_id"] == record["frame_id"]
         assert candidate["provenance"] == [record["points_ref"], record["geometry_ref"]]
         pose, approach = candidate_world_pose(
             candidate, np.asarray(record["world_from_camera"]), provider_from_tcp)
-        assert np.allclose(pose[:3, 3], [0.47, 0.0, depth], atol=1e-3)
+        assert np.allclose(pose[:3, 3], [0.5, 0.0, band + DEFAULT_TCP_PAD_SPAN_OFFSET_M], atol=1e-3)
         assert np.allclose(approach, [-1, 0, 0], atol=1e-3)
 
 

@@ -107,6 +107,31 @@ rank key) stay as fallbacks if the drive cannot track the ~7 mm/s recession
 rate within the 20 N cap — a quantity run15 artifacts cannot determine
 ahead of time.
 
+## Root-cause closure and fix (2026-11-16, v17.6.16)
+
+The substitution narrative above was superseded by the 2026-11-15 forensics:
+runs 13-18 all executed candidate **-1** (presentation 0/12/4/8/16 died
+route_collision, the try-loop silently fell to the first feasible -1), and the
+19.76mm close-end contact came from the ~7.5mm TCP-to-pad-edge offset against
+the V-HACD shoulder-bridged collision proxy, not from any candidate's band.
+The taper-wedge math anchored on z=0.7697 fit a phantom.
+
+Fixes landed as v17.6.16 (562 passed, 2 pre-existing env failures):
+
+1. Evidence writeback — `rejected_candidates` on the prepare response, contract
+   and acquire receipt; `effective_grasp_candidate_ref` on the subtask result.
+   Substitutions are now visible in the task record itself.
+2. On-axis raised placement — bottle candidates sit on the span axis raised by
+   `pad_span_offset_m` 0.00787 (calibrated pad edge 0.00987 − 0.002 clearance),
+   removing both the TCP-below-band wedge and the median-radius lateral offset.
+3. Collider radial-profile telemetry — one read-only collider-profile artifact
+   per acquire, written before route search, to reconcile commanded band vs
+   composed collider without launching Kit.
+
+run19 verdict criteria: effective ref = presentation head (or honest
+rejections), close-end fingers at band-radius scale, collider profile
+available, clean lift into pour.
+
 ## Validation commands
 
 See `.task/current.md` tail; nothing new required for this diagnostic.

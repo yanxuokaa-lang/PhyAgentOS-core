@@ -36,6 +36,16 @@ _BOTTLE_DEPTH_FRACTIONS = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65)
 # variants are re-qualified individually by the unchanged task-affordance gate.
 _TILT_ANGLES = (0.,)
 _ROD_SHAFT_FRACTIONS = (0.30, 0.70)
+# Distance along the tilted span axis from the commanded grasp band to the
+# TCP, calibrated from the Franka gripper cooked convex geometry (run18 pad
+# contacts sit at provider z -0.00987 m, the pad face's lowest contact edge).
+# Placing the band at axis_point + offset raises the pads by the same amount,
+# which keeps them above the R05 shoulder taper (depth0 band z 0.7927 m,
+# shoulder top z 0.7885 m -> the 2 mm clearance below is the window margin;
+# the old sidewall placement pushed the pad edge ~7 mm below the band and
+# wedged it on the shoulder). Rod grasps keep their historical pose.
+PAD_EDGE_CLEARANCE_M = 0.002
+DEFAULT_TCP_PAD_SPAN_OFFSET_M = 0.00987 - PAD_EDGE_CLEARANCE_M
 
 
 def validate_depth_fractions(values, default):
@@ -152,28 +162,37 @@ def _median_radius(points, origin, axis):
 
 
 def bottle_grasp_candidates(world_points, rim_feature, *, gripper, base_xy,
-                            depth_fractions=None, tilt_angles=None):
+                            depth_fractions=None, tilt_angles=None,
+                            pad_span_offset_m=DEFAULT_TCP_PAD_SPAN_OFFSET_M):
     """Semantic body-band grasp candidates for a vessel with a qualified rim.
 
-    Positions sit on the near sidewall along a horizontal approach toward the
-    robot base, at several depths below the rim inside the observed body. The
-    provider z-axis spans the vessel axis so the TCP finger span follows it,
-    exactly as the task-affordance gate requires. Every configured tilt angle
-    rotates the approach toward the vessel base and the span axis by the same
-    amount while the contact point stays on the original sidewall; each tilted
-    variant is re-qualified individually by the unchanged gate downstream.
+    Positions sit on the vessel span axis, raised along it by
+    ``pad_span_offset_m`` from the commanded band: the TCP sits that far above
+    the gripper pad face's lowest contact edge (calibrated from the cooked
+    finger convexes minus a small shoulder clearance), so the pads land on the
+    band instead of below it. The provider z-axis spans the vessel axis so the
+    TCP finger span follows it, exactly as the task-affordance gate requires.
+    Every configured tilt angle rotates the approach toward the vessel base and
+    the span axis by the same amount about the closing direction, and the
+    on-axis placement travels with the tilted axis; each tilted variant is
+    re-qualified individually by the unchanged gate downstream.
     """
     points = np.asarray(world_points, dtype=float)
     if points.ndim != 2 or points.shape[1] != 3 or len(points) < 20 or not np.isfinite(points).all():
         raise OracleGraspGeometryError("bottle oracle grasp requires finite mesh points")
+    if (isinstance(pad_span_offset_m, bool) or not isinstance(pad_span_offset_m, (int, float))
+            or not np.isfinite(float(pad_span_offset_m)) or float(pad_span_offset_m) <= 0.):
+        raise OracleGraspGeometryError(
+            "oracle pad_span_offset_m must be a finite positive number",
+        )
+    offset = float(pad_span_offset_m)
     tip = np.asarray(rim_feature["tip_world"], dtype=float)
     axis = _unit(rim_feature["axis_world"], "rim axis")
     projections = (points - tip) @ axis
     extent = float(np.ptp(projections))
     if extent <= 0.02:
         raise OracleGraspGeometryError("vessel body extent is unresolved")
-    radius = _median_radius(points, tip, axis)
-    if radius <= 0.002:
+    if _median_radius(points, tip, axis) <= 0.002:
         raise OracleGraspGeometryError("vessel radial extent is unresolved")
     approach = _approach_perpendicular_to_axis(
         _horizontal_toward_base(points.mean(0), base_xy), axis)
@@ -184,11 +203,11 @@ def bottle_grasp_candidates(world_points, rim_feature, *, gripper, base_xy,
         for tilt in tilts:
             # Tilt the approach toward the vessel base and the span axis by the
             # same angle about the closing direction; both stay orthonormal and
-            # tilt=0 reproduces the historical pose bit-for-bit.
+            # the on-axis position travels with the tilted span axis.
             tilted_approach = approach * np.cos(tilt) - axis * np.sin(tilt)
             tilted_axis = axis * np.cos(tilt) + approach * np.sin(tilt)
             candidates.append({
-                "position_world_m": axis_point + approach * radius,
+                "position_world_m": axis_point + tilted_axis * offset,
                 "rotation_world": _provider_rotation(tilted_approach, tilted_axis),
             })
     return candidates
@@ -237,7 +256,7 @@ class OracleSimulatorTruthGraspProvider:
     """
 
     def __init__(self, store, *, gripper_geometry, base_xy=(0., 0.), bottle_depth_fractions=None,
-                 tilt_angles=None):
+                 tilt_angles=None, pad_span_offset_m=None):
         self.store = store
         self.gripper = validate_gripper_geometry(gripper_geometry)
         self.base_xy = tuple(float(value) for value in base_xy)
@@ -246,6 +265,14 @@ class OracleSimulatorTruthGraspProvider:
         self.bottle_depth_fractions = validate_depth_fractions(
             bottle_depth_fractions, _BOTTLE_DEPTH_FRACTIONS)
         self.tilt_angles = validate_tilt_angles(tilt_angles, _TILT_ANGLES)
+        if pad_span_offset_m is None:
+            pad_span_offset_m = DEFAULT_TCP_PAD_SPAN_OFFSET_M
+        if (isinstance(pad_span_offset_m, bool) or not isinstance(pad_span_offset_m, (int, float))
+                or not np.isfinite(float(pad_span_offset_m)) or float(pad_span_offset_m) <= 0.):
+            raise OracleGraspGeometryError(
+                "oracle pad_span_offset_m must be a finite positive number",
+            )
+        self.pad_span_offset_m = float(pad_span_offset_m)
         self._records_accessor = None
 
     def bind_records(self, accessor):
@@ -300,7 +327,8 @@ class OracleSimulatorTruthGraspProvider:
                     continue
                 generated = bottle_grasp_candidates(
                     world_points, rims[0], gripper=self.gripper, base_xy=self.base_xy,
-                    depth_fractions=self.bottle_depth_fractions, tilt_angles=self.tilt_angles)
+                    depth_fractions=self.bottle_depth_fractions, tilt_angles=self.tilt_angles,
+                    pad_span_offset_m=self.pad_span_offset_m)
             elif category == "stir_tool":
                 pairs = [item for item in features
                          if item.get("feature_kind") == "rod_endpoint_pair"]
