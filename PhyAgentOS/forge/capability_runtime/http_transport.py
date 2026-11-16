@@ -7,7 +7,10 @@ it does not start Dora or execute a physical action.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any
 from urllib.parse import unquote
 
@@ -25,35 +28,44 @@ class CapabilityRuntimeTransport(httpx.AsyncBaseTransport):
         self.runtime = runtime
         self.gateway_identity = gateway_identity
         self.requests: list[httpx.Request] = []
+        # Single worker on purpose: one runtime call at a time in FIFO order,
+        # identical to the old on-loop serialization, while keeping the loop free.
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gateway-runtime")
+
+    async def _call_runtime(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        # Multi-minute sync driver steps (worker RPCs, sync VLM calls) must not run
+        # on the loop thread; the single worker keeps calls serialized like before.
+        call = partial(getattr(self.runtime, method), *args, **kwargs)
+        return await asyncio.get_running_loop().run_in_executor(self._executor, call)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
         try:
             if request.method == "GET" and path == "/tools":
-                return self._ok({"gateway_identity": self.gateway_identity, **self.runtime.list_tools()})
+                return self._ok({"gateway_identity": self.gateway_identity, **await self._call_runtime("list_tools")})
             if request.method == "GET" and path.startswith("/tools/") and path.endswith("/context"):
                 tool_id = unquote(path[len("/tools/") : -len("/context")])
-                return self._ok(self.runtime.get_public_context(tool_id))
+                return self._ok(await self._call_runtime("get_public_context", tool_id))
             if request.method == "GET" and path.startswith("/tools/"):
-                return self._ok(self.runtime.get_public_tool(unquote(path[len("/tools/") :])))
+                return self._ok(await self._call_runtime("get_public_tool", unquote(path[len("/tools/") :])))
             if request.method == "POST" and path.startswith("/tools/") and path.endswith(":invoke"):
-                return self._invoke_tool(request)
+                return await self._invoke_tool(request)
             if request.method == "GET" and path.startswith("/invocations/"):
-                return self._read_invocation(request)
+                return await self._read_invocation(request)
             if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/cancel"):
                 invocation_id = unquote(path[len("/invocations/") : -len("/cancel")])
-                return self._ok(self.runtime.cancel_invocation(invocation_id))
+                return self._ok(await self._call_runtime("cancel_invocation", invocation_id))
             if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/stop"):
                 invocation_id = unquote(path[len("/invocations/") : -len("/stop")])
-                return self._ok(self.runtime.stop_invocation(invocation_id))
+                return self._ok(await self._call_runtime("stop_invocation", invocation_id))
             return self._error(404, "not_found", "Gateway route not found")
         except UnknownToolError as exc:
             return self._error(404, "not_found", str(exc))
         except (CapabilityRuntimeError, ValueError, TypeError) as exc:
             return self._error(409, "runtime_error", str(exc))
 
-    def _invoke_tool(self, request: httpx.Request) -> httpx.Response:
+    async def _invoke_tool(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         try:
             raw = json.loads(request.content or b"{}")
@@ -66,20 +78,23 @@ class CapabilityRuntimeTransport(httpx.AsyncBaseTransport):
         timeout_ms = raw.get("timeout_ms")
         if path.endswith(":invoke") and path.count("/") == 3:
             endpoint_id, operation = unquote(path[len("/tools/") : -len(":invoke")]).split("/", 1)
-            result = self.runtime.invoke_query(endpoint_id, operation, arguments)
+            result = await self._call_runtime("invoke_query", endpoint_id, operation, arguments)
             return self._ok(result)
         tool_id = unquote(path[len("/tools/") : -len(":invoke")])
-        accepted = self.runtime.start_action(
-            tool_id, arguments, caller_id=caller_id, timeout_ms=timeout_ms
+        accepted = await self._call_runtime(
+            "start_action", tool_id, arguments, caller_id=caller_id, timeout_ms=timeout_ms
         )
         return httpx.Response(202, json={"ok": True, "data": accepted})
 
-    def _read_invocation(self, request: httpx.Request) -> httpx.Response:
+    async def _read_invocation(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         is_result = path.endswith("/result")
         suffix = "/result" if is_result else ""
         invocation_id = unquote(path[len("/invocations/") : -len(suffix) if suffix else None])
-        data = self.runtime.invocation_result(invocation_id) if is_result else self.runtime.invocation_status(invocation_id)
+        if is_result:
+            data = await self._call_runtime("invocation_result", invocation_id)
+        else:
+            data = await self._call_runtime("invocation_status", invocation_id)
         status = 202 if is_result and data.get("status") == "pending" else 200
         return httpx.Response(status, json={"ok": True, "data": data})
 

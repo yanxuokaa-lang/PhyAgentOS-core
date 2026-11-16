@@ -162,7 +162,7 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
                      forge_tool_client=client, forge_task_coordinator=coordinator,
                      semantic_plan_builder=AsyncQuerySemanticPlanBuilder(queries),
                      planning_context_provider=LabPlanningContext(coordinator, engine, queries),
-                     turn_timeout_s=1200, max_iterations=40, restrict_to_workspace=True)
+                     turn_timeout_s=3000, max_iterations=40, restrict_to_workspace=True)
     loop.set_long_horizon_controller(loop.build_long_horizon_controller())
     return loop, coordinator, bundle, assignments
 

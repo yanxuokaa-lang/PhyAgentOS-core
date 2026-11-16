@@ -949,7 +949,8 @@ class IsaacPhaseMotion:
         try:
             from pxr import Usd, UsdPhysics
 
-            from .finger_collision import RADIAL_PROFILE_BIN_M, cooked_body_boxes, radial_profile
+            from .finger_collision import (RADIAL_PROFILE_BIN_M, cooked_body_boxes,
+                                           points_within_radius, radial_profile)
 
             prim = stage.GetPrimAtPath(source)
             matches = [item for item in Usd.PrimRange(prim) if item.HasAPI(UsdPhysics.RigidBodyAPI)] \
@@ -969,11 +970,20 @@ class IsaacPhaseMotion:
             pose = self.body_pose(body_path)
             world_points = (pose[:3, :3] @ np.concatenate(cooked, axis=0).T).T + pose[:3, 3]
             span_axis = desired[:3, :3][:, 2]
+            # Cooked compound bodies carry foreign geometry far from the grasp
+            # axis (run19 saw rings out to ~1.7 m); r(z) telemetry is only
+            # meaningful near the vessel, so points beyond vessel scale are
+            # excluded before aggregation and the exclusion is recorded.
+            profile_max_radius_m = 0.1
+            world_points, excluded = points_within_radius(
+                world_points, desired[:3, 3], span_axis, profile_max_radius_m)
             rings = radial_profile(world_points, desired[:3, 3], span_axis, RADIAL_PROFILE_BIN_M)
             return self._artifact("collider-profile", {**record, "status": "cooked",
                 "grasp_position_m": np.asarray(desired[:3, 3]).tolist(),
                 "span_axis_world": np.asarray(span_axis).tolist(),
-                "bin_size_m": RADIAL_PROFILE_BIN_M, "profile": rings})
+                "bin_size_m": RADIAL_PROFILE_BIN_M,
+                "profile_max_radius_m": profile_max_radius_m,
+                "profile_excluded_points": excluded, "profile": rings})
         except (ValueError, RuntimeError) as exc:
             record["reason"] = str(exc)
             return self._artifact("collider-profile", record)

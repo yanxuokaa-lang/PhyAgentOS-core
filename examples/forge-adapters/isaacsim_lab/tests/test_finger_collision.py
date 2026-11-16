@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from isaacsim_lab.finger_collision import convex_slice_boxes, cooked_convex_points
+from isaacsim_lab.finger_collision import (convex_slice_boxes, cooked_convex_points,
+                                           points_within_radius, radial_profile)
 
 
 def wedge():
@@ -191,3 +192,42 @@ def test_final_gripper_preflight_retains_margin_and_only_intended_contact_exempt
         model.check_final_gripper_pose(pose, source)
     assert queried[0][0] == pytest.approx([.013, .023, .033])
     assert queried[0][1] == pytest.approx([0, 0, .9])
+
+
+def vessel_points():
+    # A bottle-shell-like cylinder: radius .02 m about the z axis.
+    rng = np.random.default_rng(11)
+    angles, heights = rng.uniform(0., 2 * np.pi, 32), rng.uniform(-.03, .03, 32)
+    return np.stack([.02 * np.cos(angles), .02 * np.sin(angles), heights], axis=1)
+
+
+def test_radius_filter_keeps_vessel_and_excludes_far_foreign_geometry():
+    vessel = vessel_points()
+    contamination = np.array([[.5, 0., 0.], [0., -.5, .01], [.3, .4, -.02]])
+    kept, excluded = points_within_radius(np.vstack((vessel, contamination)),
+                                          [0., 0., 0.], [0., 0., 1.], .1)
+    assert excluded == 3
+    np.testing.assert_allclose(kept, vessel)
+    # Filtering rescues the r(z) telemetry: only vessel-scale rings remain.
+    rings = radial_profile(kept, [0., 0., 0.], [0., 0., 1.])
+    assert rings
+    assert all(ring["median_radius_m"] == pytest.approx(.02, abs=1e-6) for ring in rings)
+
+
+def test_point_exactly_at_max_radius_is_kept():
+    points = np.array([[0., 0., 0.], [0., 0., .01], [.1, 0., .02], [0., .1, .01]])
+    kept, excluded = points_within_radius(points, [0., 0., 0.], [0., 0., 1.], .1)
+    assert excluded == 0 and len(kept) == 4
+
+
+@pytest.mark.parametrize('origin,axis,bound', [
+    ([0., 0., float('nan')], [0., 0., 1.], .1),
+    ([0., 0., 0.], [0., 1.], .1),
+    ([0., 0., 0.], [1., 0., float('inf')], .1),
+    ([0., 0., 0.], [0., 0., 0.], .1),
+    ([0., 0., 0.], [0., 0., 1.], 0.),
+    ([0., 0., 0.], [0., 0., 1.], -.1),
+])
+def test_invalid_radius_filter_inputs_reject(origin, axis, bound):
+    with pytest.raises(ValueError):
+        points_within_radius([[0., 0., 0.]] * 4, origin, axis, bound)

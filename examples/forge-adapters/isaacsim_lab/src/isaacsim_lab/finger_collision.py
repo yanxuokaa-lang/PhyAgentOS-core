@@ -116,6 +116,34 @@ def radial_profile(points, origin, axis, bin_size_m=RADIAL_PROFILE_BIN_M):
     return rings
 
 
+def points_within_radius(points, origin, axis, max_radius_m):
+    """Keep only points within ``max_radius_m`` of the axis line through ``origin``.
+
+    Same axis-line geometry as :func:`radial_profile`; returns the kept points
+    (input order preserved) together with the excluded count, so callers can
+    drop foreign cooked-compound geometry before ring aggregation while
+    reporting the exclusion honestly.
+    """
+    points = _points(points)
+    origin = np.asarray(origin, dtype=float)
+    if origin.shape != (3,) or not np.isfinite(origin).all():
+        raise ValueError("radius filter origin must be a finite 3-vector")
+    axis = np.asarray(axis, dtype=float)
+    if axis.shape != (3,) or not np.isfinite(axis).all():
+        raise ValueError("radius filter axis must be a finite 3-vector")
+    norm = float(np.linalg.norm(axis))
+    if not math.isfinite(max_radius_m) or max_radius_m <= 0:
+        raise ValueError("radius filter bound must be finite and positive")
+    if norm <= 1e-9:
+        raise ValueError("radius filter axis is unresolved")
+    axis = axis / norm
+    offsets = points - origin
+    span = offsets @ axis
+    radius = np.linalg.norm(offsets - np.outer(span, axis), axis=1)
+    kept = points[radius <= max_radius_m]
+    return kept, int(len(points) - len(kept))
+
+
 def cooked_body_boxes(stage, body, maximum_slice_m):
     """Read current composed rigid-body colliders; return private bounds/evidence."""
     from omni.physx import get_physx_cooking_interface

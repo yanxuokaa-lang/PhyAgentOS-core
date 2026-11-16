@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
+
 import pytest
 
 from PhyAgentOS.forge.capability_runtime import (
     ActionAdmission,
     CapabilityRuntime,
+    CapabilityRuntimeError,
     CapabilityRuntimeTransport,
+    UnknownToolError,
 )
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
@@ -192,3 +198,109 @@ async def test_malformed_invoke_payload_is_a_client_error_and_does_not_admit():
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "invalid_json"
     assert not runtime._invocations
+
+
+class BlockingStatusRuntime:
+    """Fake runtime whose ``invocation_status`` blocks the calling thread."""
+
+    def __init__(self):
+        self.entered = threading.Event()
+
+    def invocation_status(self, invocation_id):
+        self.entered.set()
+        time.sleep(0.3)  # stands in for a multi-minute synchronous driver step
+        return {"invocation_id": invocation_id, "status": "running"}
+
+
+class RecordingInvokeRuntime:
+    """Fake runtime recording synchronous ``start_action`` enter/exit order."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._counter = 0
+        self.timeline = []
+
+    def _record(self, event):
+        with self._lock:
+            self.timeline.append(event)
+
+    def start_action(self, tool_id, arguments, caller_id=None, timeout_ms=None):
+        self._record(("enter", tool_id))
+        time.sleep(0.05)
+        self._record(("exit", tool_id))
+        with self._lock:
+            self._counter += 1
+            invocation_id = f"inv-{self._counter}"
+        return {"invocation_id": invocation_id, "status": "succeeded"}
+
+
+class FailingInvokeRuntime:
+    """Fake runtime raising the runtime's own error classes from its calls."""
+
+    def invoke_query(self, endpoint_id, operation, arguments):
+        if operation == "missing":
+            raise UnknownToolError(f"operation {operation!r} is not registered")
+        raise CapabilityRuntimeError(f"endpoint {endpoint_id!r} failed to dispatch")
+
+
+async def _loop_stays_responsive_while_runtime_call_blocks():
+    runtime = BlockingStatusRuntime()
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        pending = asyncio.create_task(client.invocation_status("inv-1"))
+        loop = asyncio.get_running_loop()
+        assert await loop.run_in_executor(None, runtime.entered.wait, 2.0), "runtime call never started"
+        heartbeat_start = loop.time()
+        await asyncio.wait_for(asyncio.sleep(0.05), timeout=1)
+        heartbeat_elapsed = loop.time() - heartbeat_start
+        assert not pending.done(), "runtime call finished before the heartbeat; test window missed"
+        assert heartbeat_elapsed < 0.25, "event loop stayed blocked during the runtime call"
+        data = await pending
+        assert data["data"]["status"] == "running"
+
+
+async def _concurrent_invokes_do_not_interleave():
+    runtime = RecordingInvokeRuntime()
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        first, second = await asyncio.gather(
+            client.invoke_action("object.acquire", {"n": 1}),
+            client.invoke_action("object.acquire", {"n": 2}),
+        )
+        assert first["data"]["invocation_id"] != second["data"]["invocation_id"]
+    assert [event[:2] for event in runtime.timeline] == [
+        ("enter", "object.acquire"),
+        ("exit", "object.acquire"),
+        ("enter", "object.acquire"),
+        ("exit", "object.acquire"),
+    ]
+
+
+async def _runtime_errors_raised_in_worker_map_to_http_errors():
+    runtime = FailingInvokeRuntime()
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        request = client._client.build_request("POST", "/tools/scene/observe:invoke", json={"arguments": {}})
+        response = await client._client.send(request)
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"]["code"] == "runtime_error"
+        assert body["error"]["message"] == "endpoint 'scene' failed to dispatch"
+        missing = client._client.build_request("POST", "/tools/scene/missing:invoke", json={"arguments": {}})
+        response = await client._client.send(missing)
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "not_found"
+
+
+# Plain asyncio.run wrappers so these run even with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+# (the coverage env where pytest-asyncio is not loaded).
+def test_transport_keeps_event_loop_responsive_while_runtime_call_blocks():
+    asyncio.run(_loop_stays_responsive_while_runtime_call_blocks())
+
+
+def test_transport_serializes_concurrent_runtime_calls():
+    asyncio.run(_concurrent_invokes_do_not_interleave())
+
+
+def test_transport_maps_worker_raised_runtime_errors_to_http_errors():
+    asyncio.run(_runtime_errors_raised_in_worker_map_to_http_errors())
