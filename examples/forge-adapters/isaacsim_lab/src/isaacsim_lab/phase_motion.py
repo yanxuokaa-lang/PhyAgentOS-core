@@ -985,7 +985,15 @@ class IsaacPhaseMotion:
                 "profile_max_radius_m": profile_max_radius_m,
                 "profile_excluded_points": excluded, "profile": rings})
         except (ValueError, RuntimeError) as exc:
+            import threading
             record["reason"] = str(exc)
+            # run20 saw 6/6 "unavailable" here while isolated worker-thread
+            # cooks succeed and this code runs in the worker process, so the
+            # live-session cause is unresolved; record the failing context.
+            record["reason_context"] = {
+                "thread": threading.current_thread().name,
+                "error_type": type(exc).__name__,
+            }
             return self._artifact("collider-profile", record)
 
     def _artifact(self, kind, value):

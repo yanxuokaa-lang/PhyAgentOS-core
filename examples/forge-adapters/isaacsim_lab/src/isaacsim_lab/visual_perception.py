@@ -241,11 +241,13 @@ class LabGraspTaskAffordanceProvider:
                  bottle_opening_clearance_ratio=0.08, bottle_support_clearance_ratio=0.12,
                  bottle_max_axial_approach_dot=0.7, bottle_max_closing_axis_dot=0.35,
                  bottle_min_finger_axis_dot=0.7, bottle_contact_center_ratio=0.15,
-                 rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15):
+                 rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15,
+                 bottle_pad_span_offset_m=0.0):
         values = (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
                   bottle_max_axial_approach_dot, bottle_max_closing_axis_dot,
                   bottle_min_finger_axis_dot, bottle_contact_center_ratio,
-                  rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio)
+                  rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio,
+                  bottle_pad_span_offset_m)
         if any(isinstance(value, bool) for value in values):
             raise ValueError("task-affordance thresholds must be finite numbers")
         try:
@@ -257,9 +259,12 @@ class LabGraspTaskAffordanceProvider:
         (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
          bottle_max_axial_approach_dot, bottle_max_closing_axis_dot,
          bottle_min_finger_axis_dot, bottle_contact_center_ratio,
-         rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio) = values
+         rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio,
+         bottle_pad_span_offset_m) = values
         if support_tolerance_m <= 0 or not 0 < bottle_opening_clearance_ratio < 1:
             raise ValueError("task-affordance support and opening-clearance thresholds are invalid")
+        if bottle_pad_span_offset_m < 0:
+            raise ValueError("task-affordance bottle pad-span offset must be zero or positive")
         if not 0 < bottle_support_clearance_ratio < 0.5:
             raise ValueError("bottle support-clearance threshold must be between zero and one half")
         if not 0 < bottle_max_axial_approach_dot < 1:
@@ -283,6 +288,7 @@ class LabGraspTaskAffordanceProvider:
         self.bottle_contact_center_ratio = float(bottle_contact_center_ratio)
         self.rod_endpoint_ambiguity_ratio = float(rod_endpoint_ambiguity_ratio)
         self.rod_grasp_end_margin_ratio = float(rod_grasp_end_margin_ratio)
+        self.bottle_pad_span_offset_m = float(bottle_pad_span_offset_m)
         self.candidate_sets = {}
 
     def propose(self, request):
@@ -662,8 +668,17 @@ class LabGraspTaskAffordanceProvider:
         axis /= axis_norm
         frame, approach = resolved
         position = frame[:3, 3]
+        # The clearance gates judge where the pads seat, not where the raised
+        # TCP sits: the on-axis placement raised the TCP along the provider
+        # span axis (the provider z axis spans the vessel axis) by the
+        # pad-span offset, so the gate anchors at the commanded band, which is
+        # the candidate position walked back along that same axis (zero offset
+        # keeps the TCP anchor of the pre-offset candidates).
+        provider_from_tcp = np.asarray(self.perception.provider_from_tcp, dtype=float)
+        span_axis = frame[:3, :3] @ (provider_from_tcp[:3, :3].T @ np.array([0., 0., 1.]))
+        gate_position = position - span_axis * self.bottle_pad_span_offset_m
         projections = (points - tip) @ axis
-        candidate_projection = float(np.dot(position - tip, axis))
+        candidate_projection = float(np.dot(gate_position - tip, axis))
         extent = float(np.ptp(projections))
         clearance = max(float(rim.get("rim_radius_m", 0.0)) * 2., extent * self.bottle_opening_clearance_ratio)
         if candidate_projection >= -clearance:

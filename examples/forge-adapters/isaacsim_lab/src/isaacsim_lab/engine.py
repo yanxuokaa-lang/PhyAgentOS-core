@@ -1052,6 +1052,7 @@ class LabUtopiaBackend:
             list(initial_gripper) if initial_gripper is not None else None
         )
         if not scene["robot_initialized"]:
+            _ensure_robot_contact_sensors(scene["robot"])
             scene["robot"].initialize()
             if initial_arm is not None or initial_gripper is not None:
                 _apply_initial_robot_state(scene["robot"], initial_arm, initial_gripper)
@@ -2727,6 +2728,27 @@ def _create_session_owned_task(
     return task
 
 
+def _ensure_robot_contact_sensors(robot: Any) -> None:
+    """Attach finger contact sensors when the robot wrapper does not.
+
+    The franka wrapper builds its ContactSensor pair at construction; a bare
+    wrapper (ridgebase) does not, while phase motion reads them for grasp
+    feedback. Same finger prims and thresholds as the franka wrapper.
+    """
+    if hasattr(robot, "get_contact_sensor"):
+        return
+    from isaacsim.sensors.physics import ContactSensor
+
+    sensors = []
+    for finger, index in (("left", 1), ("right", 0)):
+        sensors.append(ContactSensor(
+            prim_path=f"{robot.prim_path}/panda_{finger}finger/contact_sensor",
+            name=f"contact_sensor_{index}",
+            min_threshold=0, max_threshold=10000000, radius=0.1,
+        ))
+    robot.get_contact_sensor = lambda: tuple(sensors)
+
+
 def _apply_initial_robot_state(
     robot: Any, arm_positions: Any, gripper_positions: Any
 ) -> None:
@@ -2747,11 +2769,38 @@ def _apply_initial_robot_state(
     if not np.all(np.isfinite(positions)):
         raise IsaacLabRuntimeError("Franka initial joint positions must be finite")
     actual = np.asarray(robot.get_joint_positions(), dtype=float).reshape(-1)
-    if actual.size != positions.size:
-        raise IsaacLabRuntimeError(
-            f"Franka articulation has {actual.size} joints; expected {positions.size}"
-        )
-    robot.set_joint_positions(positions)
+    if actual.size == positions.size:
+        robot.set_joint_positions(positions)
+        return
+    # Motion commands already address joints by name; the initial state now does
+    # too, so articulations that lead with extra DOF (ridgeback dummy-base
+    # joints) keep those DOF at their spawned values.
+    names = [f"panda_joint{i}" for i in range(1, 8)] + [
+        "panda_finger_joint1",
+        "panda_finger_joint2",
+    ]
+    indices = []
+    for name in names:
+        try:
+            index = robot.get_dof_index(name)
+        except Exception as exc:
+            raise IsaacLabRuntimeError(
+                f"robot articulation does not expose joint {name!r} "
+                "for the configured initial state"
+            ) from exc
+        if (
+            not isinstance(index, (int, np.integer))
+            or index < 0
+            or index >= actual.size
+        ):
+            raise IsaacLabRuntimeError(
+                f"robot articulation does not expose joint {name!r} "
+                "for the configured initial state"
+            )
+        indices.append(int(index))
+    value = actual.copy()
+    value[indices] = positions
+    robot.set_joint_positions(value)
 
 
 def _refresh_initial_robot_state(

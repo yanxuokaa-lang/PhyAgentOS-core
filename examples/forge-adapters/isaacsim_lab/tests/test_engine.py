@@ -1470,6 +1470,71 @@ def test_initial_robot_state_rejects_invalid_joint_vectors(arm, gripper):
         module._apply_initial_robot_state(robot, arm, gripper)
 
 
+class _NamedJointRobot:
+    """Fake articulation with a configurable DOF count and joint-name index map."""
+
+    def __init__(self, joint_names, positions):
+        self.dof_index = {name: index for index, name in enumerate(joint_names)}
+        self.positions = np.asarray(positions, dtype=float).copy()
+
+    def get_joint_positions(self):
+        return self.positions
+
+    def set_joint_positions(self, positions):
+        self.positions = np.asarray(positions, dtype=float).copy()
+
+    def get_dof_index(self, name):
+        try:
+            return self.dof_index[name]
+        except KeyError as exc:
+            raise ValueError(f"unknown joint {name!r}") from exc
+
+
+def test_initial_robot_state_maps_commanded_values_by_name_onto_extra_dof_articulation():
+    joint_names = [
+        "dummy_base_prismatic_x_joint",
+        "dummy_base_prismatic_y_joint",
+        "dummy_base_revolute_z_joint",
+    ] + [f"panda_joint{i}" for i in range(1, 8)] + [
+        "panda_finger_joint1",
+        "panda_finger_joint2",
+    ]
+    robot = _NamedJointRobot(joint_names, [0.5] * 3 + [0.0] * 9)
+    arm = [0., -.785, 0., -2.356, 0., 1.571, .785]
+    gripper = [.04, .04]
+    module._apply_initial_robot_state(robot, arm, gripper)
+    assert robot.positions[:3] == pytest.approx([0.5, 0.5, 0.5])
+    assert robot.positions[3:] == pytest.approx(arm + gripper)
+
+
+def test_initial_robot_state_sets_all_nine_dofs_on_plain_franka_articulation():
+    joint_names = [f"panda_joint{i}" for i in range(1, 8)] + [
+        "panda_finger_joint1",
+        "panda_finger_joint2",
+    ]
+    robot = _NamedJointRobot(joint_names, [0.0] * 9)
+    arm = [0., -.785, 0., -2.356, 0., 1.571, .785]
+    gripper = [.04, .04]
+    module._apply_initial_robot_state(robot, arm, gripper)
+    assert robot.positions == pytest.approx(arm + gripper)
+
+
+def test_initial_robot_state_reports_unresolved_joint_on_extra_dof_articulation():
+    from isaacsim_lab.engine import IsaacLabRuntimeError
+
+    joint_names = [
+        "dummy_base_prismatic_x_joint",
+        "dummy_base_prismatic_y_joint",
+        "dummy_base_revolute_z_joint",
+    ] + [f"panda_joint{i}" for i in range(1, 8) if i != 4] + [
+        "panda_finger_joint1",
+        "panda_finger_joint2",
+    ]
+    robot = _NamedJointRobot(joint_names, [0.5] * 3 + [0.0] * 8)
+    with pytest.raises(IsaacLabRuntimeError, match="panda_joint4"):
+        module._apply_initial_robot_state(robot, [0.] * 7, [.04, .04])
+
+
 def test_missing_authored_camera_is_not_replaced_by_a_guessed_view(tmp_path, monkeypatch):
     from types import SimpleNamespace
 

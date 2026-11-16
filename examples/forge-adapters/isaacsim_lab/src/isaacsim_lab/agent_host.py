@@ -126,6 +126,11 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
     artifact_root.mkdir(parents=True, exist_ok=True)
     engine = IsaacSimLabEngine(profile, observation_artifact_root=artifact_root)
     visual, grasps = build_visual_providers(profile.perception_config_path, engine, artifact_root, inference)
+    # The oracle provider raised bottle TCPs by this pad-span offset; the
+    # task-affordance clearance gates anchor at the commanded band, not the TCP.
+    pad_span_offset = getattr(getattr(grasps, "provider", grasps), "pad_span_offset_m", 0.0)
+    if isinstance(pad_span_offset, bool) or not isinstance(pad_span_offset, (int, float)):
+        pad_span_offset = 0.0
     coordinator = AgentTaskCoordinator(workspace=workspace,
                                        config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None)
     assignments = SQLiteAssignmentArtifactStore(workspace / "assignment-artifacts.sqlite3")
@@ -135,7 +140,10 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
         target_resolver=visual, tool_context_provider=lambda _: {"ready": True, "sensor_refs": [sensor_ref]},
         process_feature_provider=visual,
         grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(
-            visual, approach_feasibility=visual.qualify_grasp_approach
+            visual, approach_feasibility=visual.qualify_grasp_approach,
+            # The oracle provider raised bottle TCPs by this pad-span offset;
+            # the clearance gates must anchor at the commanded band, not the TCP.
+            bottle_pad_span_offset_m=pad_span_offset,
         ),
         perception_adapter=PerceptionBindingAdapter(None, BindingRequest(
             sensor_refs=(sensor_ref,), source_category="reagent_bottle", destination_category="mixing_vessel", max_age_ms=1000)),

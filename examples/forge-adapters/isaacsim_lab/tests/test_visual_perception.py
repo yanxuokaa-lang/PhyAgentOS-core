@@ -912,7 +912,8 @@ def test_simulator_truth_bounds_do_not_qualify_process_landmarks_for_preparation
 
 
 def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_category, source_points,
-                             source_features, grasp_geometry=None, grasp_orientation=None):
+                             source_features, grasp_geometry=None, grasp_orientation=None,
+                             provider_from_tcp=None, pad_span_offset_m=0.0):
     store = LabArtifactStore(tmp_path)
     identity = {
         "observation_ref": "observation://scene/front", "scene_revision": "scene",
@@ -954,7 +955,7 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
     selected_refs.append(rim_ref)
     perception = SimpleNamespace(
         store=store,
-        provider_from_tcp=np.eye(4),
+        provider_from_tcp=np.eye(4) if provider_from_tcp is None else provider_from_tcp,
         observations={identity["calibration_ref"]: records},
         grasps=SimpleNamespace(
             candidate_sets={("candidate-set://scene/source", identity["calibration_ref"]): {
@@ -974,7 +975,7 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
         "process_feature_candidate_set_ref": "process-feature-set://scene/current",
         "selected_process_feature_refs": selected_refs, **identity,
     }
-    return LabGraspTaskAffordanceProvider(perception), request, grasp_ref
+    return LabGraspTaskAffordanceProvider(perception, bottle_pad_span_offset_m=pad_span_offset_m), request, grasp_ref
 
 
 def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tmp_path):
@@ -1378,6 +1379,143 @@ def test_task_affordance_provider_records_gate_funnel_statistics(tmp_path):
     assert funnel["qualified"] == 0
     assert funnel["gate_rejects"] == {"bottle grasp is too close to the support end": 1}
     assert funnel["probe_rejects"] == {}
+
+
+def _bottle_opening_gate_cloud():
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.50, .80, 31) for angle in theta])
+    # Extent 0.3 and rim radius 0.015 make the opening clearance exactly
+    # max(2 x 0.015, 0.08 x 0.3) = 0.03 below the rim tip at z = 0.8.
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., .8],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .015}
+    return points, rim
+
+
+# The deployed calibration and the oracle provider column convention: the
+# provider z axis spans the vessel axis and the TCP approach rides the first
+# column after the provider_from_tcp permutation.
+_PRODUCTION_PROVIDER_FROM_TCP = np.array(
+    [[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1]], dtype=float)
+_SPAN_ALONG_Z_ORIENTATION = Rotation.from_matrix(np.array(
+    [[0., -1., 0.], [1., 0., 0.], [0., 0., 1.]])).as_quat().tolist()
+
+
+def test_task_affordance_opening_gate_anchors_at_pre_offset_band_point(tmp_path):
+    """run20 regression: the on-axis placement raised the TCP above the pad band.
+
+    The opening-clearance gate must judge the commanded contact band, not the
+    raised TCP position: with the pad-span offset configured, a candidate whose
+    band clears the rim while the raised TCP sits inside the old clearance
+    window is legal and must qualify.
+    """
+    points, rim = _bottle_opening_gate_cloud()
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .781], source_category="reagent_bottle",
+        source_points=points, source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_orientation=_SPAN_ALONG_Z_ORIENTATION,
+        provider_from_tcp=_PRODUCTION_PROVIDER_FROM_TCP, pad_span_offset_m=0.014,
+    )
+    # The band 0.033 below the rim clears the 0.03 clearance; the raised TCP
+    # position 0.019 below the rim does not.
+
+    result = provider.propose(request)
+
+    assert result["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [grasp_ref]
+    assert "error" not in result
+
+
+def test_task_affordance_opening_gate_still_rejects_band_inside_clearance(tmp_path):
+    points, rim = _bottle_opening_gate_cloud()
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .794], source_category="reagent_bottle",
+        source_points=points, source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_orientation=_SPAN_ALONG_Z_ORIENTATION,
+        provider_from_tcp=_PRODUCTION_PROVIDER_FROM_TCP, pad_span_offset_m=0.014,
+    )
+    # The band 0.02 below the rim sits inside the 0.03 clearance.
+
+    result = provider.propose(request)
+
+    assert result["status"] == "unavailable"
+    assert "bottle grasp is too close to the opening" in result["error"]
+
+
+def test_task_affordance_zero_pad_span_offset_keeps_tcp_anchor(tmp_path):
+    points, rim = _bottle_opening_gate_cloud()
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .6], source_category="reagent_bottle",
+        source_points=points, source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_orientation=_SPAN_ALONG_Z_ORIENTATION,
+        provider_from_tcp=_PRODUCTION_PROVIDER_FROM_TCP,
+    )
+    # Without a pad-span offset the gate keeps anchoring at the TCP position:
+    # 0.019 below the rim stays rejected exactly as before the offset landed.
+    raised_ref = "candidate://source/raised-without-offset"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[raised_ref] = {**captured[grasp_ref], "candidate_ref": raised_ref,
+                            "grasp_frame": {**captured[grasp_ref]["grasp_frame"],
+                                            "position_m": [0., 0., .781]}}
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(raised_ref)
+
+    result = provider.propose(request)
+
+    assert result["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [grasp_ref]
+    funnel_ref = provider.candidate_sets[result["candidate_set_ref"]]["funnel_ref"]
+    funnel = json.loads(provider.perception.store.path(funnel_ref).read_bytes())
+    assert funnel["gate_rejects"] == {"bottle grasp is too close to the opening": 1}
+
+
+def test_task_affordance_opening_gate_verdicts_are_pad_span_offset_invariant(tmp_path):
+    """run19->run20 regression: the pad-span offset must cancel itself in the gates.
+
+    The oracle raises the TCP by pad_span_offset_m above the commanded band, so
+    anchoring the clearance gates on the raised position made the verdicts
+    depend on the calibrated offset. With the band anchor the same cloud and
+    depth fractions must produce identical verdicts for every offset.
+    """
+    points, rim = _bottle_opening_gate_cloud()
+    fractions = (0.05, 0.09, 0.11, 0.15, 0.3, 0.5)
+    extent, tip_z = .3, .8
+    verdicts = {}
+    for offset in (0.00787, 0.0139, 0.02):
+        provider, request, _ = _task_affordance_fixture(
+            tmp_path / f"offset-{offset}", operation="pour",
+            grasp_position=[0., 0., tip_z - extent * fractions[0] + offset],
+            source_category="reagent_bottle", source_points=points,
+            source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+            grasp_orientation=_SPAN_ALONG_Z_ORIENTATION,
+            provider_from_tcp=_PRODUCTION_PROVIDER_FROM_TCP, pad_span_offset_m=offset,
+        )
+        captured = provider.perception.grasps.captures[request["calibration_ref"]]
+        candidate_set = provider.perception.grasps.candidate_sets[(
+            request["grasp_candidate_set_ref"], request["calibration_ref"])]
+        for index, fraction in enumerate(fractions):
+            if index == 0:
+                continue
+            ref = f"candidate://source/d-{index}"
+            captured[ref] = {**captured["candidate://source/grasp-1"], "candidate_ref": ref,
+                             "grasp_frame": {**captured["candidate://source/grasp-1"]["grasp_frame"],
+                                             "position_m": [0., 0., tip_z - extent * fraction + offset]}}
+            candidate_set["candidate_refs"].add(ref)
+        result = provider.propose(request)
+        assert result["status"] == "available"
+        funnel_ref = provider.candidate_sets[result["candidate_set_ref"]]["funnel_ref"]
+        funnel = json.loads(provider.perception.store.path(funnel_ref).read_bytes())
+        verdicts[offset] = (sorted(item["grasp_candidate_ref"] for item in result["candidates"]),
+                            funnel["evaluated"], funnel["gate_rejects"], funnel["probe_rejects"])
+    assert verdicts[0.00787] == verdicts[0.0139] == verdicts[0.02]
+    qualified, evaluated, gate_rejects, probe_rejects = verdicts[0.0139]
+    # Fractions 0.05/0.09 keep their bands inside the 0.03 clearance for every
+    # offset; 0.11/0.15/0.3/0.5 qualify for every offset and no other gate flips.
+    assert evaluated == 6
+    assert gate_rejects == {"bottle grasp is too close to the opening": 2}
+    assert probe_rejects == {}
+    assert qualified == [f"candidate://source/d-{index}" for index in (2, 3, 4, 5)]
 
 
 @pytest.mark.parametrize("value", [0, .5, float("nan"), "invalid"])
