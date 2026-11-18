@@ -3,9 +3,11 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.spatial.transform import Rotation
 
 from isaacsim_lab.finger_collision import (convex_slice_boxes, cooked_convex_points,
-                                           points_within_radius, radial_profile)
+                                           grasp_span_axis, points_within_radius,
+                                           radial_profile)
 
 
 def wedge():
@@ -231,3 +233,51 @@ def test_point_exactly_at_max_radius_is_kept():
 def test_invalid_radius_filter_inputs_reject(origin, axis, bound):
     with pytest.raises(ValueError):
         points_within_radius([[0., 0., 0.]] * 4, origin, axis, bound)
+
+
+def grasp_rotation():
+    return Rotation.from_euler('xyz', [0.1, -0.2, 0.3]).as_matrix()
+
+
+def test_span_axis_follows_deployed_provider_calibration():
+    # The labutopia deployment maps provider x onto TCP z, so the provider
+    # span axis (provider z) is -TCP x in the TCP-convention grasp frame --
+    # not the historical grasp-rotation z column, which is the approach.
+    provider_from_tcp = np.array([[0., 0., 1., 0.], [0., 1., 0., 0.],
+                                  [-1., 0., 0., 0.], [0., 0., 0., 1.]])
+    rotation = grasp_rotation()
+    axis, source = grasp_span_axis(rotation, provider_from_tcp)
+    assert source == "provider_from_tcp"
+    np.testing.assert_allclose(axis, -rotation[:, 0])
+
+
+def test_span_axis_without_calibration_keeps_the_historical_tcp_z_column():
+    rotation = grasp_rotation()
+    axis, source = grasp_span_axis(rotation)
+    assert source == "identity_fallback"
+    np.testing.assert_allclose(axis, rotation[:, 2])
+    # An explicit identity calibration is rigid, so it is honored -- and it
+    # reproduces the same historical axis exactly.
+    axis, source = grasp_span_axis(rotation, np.eye(4))
+    assert source == "provider_from_tcp"
+    np.testing.assert_allclose(axis, rotation[:, 2])
+
+
+@pytest.mark.parametrize('provider_from_tcp', [
+    2. * np.eye(4),               # scaled, not rigid
+    np.diag([1., 1., -1., 1.]),   # reflection
+    np.eye(3),                    # wrong shape
+    [[0., 0.], [1.]],             # ragged, not a matrix
+])
+def test_span_axis_non_rigid_calibration_falls_back_to_identity(provider_from_tcp):
+    rotation = grasp_rotation()
+    axis, source = grasp_span_axis(rotation, provider_from_tcp)
+    assert source == "identity_fallback"
+    np.testing.assert_allclose(axis, rotation[:, 2])
+
+
+def test_span_axis_rejects_unusable_grasp_rotation():
+    with pytest.raises(ValueError):
+        grasp_span_axis(np.eye(4))
+    with pytest.raises(ValueError):
+        grasp_span_axis(np.full((3, 3), np.nan))

@@ -144,6 +144,36 @@ def points_within_radius(points, origin, axis, max_radius_m):
     return kept, int(len(points) - len(kept))
 
 
+def grasp_span_axis(grasp_rotation, provider_from_tcp=None):
+    """World direction of the provider span axis for a TCP-convention grasp.
+
+    ``grasp_rotation`` is the world orientation of the commanded grasp frame,
+    which follows the TCP convention. ``provider_from_tcp`` is the deployed
+    provider calibration mapping TCP coordinates into provider coordinates --
+    the same matrix visual_perception validates -- and the provider span axis
+    is provider z, so the world direction is the grasp rotation applied to
+    ``provider_from_tcp[:3, :3].T @ (0, 0, 1)``. A missing calibration, or one
+    that is not a rigid 4x4 transform, falls back to the identity mapping,
+    which reproduces the historical grasp-rotation z column; the returned
+    source records which mapping produced the axis so telemetry can show it.
+    """
+    grasp_rotation = np.asarray(grasp_rotation, dtype=float)
+    if grasp_rotation.shape != (3, 3) or not np.isfinite(grasp_rotation).all():
+        raise ValueError("grasp span axis requires a finite 3x3 grasp rotation")
+    try:
+        matrix = None if provider_from_tcp is None else np.asarray(provider_from_tcp, dtype=float)
+    except (TypeError, ValueError):
+        matrix = None
+    if matrix is not None and (matrix.shape != (4, 4) or not np.isfinite(matrix).all()
+                               or not np.allclose(matrix[3], [0, 0, 0, 1])
+                               or not np.allclose(matrix[:3, :3].T @ matrix[:3, :3], np.eye(3))
+                               or np.linalg.det(matrix[:3, :3]) < 0):
+        matrix = None
+    if matrix is None:
+        return grasp_rotation[:, 2], "identity_fallback"
+    return grasp_rotation @ (matrix[:3, :3].T @ np.array([0., 0., 1.])), "provider_from_tcp"
+
+
 def cooked_body_boxes(stage, body, maximum_slice_m):
     """Read current composed rigid-body colliders; return private bounds/evidence."""
     from omni.physx import get_physx_cooking_interface

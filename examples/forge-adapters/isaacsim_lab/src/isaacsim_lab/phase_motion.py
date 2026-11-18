@@ -924,6 +924,26 @@ class IsaacPhaseMotion:
         self.payload_geometry[source] = observed_point_boxes(local_points)
         return model_pose, relation
 
+    @cached_property
+    def provider_from_tcp(self):
+        """Deployed provider calibration, or None when it is unavailable.
+
+        Read from the same perception configuration that LabVisualPerception
+        validates and consumes, so the collider telemetry's span axis shares
+        one calibration source with qualification instead of a second copy of
+        the matrix. No perception configuration, unreadable JSON, a missing
+        key, or non-numeric values yield None; the span-axis derivation then
+        records the identity fallback honestly in the artifact.
+        """
+        path = getattr(self.profile, "perception_config_path", None)
+        if path is None:
+            return None
+        try:
+            value = json.loads(Path(path).read_text(encoding="utf-8")).get("provider_from_tcp")
+            return None if value is None else np.asarray(value, dtype=float)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+
     def collider_profile_artifact(self, source, desired, scene_revision, candidate_ref):
         """Read-only cooked-collider radial profile at acquire; this never gates.
 
@@ -947,17 +967,17 @@ class IsaacPhaseMotion:
             record["reason"] = "no usd stage attached"
             return self._artifact("collider-profile", record)
         try:
-            from pxr import Usd, UsdPhysics
+            from pxr import Usd, UsdGeom, UsdPhysics
 
             from .finger_collision import (RADIAL_PROFILE_BIN_M, cooked_body_boxes,
-                                           points_within_radius, radial_profile)
+                                           grasp_span_axis, points_within_radius,
+                                           radial_profile)
 
             prim = stage.GetPrimAtPath(source)
             matches = [item for item in Usd.PrimRange(prim) if item.HasAPI(UsdPhysics.RigidBodyAPI)] \
                 if prim.IsValid() else []
             if len(matches) != 1:
                 raise ValueError(f"expected one physical body under {source}")
-            body_path = str(matches[0].GetPath())
             _boxes, evidence = cooked_body_boxes(
                 stage, matches[0], self.config["collision_margin_m"])
             record["colliders"] = [{"collider_path": item["collider_path"],
@@ -967,9 +987,25 @@ class IsaacPhaseMotion:
             if not cooked:
                 record["reason"] = "no physx cooked convex evidence on the source body"
                 return self._artifact("collider-profile", record)
-            pose = self.body_pose(body_path)
+            # cooked_body_boxes composes each collider's authored transforms --
+            # including ancestor mm->m scaling -- into its body-frame vertices
+            # relative to this body prim (run19/run20: transporting those
+            # vertices with the rigid-body pose left millimetre values in the
+            # world points, because a physical rigid-body pose carries no
+            # authored scale). The body prim's own USD local-to-world
+            # transform carries that same authored composition, so at this
+            # pre-physics-drift acquire moment LoW(body) @ body-frame points ==
+            # LoW(collider) @ raw cooked points, and it is the matching world
+            # transport here; the artifact self-describes this choice.
+            pose = np.asarray(UsdGeom.Xformable(matches[0]).ComputeLocalToWorldTransform(0)).T
             world_points = (pose[:3, :3] @ np.concatenate(cooked, axis=0).T).T + pose[:3, 3]
-            span_axis = desired[:3, :3][:, 2]
+            # The grasp frame follows the TCP convention, and the deployed
+            # provider calibration maps TCP z to the approach axis, so the
+            # span axis is the provider z axis expressed through that
+            # calibration -- the same expression the qualification gate
+            # anchors use. With no calibration the identity fallback
+            # reproduces the historical TCP z column.
+            span_axis, span_axis_source = grasp_span_axis(desired[:3, :3], self.provider_from_tcp)
             # Cooked compound bodies carry foreign geometry far from the grasp
             # axis (run19 saw rings out to ~1.7 m); r(z) telemetry is only
             # meaningful near the vessel, so points beyond vessel scale are
@@ -979,8 +1015,10 @@ class IsaacPhaseMotion:
                 world_points, desired[:3, 3], span_axis, profile_max_radius_m)
             rings = radial_profile(world_points, desired[:3, 3], span_axis, RADIAL_PROFILE_BIN_M)
             return self._artifact("collider-profile", {**record, "status": "cooked",
+                "world_from": "usd_local_to_world",
                 "grasp_position_m": np.asarray(desired[:3, 3]).tolist(),
                 "span_axis_world": np.asarray(span_axis).tolist(),
+                "span_axis_source": span_axis_source,
                 "bin_size_m": RADIAL_PROFILE_BIN_M,
                 "profile_max_radius_m": profile_max_radius_m,
                 "profile_excluded_points": excluded, "profile": rings})
