@@ -22,11 +22,40 @@ from isaacsim_lab.phase_motion import (
     collision_hits,
     held_tool_pose,
     interpolate_pose,
+    lula_base_pose_from_link_world,
     pose_matrix,
     process_waypoints,
     smooth_joint_segment,
     support_contact_allowed,
 )
+
+
+def test_lula_base_pose_uses_link_world_translation_and_scalar_first_quaternion():
+    world_from_link = np.eye(4)
+    world_from_link[:3, 3] = [-0.901, 0.36, 0.29]
+    world_from_link[:3, :3] = Rotation.from_euler("z", np.pi / 2).as_matrix()
+    position, orientation = lula_base_pose_from_link_world(world_from_link)
+    assert np.allclose(position, [-0.901, 0.36, 0.29])
+    # set_robot_base_pose consumes scalar-first quaternions; a 90 deg z turn is
+    # [w, x, y, z] = [s, 0, 0, s], not the xyzw layout [0, 0, s, s].
+    assert np.allclose(orientation, [np.sqrt(.5), 0., 0., np.sqrt(.5)])
+
+
+def test_lula_base_pose_identity_matrix_keeps_identity_orientation():
+    position, orientation = lula_base_pose_from_link_world(np.eye(4))
+    assert np.allclose(position, [0., 0., 0.])
+    assert np.allclose(orientation, [1., 0., 0., 0.])
+
+
+@pytest.mark.parametrize("matrix", [
+    np.ones((4, 4)),
+    np.eye(3),
+    np.array([[0., 0., 0., np.nan], [0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 1.]]),
+])
+def test_lula_base_pose_rejects_non_rigid_world_transform(matrix):
+    with pytest.raises(PhaseMotionError) as error:
+        lula_base_pose_from_link_world(matrix)
+    assert error.value.code == "invalid_arm_base_pose"
 
 
 def test_physx_object_hit_rejects_obstacle_after_ignored_robot():

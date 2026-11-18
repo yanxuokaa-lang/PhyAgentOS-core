@@ -109,6 +109,26 @@ def preparation_result(arguments, route, evidence):
             "assignments": [assignment], "destination_ref": arguments["destination_ref"], "route_arguments": private}
 
 
+def lula_base_pose_from_link_world(world_from_link):
+    """Lula base-pose arguments (position, wxyz quaternion) from an arm-link world matrix.
+
+    ``set_robot_base_pose`` expects a scalar-first quaternion and the frame of
+    the arm root, which for mounted robots (ridgeback: +0.3 m forward, +0.28 m
+    up from the articulation root) is not the robot root pose the solver was
+    previously seeded with.
+    """
+    matrix = np.asarray(world_from_link, dtype=float)
+    if matrix.shape != (4, 4) or not np.isfinite(matrix).all():
+        raise PhaseMotionError("invalid_arm_base_pose",
+                               "panda_link0 world transform must be a finite 4x4 matrix")
+    rotation = matrix[:3, :3]
+    if (not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6)
+            or np.linalg.det(rotation) <= 0.):
+        raise PhaseMotionError("invalid_arm_base_pose",
+                               "panda_link0 world rotation must be a right-handed rotation matrix")
+    return matrix[:3, 3].copy(), np.roll(Rotation.from_matrix(rotation).as_quat(), 1)
+
+
 def pose_matrix(position, orientation_xyzw):
     result = np.eye(4)
     result[:3, :3] = Rotation.from_quat(orientation_xyzw).as_matrix()
@@ -840,7 +860,17 @@ class IsaacPhaseMotion:
             self.scene["robot_initialized"] = True
         configuration = interface_config_loader.load_supported_lula_kinematics_solver_config("Franka")
         self.solver = LulaKinematicsSolver(**configuration)
-        self.solver.set_robot_base_pose(*self.robot.get_world_pose())
+        # The arm root, not the articulation root: mounted robots place
+        # panda_link0 at an offset (ridgeback +0.3 m forward, +0.28 m up), and
+        # the solver addresses every IK query from this base frame.
+        arm_base = self.stage.GetPrimAtPath(self.robot.prim_path + "/panda_link0")
+        if not arm_base.IsValid():
+            raise PhaseMotionError(
+                "arm_base_unavailable",
+                "robot must expose a panda_link0 arm base prim below the robot root",
+            )
+        self.solver.set_robot_base_pose(*lula_base_pose_from_link_world(
+            np.asarray(UsdGeom.Xformable(arm_base).ComputeLocalToWorldTransform(0)).T))
         self.joint_indices = [self.robot.get_dof_index(name) for name in self.solver.get_joint_names()]
         properties = self.robot.dof_properties
         self.limits = np.column_stack((properties["lower"], properties["upper"]))[self.joint_indices]
