@@ -2530,6 +2530,11 @@ def _get_session_scene_resources(
     add_reference_to_stage(usd_path=str(profile.scene_usd_path), prim_path="/World")
     world = world_factory()
     robot = robot_factory()
+    # Bare-wrapper finger sensors must exist before the first world.reset():
+    # PhysX instantiates contact reporting when the scene loads, so sensors
+    # authored afterwards never register and read zeros for the whole session
+    # (the franka wrapper constructs its pair at exactly this point).
+    _ensure_robot_contact_sensors(robot)
     stage = stage_provider()
     physics_report = None
     if profile.physics_config_path is not None:

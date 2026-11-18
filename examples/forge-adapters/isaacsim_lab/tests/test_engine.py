@@ -585,6 +585,9 @@ def test_worker_session_reuses_scene_resources_but_constructs_episode_tasks(tmp_
         def initialize(self):
             counts["robot"] += 1
 
+        def get_contact_sensor(self):
+            return ()
+
     stage = object()
 
     class ObjectUtils:
@@ -680,7 +683,8 @@ def test_physics_profile_is_applied_before_reset_and_only_once(tmp_path, monkeyp
     world = SimpleNamespace(reset=lambda: events.append("reset"))
     session = WorkerSessionContext(object())
     kwargs = dict(session=session, profile=profile, world_factory=lambda: world,
-                  robot_factory=lambda: object(), stage_provider=lambda: object(),
+                  robot_factory=lambda: SimpleNamespace(get_contact_sensor=lambda: ()),
+                  stage_provider=lambda: object(),
                   add_reference_to_stage=lambda **kw: events.append("load"),
                   object_utils=SimpleNamespace(get_instance=lambda stage: None))
     first = _get_session_scene_resources(**kwargs)
@@ -690,6 +694,35 @@ def test_physics_profile_is_applied_before_reset_and_only_once(tmp_path, monkeyp
     kwargs["profile"] = replace(profile, physics_config_path=tmp_path / "other.json")
     with pytest.raises(module.IsaacLabRuntimeError, match="cannot switch its physics"):
         _get_session_scene_resources(**kwargs)
+
+
+def test_bare_wrapper_contact_sensors_are_created_before_first_reset(tmp_path, monkeypatch):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    events = []
+    seen = {}
+
+    def fake_shim(robot):
+        seen["robot"] = robot
+        events.append("sensors")
+
+    monkeypatch.setattr(module, "_ensure_robot_contact_sensors", fake_shim)
+    robot = SimpleNamespace()
+    world = SimpleNamespace(reset=lambda: events.append("reset"))
+    session = WorkerSessionContext(object())
+    scene = _get_session_scene_resources(
+        session,
+        profile=make_profile(tmp_path),
+        world_factory=lambda: world,
+        robot_factory=lambda: events.append("robot") or robot,
+        stage_provider=lambda: object(),
+        add_reference_to_stage=lambda **_kwargs: events.append("load"),
+        object_utils=SimpleNamespace(get_instance=lambda stage: None),
+    )
+
+    assert scene["robot"] is robot
+    assert seen["robot"] is robot
+    assert events == ["load", "robot", "sensors", "reset"]
 
 
 def test_session_cycle_reports_unintegrated_task_as_unsupported_without_world_change(tmp_path, monkeypatch):
