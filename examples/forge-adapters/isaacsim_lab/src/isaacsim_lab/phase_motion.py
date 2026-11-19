@@ -174,6 +174,21 @@ def grasp_pose_errors(reference, current, axial_symmetry=None):
     return float(np.linalg.norm(anchor_in_tcp)), float(rotation_error)
 
 
+def grasp_anchor_drift(anchor_in_object, reference_world, current_world):
+    """World-frame displacement of a bound object-frame anchor between object world poses.
+
+    ``grasp_pose_errors`` anchors at the reference origin, which for two world
+    poses is the world origin up to a metre from the body — a touch-induced
+    bottle rotation then reads as centimetres of drift. This variant tracks the
+    named object-frame anchor (e.g. the TCP grasp point) directly.
+    """
+    anchor = np.asarray(anchor_in_object, dtype=float)
+    reference_world = np.asarray(reference_world, dtype=float)
+    current_world = np.asarray(current_world, dtype=float)
+    return float(np.linalg.norm((current_world[:3, :3] - reference_world[:3, :3]) @ anchor
+                                + current_world[:3, 3] - reference_world[:3, 3]))
+
+
 def support_contact_allowed(stage, body_pose, supported_pose, tolerance):
     """Permit horizontal fixture contact only within its vertical departure band."""
     if stage not in {"lift", "lower"} or supported_pose is None:
@@ -2569,7 +2584,14 @@ class IsaacPhaseMotion:
                             np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
                             0.0)
                     if operation == "acquire" and stage in {"approach", "grasp", "close"}:
-                        drift, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
+                        # Displacement is judged at the grasp anchor (the TCP
+                        # point bound to the object), not at the world origin:
+                        # reference/current are world poses, so the generic
+                        # helper's origin anchoring would amplify a permitted
+                        # touch rotation by the body-to-world-origin lever.
+                        anchor = -grasp_relation[:3, :3].T @ grasp_relation[:3, 3]
+                        drift = grasp_anchor_drift(anchor, original, physical_body)
+                        _, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
                         if (drift > self.config["grasp_position_tolerance_m"]
                                 or rotation > self.config["grasp_rotation_tolerance_rad"]):
                             raise PhaseMotionError("grasp_object_displaced", "object moved before a qualified lift")

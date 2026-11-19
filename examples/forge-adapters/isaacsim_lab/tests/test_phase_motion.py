@@ -2404,6 +2404,23 @@ def test_cylindrical_grasp_axis_allows_roll_but_rejects_tilt_and_translation():
     assert grasp_pose_errors(reference, rolled, [0., 0., 1.])[0] > .008
 
 
+def test_grasp_anchor_drift_tracks_the_named_anchor_not_the_world_origin():
+    from isaacsim_lab.phase_motion import grasp_anchor_drift
+
+    rest = pose_matrix([-.27, .36, .77], np.array([0., 0., 0., 1.]))
+    assert grasp_anchor_drift([0., 0., .09], rest, rest) == pytest.approx(0.)
+
+    moved = pose_matrix([-.269, .361, .7702], np.array([0., 0., 0., 1.]))
+    assert grasp_anchor_drift([0., 0., .09], rest, moved) == pytest.approx(np.linalg.norm([.001, .001, .0002]))
+
+    # A touch-induced rotation about the object origin must move the grasp
+    # anchor by |anchor|*theta, not by the world-origin lever |translation|.
+    nudged = pose_matrix([-.27, .36, .77], Rotation.from_euler("y", .015).as_quat())
+    assert grasp_anchor_drift([0., 0., .09], rest, nudged) == pytest.approx(.09 * .015, rel=1e-3)
+    from isaacsim_lab.phase_motion import grasp_pose_errors
+    assert grasp_pose_errors(rest, nudged)[0] > .011
+
+
 @pytest.mark.parametrize("axial", [False, True])
 def test_return_axial_freedom_is_limited_to_declared_fixture(monkeypatch, axial):
     model, arguments, _, _ = execution_fixture(monkeypatch)
