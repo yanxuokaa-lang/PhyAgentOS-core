@@ -214,6 +214,18 @@ def test_completed_pour_with_failed_retreat_retains_effect_without_repour():
     assert result["capability_outcome_summary"]["retryable_in_revision"] is False
 
 
+def test_failure_recommendation_is_reperception_replan_and_cancellation_stays_terminal():
+    args = Provider().prepare_held(request())["arguments"]
+    for status, recommended in (("failed", "replan_with_fresh_perception"),
+                                ("unknown", "replan_with_fresh_perception"),
+                                ("cancelled", "stop"), ("stopped", "stop")):
+        result = project_result(measured(status=status), args, possession(),
+                                "invocation://object-pour/one")
+        assert result["capability_outcome_summary"]["recommended_action"] == recommended
+    succeeded = project_result(measured(), args, possession(), "invocation://object-pour/one")
+    assert succeeded["capability_outcome_summary"]["recommended_action"] == "continue"
+
+
 def test_cancel_requests_provider_stop_and_waits_for_actual_result():
     provider, held = Provider(), possession()
     rt = runtime(provider, held)

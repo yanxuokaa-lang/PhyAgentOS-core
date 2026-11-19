@@ -649,7 +649,11 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         "evidence_availability": "complete" if expected_success else "partial" if refs else "none",
         "artifact_refs": list(refs), "bounded_metric_names": sorted(metrics),
         "retryable_in_revision": False, "requires_replan": status != "succeeded",
-        "recommended_action": "continue" if status == "succeeded" else "stop",
+        # A failed or unknown physical outcome is recoverable by re-perceiving
+        # and re-planning (a dropped bottle is re-grasped from fresh evidence);
+        # only an explicit cancellation or stop is terminal by intent.
+        "recommended_action": "continue" if status == "succeeded" else (
+            "replan_with_fresh_perception" if status in {"failed", "unknown"} else "stop"),
     }
     return {
         **{key: value for key, value in arguments.items() if key != "_task_id"},
@@ -837,7 +841,10 @@ def project_result(raw, arguments, possession, invocation_id):
         "evidence_availability": "complete" if status == "succeeded" else "partial" if refs else "none",
         "artifact_refs": list(refs), "bounded_metric_names": sorted(measurements),
         "retryable_in_revision": False, "requires_replan": status != "succeeded",
-        "recommended_action": "continue" if status == "succeeded" else "stop",
+        # See the cycle-path twin: failed/unknown outcomes recover by
+        # re-perceiving and re-planning; cancellation stays terminal.
+        "recommended_action": "continue" if status == "succeeded" else (
+            "replan_with_fresh_perception" if status in {"failed", "unknown"} else "stop"),
     }
     return {
         **dict(arguments), "status": status, "held_invocation_ref": invocation_id,
