@@ -258,6 +258,14 @@
 
 - [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L3/L94-L140、本月档L383-L423与CHANGELOG完整当前条目：首段标明路线资格通过/实际倾倒失败/F reverted，补诊断及最终206项验收范围，限定此前review证据；文档UTF-8、完整索引一致性与diff检查通过，后续仅待主commit receipt。 / Synchronize the stated report/archive/index lines with the final failed-runtime conclusion, reverted F experiment, diagnostic and206-test acceptance scope, preserving evidence limits; UTF-8, exact entry consistency and whitespace checks pass, awaiting only the primary commit receipt. (local)
 
+- [docs] [chore] [完成] 仅追加主实现commit 5aa50f07、当前分支及北京时间receipt，并同步CHANGELOG本版本完整条目；主commit已完成、push待主会话执行，不新增版本或修改report/source/tests，不自行commit/push。 / Append only the primary implementation commit5aa50f07, branch and current Beijing-time receipt, synchronizing this complete index entry; implementation commit is complete and push remains with the primary, with no new version, report/source/test edits or independent commit/push. (local)
+
+### 主实现 Git Receipt / Primary Implementation Git Receipt
+- Commit: `5aa50f07`
+- Branch: `feature/planning-loop`
+- 时间 / Time: `2026-11-19 22:50:27 Asia/Shanghai (UTC+8)`
+- [chore] [chore] 主实现commit已完成；push待主会话执行。本receipt仅记录实现提交，不追记receipt自身提交。 / Primary implementation commit is complete; push remains pending with the primary. This receipt records the implementation commit without recursively recording its own commit. (5aa50f07)
+
 ## v17.8.0 (2026-11-19 20:00) - codex
 
 ### 实施范围 / Implementation Scope [完成]
