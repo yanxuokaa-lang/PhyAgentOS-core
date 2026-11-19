@@ -749,7 +749,7 @@ def process_waypoints(operation, parameters, tcp, body, tcp_from_object, target,
         feature(center + axis * config["pour_lip_clearance_m"], tilted,
                 float(parameters["hold_s"]) + config["settle_s"], "process")
         feature(high, tilted, stage="exit")
-        feature(high + other * config["process_clearance_m"], orientation, stage="exit")
+        feature(high + approach_direction * config["process_clearance_m"], orientation, stage="exit")
     elif operation == "stir":
         radius, depth = float(parameters["radius_m"]), float(parameters["depth_m"])
         if radius > config["maximum_stir_radius_m"] or depth > config["maximum_stir_depth_m"]:
@@ -1646,6 +1646,20 @@ class IsaacPhaseMotion:
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})
             failures, candidates = [], []
+            centered = []
+
+            def qualify_pour(points, clearance, yaw, azimuth, offset):
+                try:
+                    candidate = self.qualify(points, source, tcp_from_object, operation, np.asarray(original_return))
+                    candidate.update(pour_lip_clearance_m=clearance, pour_yaw_rad=yaw,
+                                     pour_azimuth_rad=azimuth, pour_lip_offset_m=offset.tolist(),
+                                     pour_retreat_strategy="same_side_ingress")
+                    return candidate
+                except PhaseMotionError as exc:
+                    failures.append(f"clearance={clearance}, yaw={yaw}, azimuth={azimuth}, "
+                                    f"offset_m={offset.tolist()}: {exc}")
+                    return None
+
             for clearance, yaw, azimuth in product(clearances, (0., -math.pi / 2, math.pi / 2),
                                                    (0., math.pi, -math.pi / 2, math.pi / 2)):
                 if clearance > clearance_limit:
@@ -1653,14 +1667,38 @@ class IsaacPhaseMotion:
                 candidate_config = {**self.config, "pour_lip_clearance_m": clearance, "pour_yaw_rad": yaw, "pour_azimuth_rad": azimuth}
                 candidate_waypoints = process_waypoints(operation, arguments["parameters"], tcp, body,
                                                        tcp_from_object, target, candidate_config)
-                try:
-                    route = self.qualify(candidate_waypoints, source, tcp_from_object, operation, np.asarray(original_return))
-                    route["pour_lip_clearance_m"] = clearance
-                    route["pour_yaw_rad"] = yaw
-                    route["pour_azimuth_rad"] = azimuth
-                    candidates.append(route)
-                except PhaseMotionError as exc:
-                    failures.append(f"clearance={clearance}, yaw={yaw}, azimuth={azimuth}: {exc}")
+                centered.append((clearance, yaw, azimuth, candidate_waypoints))
+                candidate = qualify_pour(candidate_waypoints, clearance, yaw, azimuth, np.zeros(3))
+                if candidate is not None:
+                    candidates.append(candidate)
+            if not candidates:
+                center = np.asarray(target["process_frame"]["origin_m"], dtype=float)
+                axis = np.asarray(target["process_frame"]["axis"], dtype=float)
+                axis /= np.linalg.norm(axis)
+                for clearance, yaw, azimuth, points in centered:
+                    radius_squared = clearance_limit ** 2 - clearance ** 2
+                    if clearance_limit <= 0 or radius_squared <= 0:
+                        continue
+                    process_pose = next(pose for pose, _, stage in points if stage == "process")
+                    bottle_side = (process_pose @ tcp_from_object)[:3, 3] - center
+                    bottle_side -= axis * float(np.dot(bottle_side, axis))
+                    side_norm = float(np.linalg.norm(bottle_side))
+                    if side_norm < 1e-9:
+                        continue
+                    bottle_side /= side_norm
+                    tangent = np.cross(axis, bottle_side)
+                    for direction in (bottle_side, tangent, -tangent):
+                        offset = direction * math.sqrt(radius_squared)
+                        shifted = [(pose.copy(), hold, stage) for pose, hold, stage in points]
+                        for pose, _, stage in shifted:
+                            if stage == "process":
+                                pose[:3, 3] += offset
+                        candidate = qualify_pour(shifted, clearance, yaw, azimuth, offset)
+                        if candidate is not None:
+                            candidates.append(candidate)
+                            break
+                    if candidates:
+                        break
             if not candidates:
                 raise PhaseMotionError("pour_route_unavailable", "\n".join(failures) or "lip clearance exceeds alignment tolerance")
             route = min(candidates, key=lambda item: (abs(item["pour_yaw_rad"]), -item["pour_lip_clearance_m"], float(np.abs(np.diff(
@@ -2503,6 +2541,16 @@ class IsaacPhaseMotion:
                     target = self.tcp(goal) @ np.asarray(route["tcp_from_object"]) @ np.linalg.inv(relation)
                     goal, valid = local_inverse_kinematics(
                         self.tcp, target, start, self.limits, self.config["position_tolerance_m"])
+                    if not valid:
+                        goal, valid = local_inverse_kinematics(
+                            self.tcp, target, np.asarray(point["joints"]), self.limits,
+                            self.config["position_tolerance_m"])
+                        delta = joint_delta(start, goal)
+                        maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
+                        if valid and delta > maximum_delta:
+                            raise PhaseMotionError(
+                                "ik_discontinuity", f"{stage}: measured pour-pose fallback joint delta "
+                                f"{delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
                     if not valid:
                         raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
                 hold_frames = math.ceil(point["hold_s"] / self.dt)

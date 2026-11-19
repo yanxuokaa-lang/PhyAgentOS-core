@@ -268,6 +268,179 @@ def test_task_conditioned_pour_direction_controls_tilt_toward_destination():
     assert float(np.dot(process[:3, 2], direction)) == pytest.approx(np.sin(.87))
 
 
+@pytest.mark.parametrize("directed", [False, True])
+def test_pour_upright_exit_retraces_ingress_after_vertical_tilted_lift(directed):
+    target = {"process_frame": {"origin_m": [.2, 0., .8], "axis": [0., 0., 1.]},
+              "tool_frame": {"tip_offset_m": [.01, 0., .08]}}
+    if directed:
+        target["process_frame"]["pour_direction"] = [.6, .8, 0.]
+    points = process_waypoints("pour", {"tilt_rad": 1., "hold_s": .2},
+                               np.eye(4), np.eye(4), np.eye(4), target, config())
+    assert points[-1][0] == pytest.approx(points[0][0])
+    assert [stage for _, _, stage in points] == ["transport", "transport", "process", "exit", "exit"]
+    assert points[-2][0] == pytest.approx(points[1][0])
+    assert points[-2][0][:3, :3] == pytest.approx(points[2][0][:3, :3])
+    assert points[-2][0][2, 3] > points[2][0][2, 3]
+
+
+def _pour_preparation_fixture():
+    # Real prepare/waypoint/qualify code with a reversible Cartesian test arm.
+    model, arguments = _grasp_approach_probe_fixture()
+    model.config = config()
+    model.profile = SimpleNamespace(alignment_tolerance_m=.05)
+    initial = np.array([0., 0., .8, 0., 0., 0., 0.])
+    model.joints = lambda: initial.copy()
+
+    def tcp(joints=None):
+        joints = initial if joints is None else joints
+        return pose_matrix(joints[:3], Rotation.from_rotvec(joints[3:6]).as_quat())
+
+    def inverse(_frame, position, quaternion, **_kwargs):
+        rotation = Rotation.from_quat(np.roll(quaternion, -1)).as_rotvec()
+        return np.r_[position, rotation, 0.], True
+
+    model.tcp = tcp
+    model.body_pose = lambda _path: tcp()
+    model.solver.compute_inverse_kinematics = inverse
+    target = arguments["manipulation_target"]
+    target["destination_prim_path"] = "/World/beaker"
+    target["process_frame"] = {"origin_m": [.2, 0., .8], "axis": [0., 0., 1.],
+                               "pour_direction": [1., 0., 0.]}
+    target["tool_frame"] = {"tip_offset_m": [.01, 0., .08]}
+    arguments.update(operation="pour", held_invocation_ref="held://current",
+                     phase_route={"original_return_pose": tcp().tolist()},
+                     parameters={"tilt_rad": 1., "hold_s": .2})
+    return model, arguments
+
+
+def test_pour_centered_candidates_keep_priority_and_existing_ranking():
+    model, arguments = _pour_preparation_fixture()
+    before = deepcopy(arguments)
+    actual_qualify, checked = model.qualify, []
+
+    def qualify(points, *args):
+        checked.append(points)
+        return actual_qualify(points, *args)
+
+    model.qualify = qualify
+    route, _ = model.prepare(arguments)
+    assert len(checked) == 24
+    assert route["pour_yaw_rad"] == 0.
+    assert route["pour_lip_clearance_m"] == pytest.approx(.048)
+    assert route["pour_lip_offset_m"] == [0., 0., 0.]
+    assert route["pour_retreat_strategy"] == "same_side_ingress"
+    assert {point["stage"] for point in route["steps"]} == {"transport", "process", "exit"}
+    assert arguments == before
+
+
+def test_pour_lateral_fallback_stays_inside_3d_budget_and_only_translates_process():
+    model, arguments = _pour_preparation_fixture()
+    target = arguments["manipulation_target"]
+    target["process_frame"].update(axis=[0., .6, .8], pour_direction=[1., 0., 0.])
+    before = deepcopy(arguments)
+    actual_qualify, checked = model.qualify, []
+
+    def qualify(points, *args):
+        checked.append(points)
+        # A receiving-vessel obstacle blocks centered routes and two lateral
+        # sides. The third must still pass actual full-route qualification.
+        if len(checked) <= 26:
+            raise PhaseMotionError("payload_collision", "process: receiving vessel")
+        return actual_qualify(points, *args)
+
+    model.qualify = qualify
+    route, _ = model.prepare(arguments)
+    assert len(checked) == 27  # All24 centered, then exactly three offsets.
+    axis = np.array(target["process_frame"]["axis"])
+    center = np.array(target["process_frame"]["origin_m"])
+    tip = np.array(target["tool_frame"]["tip_offset_m"])
+    budget = model.profile.alignment_tolerance_m - model.config["position_tolerance_m"]
+    offsets = []
+    for points in checked[24:]:
+        for (base, hold, stage), (pose, moved_hold, moved_stage) in zip(checked[0], points, strict=True):
+            assert (hold, stage) == (moved_hold, moved_stage)
+            assert pose[:3, :3] == pytest.approx(base[:3, :3])
+            if stage != "process":
+                assert pose == pytest.approx(base)
+            else:
+                offset = pose[:3, 3] - base[:3, 3]
+                offsets.append(offset)
+                assert np.dot(offset, axis) == pytest.approx(0., abs=1e-12)
+                assert np.linalg.norm(pose[:3, 3] + pose[:3, :3] @ tip - center) == pytest.approx(budget)
+    assert np.linalg.norm(offsets[0]) == pytest.approx(np.sqrt(budget ** 2 - .04 ** 2))
+    assert np.dot(offsets[0], offsets[1]) == pytest.approx(0., abs=1e-12)
+    assert offsets[2] == pytest.approx(-offsets[1])
+    assert route["pour_lip_offset_m"] == pytest.approx(offsets[-1])
+    assert route["target"]["process_frame"]["origin_m"] == target["process_frame"]["origin_m"]
+    assert {point["stage"] for point in route["steps"]} == {"transport", "process", "exit"}
+    assert arguments == before  # No shifted target or caller-state mutation.
+
+
+@pytest.mark.parametrize("failure", ["route_collision", "ik_discontinuity"])
+def test_pour_every_candidate_still_rejects_exit_failure_and_keeps_offsets(monkeypatch, failure):
+    model, arguments = _pour_preparation_fixture()
+    actual_qualify = model.qualify
+    actual_inverse = model.solver.compute_inverse_kinematics
+    state = {"stage": None, "attempts": 0, "process_passes": 0}
+
+    def qualify(points, *args):
+        state["attempts"] += 1
+
+        def progress(stage, status, **_details):
+            state["stage"] = stage
+            if stage == "process" and status == "completed":
+                state["process_passes"] += 1
+
+        return actual_qualify(points, *args, progress=progress)
+
+    def collision(*_args, **_kwargs):
+        if failure == "route_collision" and state["stage"] == "exit":
+            raise PhaseMotionError("route_collision", "exit: receiver obstacle")
+
+    def inverse(*args, **kwargs):
+        goal, ok = actual_inverse(*args, **kwargs)
+        if failure == "ik_discontinuity" and state["stage"] == "exit":
+            goal[-1] = kwargs["warm_start"][-1] + .8
+        return goal, ok
+
+    model.qualify = qualify
+    model._collisions = collision
+    model.solver.compute_inverse_kinematics = inverse
+    if failure == "ik_discontinuity":
+        monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics",
+                            lambda _fk, _target, seed, *_args: (seed.copy(), False))
+    with pytest.raises(PhaseMotionError) as caught:
+        model.prepare(arguments)
+    assert caught.value.code == "pour_route_unavailable"
+    assert state["attempts"] == state["process_passes"] == 60
+    lines = str(caught.value).splitlines()
+    assert len(lines) == 60
+    assert all("offset_m=" in line and "exit" in line for line in lines)
+    assert "offset_m=[0.0, 0.0, 0.0]" in lines[0]
+    assert "offset_m=[0.0, 0.0, 0.0]" not in lines[-1]
+    assert ("receiver obstacle" if failure == "route_collision" else "0.500000") in lines[-1]
+
+
+@pytest.mark.parametrize("no_budget", [False, True])
+def test_pour_skips_lateral_when_projection_or_budget_is_zero(no_budget):
+    model, arguments = _pour_preparation_fixture()
+    arguments["manipulation_target"]["tool_frame"]["tip_offset_m"] = [0., 0., 0.]
+    if no_budget:
+        model.profile.alignment_tolerance_m = .042
+        model.config["pour_lip_clearance_m"] = .042 - model.config["position_tolerance_m"]
+    attempts = []
+
+    def blocked(points, *_args):
+        attempts.append(points)
+        raise PhaseMotionError("route_collision", "process: receiver")
+
+    model.qualify = blocked
+    with pytest.raises(PhaseMotionError) as caught:
+        model.prepare(arguments)
+    assert caught.value.code == "pour_route_unavailable"
+    assert len(attempts) == (12 if no_budget else 24)
+
+
 @pytest.mark.parametrize("operation,parameters,code", [
     ("pour", {"tilt_rad": 1.51, "hold_s": .6}, "tilt_limit_exceeded"),
     ("stir", {"radius_m": .026, "depth_m": .04, "turns": 2., "duration_s": 4., "direction": "ccw"},
@@ -2956,6 +3129,118 @@ def test_pour_tracks_original_object_pose_after_measured_grip_drift(monkeypatch)
     assert result['measurements']['final_tool_axis_error_rad'] < .002
     assert commands[-1][4] == pytest.approx(-.015, abs=.002)
     assert route['tcp_from_object'] == nominal_relation.tolist()
+
+
+def _pour_correction_execution_fixture(monkeypatch):
+    from pick_place_workflow import cycle_protocol
+
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    model.joints = lambda: model.robot.get_joint_positions()[:7]
+
+    def tcp(joints=None):
+        joints = model.joints() if joints is None else joints
+        return pose_matrix(np.array([.1, 0., 1.]) + joints[:3],
+                           Rotation.from_rotvec(joints[3:6]).as_quat())
+
+    model.tcp = tcp
+    route = arguments["phase_route"]
+    nominal_relation = np.asarray(route["tcp_from_object"])
+    drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .015).as_quat())
+    model.body_pose = lambda _source: tcp() @ drift @ nominal_relation
+    route["start_object_pose"] = model.body_pose(None).tolist()
+    model.sensors = [SimpleNamespace(get_current_frame=lambda: {
+        "time": model.world.current_time, "contacts": [{"body0": "/World/source/mesh",
+        "body1": "/World/Franka/finger", "impulse": [1., 0., 0.]}]})] * 2
+    arguments["operation"] = route["operation"] = "pour"
+    arguments["parameters"] = {"tilt_rad": 1., "hold_s": .1}
+    route["target"] = {"tool_frame": {"tip_offset_m": [.01, 0., .1], "tip_axis_local": [0., 0., 1.]},
+                       "process_frame": {"origin_m": [.15, 0., 1.], "axis": [0., 0., 1.]}}
+    route["steps"] = [dict(route["steps"][0], stage="transport", attached=True, hold_s=0.,
+                           joints=[.02, 0., 0., 0., 0., 0., 0.])]
+    model.profile.alignment_tolerance_m = .05
+    model.profile.evaluation_profile = lambda: {}
+    monkeypatch.setattr(cycle_protocol, "evaluate_process_feedback", lambda *_:
+                        {"process_completed": True, "qualified_tilt_hold_s": .1})
+    return model, arguments, commands, artifacts
+
+
+def test_pour_failed_current_seed_retries_same_full_pose_with_planned_seed(monkeypatch):
+    from isaacsim_lab.phase_motion import local_inverse_kinematics
+
+    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
+    calls = []
+
+    def solve(forward, target, seed, limits, tolerance):
+        calls.append((target.copy(), seed.copy()))
+        if len(calls) == 1:
+            return seed.copy(), False  # Reproduce the measured local branch failure.
+        return local_inverse_kinematics(forward, target, seed, limits, tolerance)
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    result = model.execute(arguments, Event())
+    assert result["operation_completed"] is True
+    assert len(calls) == 2
+    assert calls[0][0] == pytest.approx(calls[1][0])
+    assert calls[0][1] == pytest.approx(np.zeros(7))
+    route = arguments["phase_route"]
+    assert calls[1][1] == pytest.approx(route["steps"][0]["joints"])
+    wanted_body = model.tcp(np.asarray(route["steps"][0]["joints"])) @ np.asarray(route["tcp_from_object"])
+    actual_body = model.observed_pose(route["source_path"])
+    assert actual_body[:3, 3] == pytest.approx(wanted_body[:3, 3], abs=.002)
+    assert Rotation.from_matrix(wanted_body[:3, :3].T @ actual_body[:3, :3]).magnitude() < .02
+    assert result["measurements"]["final_tool_tip_error_m"] < .002
+    assert result["measurements"]["final_tool_axis_error_rad"] < .02
+    assert commands
+
+
+@pytest.mark.parametrize("branch_jump", [False, True])
+def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, branch_jump):
+    model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    calls = []
+
+    def solve(_forward, target, seed, _limits, _tolerance):
+        calls.append((target.copy(), seed.copy()))
+        goal = seed.copy()
+        if branch_jump and len(calls) == 2:
+            goal[0] = .6
+            return goal, True
+        return goal, False
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    result = model.execute(arguments, Event())
+    assert result["failure_code"] == ("ik_discontinuity" if branch_jump else "inverse_kinematics_failed")
+    assert len(calls) == 2 and not commands and model.world.steps == 0
+    assert calls[0][0] == pytest.approx(calls[1][0])
+    assert not result["operation_completed"] and not result["world_change_started"]
+    detail = artifacts[-1][1]["failure_detail"]
+    assert ("transport: measured pour-pose fallback joint delta 0.600000" if branch_jump
+            else "measured pour-pose correction is unreachable") in detail
+    if branch_jump:
+        assert "maximum 0.500000" in detail
+
+
+def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch):
+    from isaacsim_lab.phase_motion import local_inverse_kinematics
+
+    model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    calls, checked = [], []
+
+    def solve(forward, target, seed, limits, tolerance):
+        calls.append(seed.copy())
+        return ((seed.copy(), False) if len(calls) == 1
+                else local_inverse_kinematics(forward, target, seed, limits, tolerance))
+
+    def collide(joints, *_args, **_kwargs):
+        checked.append(joints.copy())
+        raise PhaseMotionError("route_collision", "corrected path hits receiver")
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    model._collisions = collide
+    result = model.execute(arguments, Event())
+    assert len(calls) == 2 and checked
+    assert result["failure_code"] == "route_collision"
+    assert "corrected path hits receiver" in artifacts[-1][1]["failure_detail"]
+    assert not commands and model.world.steps == 0
 
 
 def test_grasp_error_is_independent_of_object_coordinate_origin():
