@@ -147,6 +147,12 @@
 ### 外部资产保存 / External Asset Preservation
 - [data] [chore] LabUtopia基础提交 `2224bb815fedeff91f82021ec661761682f99310`，源scene/config在本轮前已有本地修改。本轮未改外部源资产；实际scene/config/robot、tracked-assets.diff及metadata保存在 `out/labutopia-placement-20261119-1847/external-scene-snapshot/`，A/B metadata均包含外部证据指针。 / The external LabUtopia base revision has pre-existing local scene/config edits. This task preserves those sources and records actual scene/config/robot files, tracked diff and metadata in the external snapshot, referenced by both runs. (local)
 
+### Git 提交 / Git Commit
+- Implementation commit / 实现提交：`70373035`（完整 / full：`70373035f9bfeb02e107a6b4638b1a5d00ef5b3f`）。
+- Branch / 分支：`feature/planning-loop`。
+- 时间 / Time：2026-11-19 19:24:39 Asia/Shanghai。
+- [docs] [chore] 上述hash标识本版本实现提交；后续收据记录提交不自引用。 / The hash identifies this version's implementation commit; the subsequent receipt commit does not self-reference. (local)
+
 ## v17.6.29 (2026-11-19) - claude
 
 ### 完成范围 / Scope
