@@ -315,6 +315,41 @@ def test_bilateral_misaligned_contact_settles_then_fails_at_lift_entry(monkeypat
     assert any(c[7] <= .039 for c in commands)
 
 
+def test_hold_follow_freezes_when_fingers_diverge(monkeypatch):
+    model, args, commands, artifacts = execution_fixture(monkeypatch)
+    model.config["finger_hold_follow"] = True
+    model.config["finger_retain_overshoot_m"] = .002
+    # Contact gate on the obedient right finger; after contact the left finger
+    # is forced back in absolute terms while the right keeps advancing — the
+    # lateral-walk signature measured on the bridged shoulder.
+    contact_sensors(model, lambda: model.robot.get_joint_positions()[8] < .025)
+    original_positions = model.robot.get_joint_positions
+    forced = {"step": None}
+
+    def positions():
+        value = original_positions()
+        if forced["step"] is None and value[8] < .025:
+            forced["step"] = model.world.steps
+        if forced["step"] is not None:
+            value[7] = min(.025 + .0009 * (model.world.steps - forced["step"]), .0399)
+        return value
+
+    model.robot.get_joint_positions = positions
+    result = model.execute(args, Event())
+
+    assert result.get("failure_code") != "physical_grasp_lost"
+    samples = artifacts[-1][1]["samples"]
+    first_contact = next(sample for sample in samples
+                         if sample["stage"] == "close" and sample["contact_load_valid"])
+    followed = [sample for sample in samples if sample["timestamp_s"] > first_contact["timestamp_s"]]
+    assert followed
+    # The chase ends at the first divergent step: from then on the commanded
+    # target never presses deeper, through close and lift alike.
+    targets = [sample["finger_target_m"] for sample in followed]
+    assert all(target == pytest.approx(targets[0]) for target in targets)
+    assert targets[0][1] == pytest.approx(first_contact["finger_positions_m"][1] - .002)
+
+
 def test_cancellation_during_closure_holds_and_never_starts_lift(monkeypatch):
     model, args, commands, _ = execution_fixture(monkeypatch)
     cancel = Event()

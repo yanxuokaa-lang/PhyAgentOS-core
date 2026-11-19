@@ -2414,6 +2414,8 @@ class IsaacPhaseMotion:
         finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
             self.robot.get_joint_positions())[finger_indices].copy()
         hold_follow_active = False
+        follow_diverged = False
+        last_follow_fingers = None
         step_count = 0
         last_stage = None
         lift_grip_confirmed = False
@@ -2571,7 +2573,7 @@ class IsaacPhaseMotion:
                             measured_sample["support_manifold_continuity_used"] = True
                             support_manifold_continuity = True
                     if (hold_follow_active and point["attached"] and held
-                            and stage not in {"open", "release", "retreat"}):
+                            and stage not in {"open", "release", "retreat"} and not follow_diverged):
                         # Keep the hold tracking surface recession during attached motion
                         # (lift/carry): the same bounded re-freeze as the close settle, so
                         # normal force does not decay on a tapering body. Commanded
@@ -2617,11 +2619,20 @@ class IsaacPhaseMotion:
                             # decay during lift; penetration stays bounded at retain_overshoot,
                             # so commanded force cannot exceed stiffness * retain. Default False
                             # keeps the legacy one-time freeze at first contact.
-                            if not contact_established or follow_hold:
+                            # The follow ends when the fingers diverge — one pad advancing
+                            # while the other is forced back is the signature of the body
+                            # walking sideways through the grip (measured on the bridged
+                            # shoulder: a perfect centered first touch dragged 18mm to the
+                            # finger joint limit by the ever-deepening chase). Symmetric
+                            # advance is legitimate recession tracking and keeps following.
+                            measured_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices].copy()
+                            if (follow_hold and contact_established and last_follow_fingers is not None
+                                    and np.any(measured_fingers > last_follow_fingers + 1e-4)):
+                                follow_diverged = True
+                            if not contact_established or (follow_hold and not follow_diverged):
                                 retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
-                                finger_target = np.maximum(
-                                    np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
-                                    0.0)
+                                finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)
+                                last_follow_fingers = measured_fingers
                             contact_established = True
                             hold_follow_active = follow_hold
                             stable_frames += 1
