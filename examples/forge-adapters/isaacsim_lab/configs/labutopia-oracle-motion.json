@@ -44,7 +44,7 @@
   "acquire_carry_as_grasped_fallback": true,
   "finger_retain_overshoot_m": 0.002,
   "finger_hold_follow": true,
-  "lift_distance_m": 0.12,
+  "lift_distance_m": 0.06,
   "process_clearance_m": 0.18,
   "pour_lip_clearance_m": 0.04,
   "maximum_tilt_rad": 1.5,
