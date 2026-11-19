@@ -239,7 +239,8 @@ class LabUtopiaCycleProvider:
             result = prepare(request)
             if not isinstance(result, Mapping) or result.get("status") != "available":
                 return {"status": "unavailable", "motion_authorized": False,
-                        "error": str(result.get("failure_code", result.get("error", "held_route_unavailable")))
+                        "error": ": ".join(str(result[key]) for key in ("failure_code", "error")
+                                           if result.get(key)) or "held_route_unavailable"
                         if isinstance(result, Mapping) else "held_route_unavailable"}
             route = result.get("route_arguments")
             # Compare against the JSON-round-trip image of the request: the

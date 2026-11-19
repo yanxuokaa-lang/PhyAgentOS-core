@@ -1024,3 +1024,35 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
     assert captured.value.requires_replan is True
     assert captured.value.recommended_action == recommended_action
     assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)
+
+
+@pytest.mark.parametrize(("engine_result", "expected_error"), [
+    ({"status": "unavailable", "failure_code": "pour_route_unavailable",
+      "error": "clearance=0.08: inverse_kinematics_failed; yaw=0.2: route_collision"},
+     "pour_route_unavailable: clearance=0.08: inverse_kinematics_failed; yaw=0.2: route_collision"),
+    ({"status": "unavailable", "error": "route_collision"}, "route_collision"),
+    ({"status": "unavailable", "failure_code": "pour_route_unavailable"}, "pour_route_unavailable"),
+    (None, "held_route_unavailable"),
+])
+def test_held_preparation_preserves_candidate_failure_details(engine_result, expected_error):
+    from types import SimpleNamespace
+
+    assignment_ref = "artifact://labutopia/assignments/acquired"
+    provider = LabUtopiaCycleProvider(
+        SimpleNamespace(prepare_held=lambda _request: engine_result),
+        assignment_store={assignment_ref: {
+            "assignment": {"entity_ref": "entity://source"}, "route_arguments": {},
+        }},
+    )
+    provider.result_resolver = lambda _ref: {
+        "status": "succeeded", "result": {
+            "assignment_ref": assignment_ref,
+            "capability_outcome_summary": {"outcome_known": True, "possession_state": "holding"},
+        },
+    }
+
+    result = provider.prepare_held({
+        "held_invocation_ref": "invocation://acquire", "entity_ref": "entity://source",
+    })
+
+    assert result == {"status": "unavailable", "motion_authorized": False, "error": expected_error}

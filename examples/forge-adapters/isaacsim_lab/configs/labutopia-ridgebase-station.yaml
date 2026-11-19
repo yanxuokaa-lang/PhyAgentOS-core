@@ -1,0 +1,93 @@
+scene:
+  source_usd: assets/chemistry_lab/lab_003/lab_003.usd
+  output_usd: assets/chemistry_lab/tabletop_station/tabletop_station.usda
+  label_dir: assets/chemistry_lab/tabletop_station/labels
+  table_prim: /World/table
+  table_top_z: 0.712386
+
+robot:
+  type: ridgebase
+  prim_path: /World/Ridgebase
+  usd_asset: assets/robots/ridgeback_franka.usd
+  base_position: [-1.05, 0.18, 0.01]
+  base_orientation_wxyz: [1.0, 0.0, 0.0, 0.0]
+  initial_joint_positions: [0.0, -0.7853981634, 0.0, -2.3561944902, 0.0, 1.5707963268, 0.7853981634]
+  initial_gripper_positions: [0.04, 0.04]
+  end_effector_frame: right_gripper
+  urdf_path: robots/franka/lula_franka_gen.urdf
+  robot_description_path: robots/franka/rmpflow/robot_descriptor.yaml
+  preview_camera:
+    eye: [-1.75, -0.72, 1.72]
+    target: [-0.08, 0.0, 0.82]
+    focal_length: 24.0
+  wrist_camera:
+    prim_path: /World/PreviewCameras/ThirdPerson
+    translation: [-0.2, 0.0, -0.02]
+    orientation_wxyz: [0.20083, 0.67799, -0.67799, -0.20083]
+    focal_length: 1.0
+    clipping_range: [0.05, 10.0]
+
+layout:
+  labels:
+    height_fraction: [0.24, 0.51]
+    half_angle_deg: 60.0
+    surface_offset_m: 0.003
+    wrist_inspection_distance_m: 0.18
+    wrist_inspection_rise_m: 0.10
+  bottle_slots:
+    clearance_from_bottle_m: 0.008
+    ring_width_m: 0.003
+  reagent_bottle_geometry:
+    # Small laboratory flask envelope. The robot Adapter still owns the actual
+    # gripper-aperture, IK and collision qualification for every candidate.
+    minimum_outer_diameter_m: 0.055
+    maximum_outer_diameter_m: 0.068
+    minimum_height_m: 0.075
+    maximum_height_m: 0.125
+    uniform_scale_by_source_prim:
+      /World/conical_bottle01: 0.82
+      /World/conical_bottle02: 0.70
+      /World/conical_bottle03: 0.46
+      /World/conical_bottle04: 0.57
+  operation_area:
+    center_xy: [-0.08, 0.0]
+    size_xy: [0.40, 0.44]
+  beaker:
+    source_prim: /World/target_beaker
+    position_xy: [-0.08, 0.0]
+  test_tube_rack:
+    source_prim: /World/test_tube_rack
+    position_xy: [0.23, 0.0]
+  glass_rod:
+    source_prim: /World/glass_rod
+    rack_slot:
+      # Empty near-side hole; offsets are relative to the rack placement center.
+      center_offset_xy: [-0.01875, -0.07928]
+      bottom_plate: test_tube_rack/group_08/_______1944
+      guide_plates:
+        - test_tube_rack/group_07/_______1943
+        - test_tube_rack/group_12/_______1938
+      support_clearance_m: 0.0002
+  reagent_zones:
+    - id: A
+      title_zh: 试剂区 1
+      title_en: REAGENT ZONE 1
+      center_xy: [-0.155, -0.46]
+      pad_size_xy: [0.44, 0.40]
+      bottle_positions_xy: [[-0.27, -0.56], [-0.04, -0.56], [-0.27, -0.36], [-0.04, -0.36]]
+      bottles:
+        - {id: R01, name_zh: 蒸馏水, name_en: Distilled water, formula: H2O, concentration: "", color: [0.72, 0.85, 0.92], source_prim: /World/conical_bottle01}
+        - {id: R02, name_zh: 氯化钠溶液, name_en: Sodium chloride, formula: NaCl, concentration: "0.10 mol/L", color: [0.78, 0.88, 0.94], source_prim: /World/conical_bottle02}
+        - {id: R03, name_zh: 硫酸铜溶液, name_en: Copper sulfate, formula: CuSO4, concentration: "0.10 mol/L", color: [0.26, 0.54, 0.86], source_prim: /World/conical_bottle01}
+        - {id: R04, name_zh: 碳酸钠溶液, name_en: Sodium carbonate, formula: Na2CO3, concentration: "0.10 mol/L", color: [0.78, 0.90, 0.82], source_prim: /World/conical_bottle02}
+    - id: B
+      title_zh: 试剂区 2
+      title_en: REAGENT ZONE 2
+      center_xy: [-0.155, 0.46]
+      pad_size_xy: [0.44, 0.40]
+      bottle_positions_xy: [[-0.27, 0.36], [-0.04, 0.36], [-0.27, 0.56], [-0.04, 0.56]]
+      bottles:
+        - {id: R05, name_zh: 盐酸溶液, name_en: Hydrochloric acid, formula: HCl, concentration: "0.10 mol/L", color: [0.90, 0.91, 0.96], source_prim: /World/conical_bottle02}
+        - {id: R06, name_zh: 氢氧化钠溶液, name_en: Sodium hydroxide, formula: NaOH, concentration: "0.10 mol/L", color: [0.91, 0.94, 0.83], source_prim: /World/conical_bottle03}
+        - {id: R07, name_zh: 酚酞指示液, name_en: Phenolphthalein, formula: Indicator, concentration: "", color: [0.97, 0.72, 0.82], source_prim: /World/conical_bottle04}
+        - {id: R08, name_zh: 甲基橙指示液, name_en: Methyl orange, formula: Indicator, concentration: "", color: [0.96, 0.63, 0.34], source_prim: /World/conical_bottle01}

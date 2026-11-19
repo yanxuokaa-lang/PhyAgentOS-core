@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-11_part3](changelog/2026-11_part3.md)
 - [2026-11_part2](changelog/2026-11_part2.md)
 - [2026-11](changelog/2026-11.md)
 - [2026-10_part16](changelog/2026-10_part16.md)
@@ -49,440 +50,153 @@
 
 ## 最近五版本 / Latest five versions
 
-## v17.6.9 (2026-11-11 10:45) - claude
+## v17.7.0 (2026-11-19 18:44) - codex
 
-### 完成范围 / Completed Scope
-- [fix] motion 配置标量校验误拒布尔键（`bool⊂int`）：v17.6.8 的 `acquire_carry_as_grasped_fallback: true` 使 phase_motion 构造必败 → capabilities provider_unavailable（run11/11b 双复现，A/B 证明 base_xy 无辜）。修复=校验循环跳过 bool 键，数值校验逐字不变。附评测目标切换（用户裁决）：R01（后排 0.59m，被 R03 挡）→ R05（前排 0.40m 无阻挡）；实测确认 BEAKER manifest 条目陈旧、实际在基座正前方 0.37m。`167 passed`；run12 以 R05 验证。 / The scalar config check rejected boolean keys (`bool⊂int`), so v17.6.8's switch made every phase_motion construction fail → capabilities provider_unavailable (reproduced twice; A/B cleared base_xy). Fix = skip bools in the check, numeric validation byte-identical. Also the user-ruled evaluation target switch R01 (back row, blocked) → R05 (front row, clear); measured geometry confirms the BEAKER manifest entry is stale and the real beaker sits 0.37m ahead of the base. 167 passed; run12 verifies with R05.
+### 完成修改 / Completed Changes [完成]
+- [env] [fix] 通过独立 USD 覆盖层停用旧桌面 `/World/Franka`，仅保留本轮使用的底盘 Franka；原始资产不改。 / Deactivate the legacy tabletop `/World/Franka` through a separate USD composition layer, leaving the deployed Ridgebase Franka; preserve the source asset. (local)
+- [env] [tune] 将底盘世界坐标从 `[-1.201, 0.36, 0.01]` 调整为 `[-1.05, 0.18, 0.01]`，保留既有姿态、控制周期、物理与感知配置。 / Move the base in world metres from `[-1.201, 0.36, 0.01]` to `[-1.05, 0.18, 0.01]`, retaining orientation, control timing, physics and perception configuration. (local)
+- [comm] [fix] held 准备失败响应同时保留 failure_code 与 engine 逐候选 error，供重跑区分 IK、碰撞与对准失败；不改变路线选择或安全阈值。 / Preserve both failure_code and per-candidate engine error in held-preparation failures so reruns distinguish IK, collision and alignment failures; retain route selection and safety thresholds. (local)
+- [eval] [exp] 已验证 USD 组合、配置路径和失败详情回归，并完成A/B仿真对照；两轮任务均失败，原因如下记录。 / Validate USD composition, configuration paths and failure-detail regressions, and complete the A/B simulation comparison; both tasks fail as documented below. (local)
+- [docs] [chore] 新建月档第三部分（前档已超过 300KB），同步 Archive 与最近五版本；部署变化按 minor 升级为 v17.7.0。 / Start the third monthly archive because the prior part exceeds 300KB, update Archive and latest five, and classify the deployment change as minor v17.7.0. (local)
 
-## v17.6.8 (2026-11-11 10:15) - codex
+### 影响文件 / Affected Files
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-scene.usda`（新增 / new）
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml`（新增 / new）
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase.json`（新增 / new）
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`（修改 / modified）
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`（修改 / modified）
+- `CHANGELOG.md`（索引 / index）
+- `docs/forge/LABUTOPIA_RIDGEBASE_PLACEMENT_20261119.md`（新增 / new）
 
-### 完成范围 / Completed Scope
-- [fix][feat] run10 复盘深化：`physical_grasp_lost` 真因=闭指轨迹冻结过压挤出（lift_dist=0、手指顶在 0.0251 vs 冻结 target 0.0237、attach_err 2.1→8.2mm），修正 v17.6.7 的"纯 harness 缺陷"结论。四项修复：closure 接触建立时冻结实测手指位置（可选 `finger_retain_overshoot_m`）；预选 None-angle fail-closed 防护；carry-as-grasped 改部署级显式开关（默认关，oracle 显式开）；`forge_tool_action_status/result` 新增 `wait_timeout_s` 长等待（默认 0 旧行为不变）消除 `exec sleep` 轮询；oracle 基座错位 [0,0]→[−0.45,0] 修正。附 v17.6.5-6.7 独立 code review（5 findings，高危 2 项本版已修）。`570 passed, 2 skipped`；gate/probe 零改动。 / run10 deep-dive: the true cause of `physical_grasp_lost` is closure-trajectory freeze over-squeeze (lift_dist=0, fingers at 0.0251 vs frozen target 0.0237, attach_err 2.1→8.2mm), correcting v17.6.7's harness-only verdict. Four fixes: freeze the finger target at measured contact (optional overshoot); preselection None-angle fail-closed guard; carry-as-grasped becomes an explicit per-deployment switch (default off, oracle opts in); `wait_timeout_s` long-wait on action read tools removes `exec sleep` polling; oracle base offset [0,0]→[−0.45,0]. Includes an independent code review of v17.6.5-6.7 (5 findings; both high ones fixed here). 570 passed, 2 skipped; gate/probe untouched.
+### 所有权与验证边界 / Ownership and Validation Boundaries
+- [env] [chore] 场景覆盖与机器人位置属于 Isaac Adapter 部署层；Runtime 继续独占生命周期、取消、结算和恢复。公共 Tool/AgentLoop 不变，初始姿态与 IK 臂基仍由现行配置及 panda_link0 世界变换确定。 / Scene composition and robot placement belong to Isaac Adapter deployment; Runtime retains sole lifecycle, cancellation, settlement and recovery ownership. Public Tool/AgentLoop remain unchanged; the existing initial pose and panda_link0 world transform define the IK arm base. (local)
+- [eval] [chore] 最小验证为组合场景无旧臂子树、原资产旧臂仍活动、新 profile 路径可解析，以及 held 失败详情在传输后仍可见；契约证据、Provider 证据和仿真实测分别记录。 / Minimum checks establish that the composed scene excludes the old arm subtree, the source still contains it, the new profile resolves its paths, and held failure details survive transport; distinguish contract, Provider and simulation evidence. (local)
 
-## v17.6.7 (2026-11-10 11:50) - codex
-
-### 完成范围 / Completed Scope
-- [feat][eval] oracle 三连修（倾角候选 / carry-as-grasped transport / 预选采用 probe 实证变体）后 run10 **首次实动**：32 评估→8 合格→6 probe available→路线资格全过（azimuth=−π/4）→65 秒 phase-video 实拍 acquire+倾倒，pour 已调用；终态 awaiting_replan 系 agent 40 次迭代预算被对账轮询耗尽（harness 边界，非链路缺陷）。508 passed / ruff clean；gate、probe、公共契约零改动。 / Oracle triple fix (tilt variants / carry-as-grasped transport / preselection honouring the probe's validated variant) → run10 moves the arm for the first time: full funnel→probe→route at azimuth −π/4, a 65-second phase video of acquire+pour, pour invoked; the awaiting_replan terminal comes from the agent's 40-iteration budget consumed by reconciliation polling (a harness boundary, not a chain defect). Gate, probe and public contracts untouched.
-
-## v17.6.6 (2026-11-10 09:49) - codex
-
-### 完成范围 / Completed Scope
-- [eval] [result] oracle run6 终局（out/labutopia-oracle-run6/，cancelled，指令与 run5 相同）：probe 侧加密枚举（轴向角 4→8、终端 IK 种子 8→16）验证「水平接近姿态族全圆周不可行」——朝基座侧 16 种子全 0 解、背基座侧 16 解全撞桌（panda_link6 vs /World/table/surface/mesh）；geometry_qualified=2 与 run5 一致。诊断修正：gate 阈值（approach_dot≤0.7、finger_dot≥0.7）联合允许 ≤44° 整体倾角，初稿"倾斜被显式拒绝"为误判已更正。LabUtopia 部署普查：28:2 桌装为主流，移动底盘仅 level5。 / oracle run6 verdict: probe-side dense enumeration (azimuths 4→8, terminal IK seeds 8→16) proves the horizontal-approach family infeasible around the whole circle — base-facing azimuths zero solutions across 16 seeds, away-facing all 16 solve yet all collide with the table; geometry_qualified=2 unchanged. Corrected diagnosis: the gate thresholds jointly admit ≤44° coherent tilts (the first draft's "tilt explicitly rejected" was wrong). Deployment survey: 28:2 configs are table-mounted; mobile base is level5-only.
-
-### 架构与验证 / Architecture and Validation
-- 变更仅 `configs/labutopia-oracle-motion.json` 两行（Adapter 私有配置）；gate 阈值与语义零改动；证据链=out/labutopia-oracle-run6/ funnel+feasibility artifacts（terminal_sampling 8×16 全记录）。出路裁决：A 倾角变体（用户已选）→ v17.6.7 实施。 / Two config lines only; gate untouched; evidence in run6 artifacts. Path ruling: A tilt variants (user-selected) → v17.6.7.
-
-## v17.6.1 (2026-11-09 19:35) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] 修复 oracle run4 抓取资格全拒：瓶身深度分数从 (0.35, 0.50, 0.65) 加密为 0.05 步长 8 档（0.30-0.65），任何宽于一步的 gate 合法窗口都含候选；gate 阈值不变。live run4：R01 矮瓶窗口仅覆盖 0.36-0.47，粗采样全落窗外致 0 qualified。 / Fix oracle run4's all-rejected grasp qualification by densifying vessel depth fractions to eight samples at 0.05 steps; gate thresholds unchanged. Live run4: the squat R01 window covered only 0.36-0.47 and all coarse samples fell outside.
-
-### 架构与验证 / Architecture and Validation
-- 修复只在 Provider 机制层，gate 仍是唯一语义裁判；isaacsim 全量 `499 passed, 2 skipped`；未运行仿真。 / Provider-mechanism-only fix; the gate remains the sole judge. Full isaacsim suite `499 passed, 2 skipped`; no simulation ran.
-
-### Git 提交 / Git Commit
-- Implementation commit: `94a7ca28`; branch: `feature/planning-loop`. / Implementation commit: `94a7ca28`; branch: `feature/planning-loop`.
-
-## v17.6.0 (2026-11-09 19:10) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] 恢复评测失败注入新增 `apply_once`：引擎在 artifact root 独占创建 marker artifact，整个部署只注入第一次 acquire，重试与后续 acquire 干净执行；同时修复注入决策粘性（每个 Action 开头清 `_failure_injection`，此前旧值会泄露到后续 acquire，也破坏 probability<1 统计口径）。skill 3.0.31 + node 1.0.21 重建安装。 / Add `apply_once` to the recovery-eval failure injection: the engine exclusively creates a marker artifact in the artifact root so exactly one acquire per deployment is injected and retries stay clean; also fix the sticky injection decision (cleared per Action; previously the stale value leaked into later acquires and corrupted probability<1 statistics). Skill 3.0.31 with node 1.0.21 rebuilt and installed.
-- [eval] [test] 3 项新测试（marker 独占创建/审计/跨引擎门控、非布尔拒绝、关闭时不写 marker）；定向 90 passed。 / Three new tests; focused suites 90 passed.
-
-### 架构与验证 / Architecture and Validation
-- marker 复用既有 artifact 约定（防逃逸/防符号链接/独占幂等），引擎与探针边界不变；未运行仿真或运动。live 回执：Isaac oracle run4 在抓取资格 gate 取消——oracle 契约生效，但 R01 矮瓶合法窗口仅 8.8mm，固定深度分数 0.35/0.50/0.65 全落窗外（详见 changelog/2026-11_part2.md v17.6.0）。 / The marker reuses existing artifact conventions with the engine/probe boundary unchanged; no simulation or motion ran. Live receipt: Isaac oracle run4 cancelled at the grasp gate — the oracle contract works, but the squat R01 leaves an 8.8 mm legal window and the fixed depth fractions all fall outside (details in changelog/2026-11_part2.md v17.6.0).
-
-### Git 提交 / Git Commit
-- Implementation commit: `72970a03`; branch: `feature/planning-loop`. / Implementation commit: `72970a03`; branch: `feature/planning-loop`.
-
-## v17.5.2 (2026-11-09 12:10) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] persistent host 透传 `acquire_safe_recovery`（bool）与 `failure_injection`（object）到 worker runtime profile（默认缺省不写入）；profile 白名单扩展并做类型校验。 / The persistent host passes `acquire_safe_recovery` (bool) and `failure_injection` (object) into the worker runtime profile (omitted by default); the profile whitelist is extended with type validation.
-- [eval] [test] 透传与拒绝测试（默认 profile 不含评测字段；非法类型被拒）。 / Passthrough and rejection tests (default profiles carry no evaluation fields; invalid types are rejected).
-
-### Git 提交 / Git Commit
-- Implementation commit: `84a06986` 前序（含 v17.5.3）；branch: `feature/planning-loop`. / Implementation commits precede `84a06986` (with v17.5.3); branch: `feature/planning-loop`.
-
-## v17.5.3 (2026-11-09 12:15) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] 恢复评测部署接线：skill 3.0.30 + node 1.0.20（内嵌含安全恢复/注入的 adapter 源）、`robotwin-blocks-ranking-recovery-eval` profile（dataflow-recovery-eval.yaml → persistent-host-recovery-eval.yaml，字面量开启 acquire_safe_recovery 与 gripper_close_offset 注入）、bundle 构建安装、部署 env `deployments/robotwin-recovery-eval/runtime.env`（blocks-ranking + GraspNet + q5 qualification）。 / Recovery-evaluation deployment wiring: skill 3.0.30 with node 1.0.20 embedding the safe-recovery/injection adapter sources, the `robotwin-blocks-ranking-recovery-eval` profile, the built and installed bundle, and the deployment env for blocks-ranking plus GraspNet plus q5 qualification.
-
-### 架构与验证 / Architecture and Validation
-- live 进展：q5 controller qualification 全链完成（capability→plan→verify→人工批准→SAPIEN 运行 passed→独立验证 validated_pass→证据批准 approved_pass，七项测试证据）；oracle run2 发现并修复 v17.4.1 契约错配；run3 因远程模型 API 余额耗尽（¥0.04）失败——所有 LLM 驱动运行等待充值。 / Live progress: the q5 controller qualification chain completed with a passing SAPIEN run and independent validation; oracle run2 exposed and fixed the v17.4.1 contract mismatch; run3 failed on remote model API balance exhaustion (¥0.04 left) — every LLM-driven run awaits a top-up.
-
-### Git 提交 / Git Commit
-- Implementation commit: `84a06986`; branch: `feature/planning-loop`. / Implementation commit: `84a06986`; branch: `feature/planning-loop`.
-
-## v17.4.1 (2026-11-09 11:55) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] 修复 oracle 抓取 provider 输出与通用 grasp-proposal 契约的错配（run2 live 发现）：快照字段集改为封闭集合（移除输出级 `geometry_qualification`/`source`，血缘改由候选 provenance 与 `produced_evidence_refs` 携带），funnel 改为标准四阶段且 `retained == len(candidates)`。 / Fix the oracle grasp provider output to match the generic grasp-proposal contract exactly (found in live run2): the snapshot uses the closed field set (output-level lineage keys removed; lineage stays in candidate provenance and `produced_evidence_refs`) and the standard four-stage funnel with `retained == len(candidates)`.
-- [eval] [test] 测试直接经 `normalize_snapshot`/`validate_snapshot` 验证通用契约。 / The test now validates the generic contract directly through `normalize_snapshot`/`validate_snapshot`.
+### 实测设计 / Simulation Comparison [完成]
+- [eval] [exp] A 轮仅移除旧臂、保留旧底盘位置；B 轮移除旧臂并启用新位置。每轮 fresh reset、新 scene revision、新感知及新 preparation，历史输出保留。 / Run A removes only the old arm at the original base position; run B also enables the new base position. Each run starts with a fresh reset, scene revision, perception and preparation while preserving prior outputs. (local)
+- [env] [docs] 旧臂含 11 个碰撞体，世界包围盒 x[-0.604,0.117]、y[-0.286,0.146]、z[0.712,1.400]m；桌边 xmin=-0.735087m。底盘前缘当前约 -0.73477m，已贴桌边，新位置将伸入桌下约 15.1cm；机身顶部约 0.29m，低于桌底约 0.697m，仍须完整姿态/路线碰撞检查。 / The old arm has 11 colliders with world bounds x[-0.604,0.117], y[-0.286,0.146], z[0.712,1.400]m; the table edge is xmin=-0.735087m. The existing chassis front is about -0.73477m, already beside the table, and the new position extends about 15.1cm below it. The chassis top is about 0.29m below the 0.697m tabletop bottom; full pose/route collision checks still apply. (local)
+- [env] [docs] 臂基由约[-0.901,0.36,0.29]移至[-0.75,0.18,0.29]m，至烧杯的水平距离由约0.897m减至0.694m；此几何变化不等于倾倒可达结论。 / The arm base moves from about[-0.901,0.36,0.29] to[-0.75,0.18,0.29]m, reducing the horizontal beaker distance from about0.897m to0.694m; this geometry alone does not establish pour reachability. (local)
 
 ### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/oracle_grasp_geometry.py`：provider 输出形状修复。 / Provider output shape fix.
-- [修改] `examples/forge-adapters/isaacsim_lab/tests/test_oracle_grasp.py`：契约级断言。 / Contract-level assertions.
-
-### 关键 Diff / Key Diff
+- [env] [feat] [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-scene.usda` L1-L14：通过 subLayers 继承原场景并停用旧臂。 / Inherit the original scene through subLayers and deactivate the old arm. (local)
 ```diff
-before: funnel={"targets","generated"} + extra output keys -> normalize_snapshot None
-        -> grasp.propose unavailable (live run2 failure)
-after:  closed snapshot fields + decoded/canonicalized/deduplicated/retained funnel
-        -> endpoint-level contract test green, 498 passed
++#usda 1.0
++(
++    defaultPrim = "World"
++    subLayers = [@/home/yanxu/LabUtopia/assets/chemistry_lab/tabletop_station/tabletop_station.usda@]
++)
++over "World" {
++    over "Franka" (active = false) {}
++}
 ```
+- [env] [tune] [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L1-L93，基于现行 `/tmp/ts_run21.yaml`，仅 L12 改位置。 / Copy the current station deployment with only L12 changing base position. (local)
+```diff
+-  base_position: [-1.201, 0.36, 0.01]
++  base_position: [-1.05, 0.18, 0.01]
+```
+- [env] [feat] [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase.json` L1-L29：以现行 `/tmp/profile_run21.json` 为来源，L3/L6 接新站点与覆盖场景，L4-L5/L26/L28 使用同目录配置相对路径。 / Derive from the current profile; L3/L6 select the station and overlay, and L4-L5/L26/L28 resolve sibling config paths. (local)
+```diff
+- "config_path": "/tmp/ts_run21.yaml"
+- "scene_usd_path": "/home/yanxu/LabUtopia/assets/chemistry_lab/tabletop_station/tabletop_station.usda"
++ "config_path": "labutopia-ridgebase-station.yaml"
++ "scene_usd_path": "labutopia-ridgebase-scene.usda"
+```
+- [comm] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py` L239-L244：传回 failure_code 与逐候选 error；error-only、code-only 和非 Mapping 响应保留。 / Forward both failure_code and per-candidate error, retaining error-only, code-only and non-mapping handling. (local)
+```diff
+- "error": str(result.get("failure_code", result.get("error", "held_route_unavailable")))
++ "error": ": ".join(str(result[key]) for key in ("failure_code", "error")
++                    if result.get(key)) or "held_route_unavailable"
+```
+- [eval] [fix] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` L1029-L1058：一个参数化回归覆盖四种失败响应，实际调用生产 prepare_held，断言状态不可用且未授权运动。 / One parametrized regression exercises production prepare_held across four failure response shapes and asserts unavailable status with no motion authorization. (local)
+```diff
++({"status": "unavailable", "failure_code": "pour_route_unavailable",
++  "error": "clearance=0.08: inverse_kinematics_failed; yaw=0.2: route_collision"},
++ "pour_route_unavailable: clearance=0.08: inverse_kinematics_failed; yaw=0.2: route_collision")
++assert result == {"status": "unavailable", "motion_authorized": False, "error": expected_error}
+```
+- [docs] [chore] `CHANGELOG.md` L9 新增 Archive，L53 起同步本版本与 v17.6.29/.28/.27/.26 的完整月档内容；索引行号会随本条实测记录补齐而滚动。 / Add the archive link at L9 and synchronize this entry plus the four preceding version entries from L53 onward; index line numbers move as measurements are completed. (local)
+
+### 已执行验证 / Completed Validation（无动作 / No motion）
+- [eval] [chore] `PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py -q` → **28 passed**（插件禁用产生既有 asyncio_mode 配置警告）。 / The complete PAOS integration file passes 28 tests; plugin disabling emits the existing asyncio_mode configuration warning. (local)
+- [eval] [chore] `.venv/bin/python -m ruff check examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` 与 `git diff --check` 通过。 / Ruff on the changed Python files and diff whitespace checks pass. (local)
+- [eval] [exp] pxr 无运动组合验证通过：覆盖层旧臂 inactive 且遍历无其子树，原 USD 旧臂仍 active 且有 11 个 CollisionAPI；profile.validate_paths() 通过；station 与现行配置仅位置文本一行差异；新旧 profile 除 profile/config/scene 路径外各 dataclass 字段完全相等。 / A no-motion pxr check confirms old-arm inactivity and subtree exclusion while the source retains its active arm and 11 colliders; profile paths validate, the station differs by one position line, and profile fields otherwise match exactly. (local)
+- [eval] [chore] 首次组合验证脚本导入 OmegaConf 时因主 venv 未安装而停止；后续验证移除该无必要依赖，用精确文本比较通过，未把首次记为通过。 / The first composition script stopped because OmegaConf is absent from the main venv; the corrected check uses exact text comparison and passes without that unnecessary dependency. (local)
+
+### 真实无运动初始化证据 / Actual No-Motion Initialization Evidence
+- [env] [exp] Isaac 新场景初始化读回：`/World/Ridgebase` 底盘世界坐标 `[-1.04999995, 0.180000007, 0.0099999998]`m，臂基 `[-0.75402671, 0.18063676, 0.28999999]`m；`old_franka_active=false`、`active_legacy_colliders=[]`、`home_collision_check=passed`、`status=initialized`。证据：`out/labutopia-placement-20261119-1847/no-motion.json`，scene revision `labutopia-tabletop-rod-rack-v1:45be9393627949ea9432e094d45fce83:0`。 / Fresh Isaac initialization reads the deployed base at `[-1.04999995, 0.180000007, 0.0099999998]`m and the arm base at `[-0.75402671, 0.18063676, 0.28999999]`m, with the old arm inactive, no active legacy colliders, a passed home collision check, and initialized status. The JSON evidence carries the stated fresh scene revision. (local)
+- [eval] [docs] 上述证据证明 frame、初始状态和 home 碰撞检查通过；它属于 Provider 初始化证据，不证明完整倾倒路线或执行成功。 / These Provider initialization measurements establish the frame, initial state and home collision check; they do not establish full pour-route availability or execution success. (local)
+- [docs] [chore] 主会话实现复核目前未发现 Blocker/Major；场景与配置保留在 Adapter 部署层，公共界面未改，现有碰撞资格检查与接触阈值继续适用。 / The primary implementation review currently finds no Blocker/Major issue; scene and configuration remain Adapter deployment concerns, public interfaces stay unchanged, and existing collision qualification and contact thresholds apply. (local)
+
+### A/B 失败终态 / A/B Failed Terminal Outcomes
+- [eval] [exp] A（仅移除旧臂）任务 `task_5e60fae54b2f41ba` 已失败终态，`metadata.returncode=1`；28/28 approach probes available，acquire succeeded，总1791采样、108个lift采样，attach峰值 `0.009680901646895916m`。视频 `A-remove-only/artifacts/labutopia/phase-video/752e43f86efa4f94bf9b96a28c4fb223.mp4`，反馈 `phase-feedback/50b86ddbee92461aaffdb57cc101399d.json`，根目录为 `out/labutopia-placement-20261119-1847/`。 / Run A terminates failed with return code1 after 28/28 available approach probes and a successful acquire; 1791 total samples include 108 lift samples with the stated peak attach error. Video and feedback are retained under the stated run root. (local)
+- [eval] [exp] A的24条held pour候选全部拒绝，22条明确 `panda_link2 overlaps /World/table/surface/mesh`，余2条仅 `transport` 未细分，不确诊为关节限位；终态仍holding，未执行pour/place。完整详情见A的 `placement-summary.json` 与 `acceptance.json`。 / All 24 held-pour candidates fail, 22 explicitly naming link2/table collision and two retaining only the transport stage without a confirmed joint-limit diagnosis. The arm remains holding; pour/place do not execute. Full details are saved in the run summary and acceptance record. (local)
+- [eval] [docs] A实际候选后缀−0，轴向π、切向+0.06m；run24f轴向π/2、切向−0.06m，因此不声称相同轨迹或逐位重放。移除旧臂不足以恢复倾倒，旧臂存在及路线选择影响成立，但不能仅由A唯一归因run24f为旧臂或距离问题。 / A uses candidate suffix−0 with axial branchπ and tangent+0.06m, while run24f used axial branchπ/2 and tangent−0.06m; these are not identical trajectories. Removal alone does not restore pouring, and A cannot uniquely attribute all of run24f's failure to the old arm or distance. (local)
+- [eval] [exp] B目录 `out/labutopia-placement-20261119-1847/B-remove-and-near/`，底盘 `[-1.05,.18,.01]`，任务 `task_7b3ca51a7ec34239` 于19:03:58至19:16:12执行后失败，returncode=1。28/28 approach probes available，acquire因 `grasp_object_displaced: object moved before a qualified lift` 失败；1248反馈记录（含异常结束重复record），lift/grasp_valid/contact_load_valid均为0，倾倒准备/pour/place未到达，returned_to_safe_pose与observation_ready均为false。 / B runs between the stated times and terminates failed with return code1. All 28 approach probes are available, but acquire fails before a qualified lift. Its 1248 feedback records include a repeated exception-ending record; lift and qualified grip/load counts are zero, pour preparation/pour/place never execute, and safe-pose return and observation readiness are false. (local)
+- [eval] [exp] B末帧以生产 `grasp_anchor_drift` / `grasp_pose_errors` 重算，锚点漂移 `0.007132053241597708m≤0.008m`，物体完整旋转 `0.08129748240811713rad>0.08rad`；R05不在axial_grip_paths，无轴对称豁免。该旋转不是attachment_rotation_error_rad=0.08183650103083709；左右冲量 `[0,0.010030197765445337]N·s`，双侧负载无效。 / Production helper recomputation puts anchor drift inside its position tolerance but full object rotation beyond the existing angular tolerance, with no R05 axial-symmetry exemption. This is distinct from attachment rotation error; the stated unilateral impulse does not satisfy bilateral load. (local)
+- [eval] [exp] B视频 `artifacts/labutopia/phase-video/a49242a7d8c74e58ac62bd1275c1ba33.mp4`（20.783333秒、1247帧、3840×960），反馈 `artifacts/labutopia/phase-feedback/b152d2bf3e3943bd8b40376f173538bb.json`；摘要见本轮placement-summary.json。B保存的motion/physics/perception配置与执行后仓库配置逐字节一致，故阈值重算适用。 / B retains the stated video and feedback plus the complete run summary. Saved motion, physics and perception configurations match the repository versions after execution byte for byte, supporting the tolerance recomputation. (local)
+- [eval] [docs] B候选−0、轴向π、切向+0.06m与A同分支，但底盘改变IK/接触实现。移除旧臂不足以恢复倾倒；A的22/24条指向link2撞桌，B先抓取失败，尚不能判定新位置倾倒可达性，也不能归结为只因距离。后续应先检查新位置双指对称接触/瓶体旋转并测量桌面及低臂基的无动作路线；本轮不继续前移或调阈值。 / B shares A's candidate branch, while placement changes IK/contact. Removal alone is insufficient; A names link2/table collision in22/24 candidates, and B fails before testing pour reachability. Follow-up should inspect grip symmetry/rotation and no-motion routes against the table and low arm base, without further position or threshold changes in this task. (local)
+- [docs] [docs] A/B视频右侧固定标签视图沿用profile的R01检查视角，实际assignment与phase-feedback均为R05；本轮不改摄像头。 / A/B videos retain the profile's fixed R01 inspection pane; assignments and phase feedback identify the actual R05 target. Camera configuration is unchanged. (local)
+- [docs] [docs] [新增 / Added] `docs/forge/LABUTOPIA_RIDGEBASE_PLACEMENT_20261119.md` L1-L118：双语记录A/B失败终态、部署与坐标、完整复现命令、外部资产快照、元数据和因果边界；runner未配置显式seed，不声称确定性。 / Add the bilingual deployment report with both failed terminal outcomes, frame assumptions, exact reproduction commands, external-asset snapshots, metadata and causal limits; no explicit seed is configured and determinism is not claimed. (local)
+```diff
++ A: acquire succeeded; 24 pour candidates rejected, 22 link2/table collisions.
++ B: acquire failed before lift; object rotation 0.0812974824rad > 0.08rad.
++ External scene/config/robot snapshots preserve pre-existing LabUtopia edits.
++ Evidence: fresh reset/revision, saved instruction/profile/config/metadata/diff.
+```
+
+### 外部资产保存 / External Asset Preservation
+- [data] [chore] LabUtopia基础提交 `2224bb815fedeff91f82021ec661761682f99310`，源scene/config在本轮前已有本地修改。本轮未改外部源资产；实际scene/config/robot、tracked-assets.diff及metadata保存在 `out/labutopia-placement-20261119-1847/external-scene-snapshot/`，A/B metadata均包含外部证据指针。 / The external LabUtopia base revision has pre-existing local scene/config edits. This task preserves those sources and records actual scene/config/robot files, tracked diff and metadata in the external snapshot, referenced by both runs. (local)
+
+## v17.6.29 (2026-11-19) - claude
+
+### 完成范围 / Scope
+- run24e 死因闭环(跨 revision 过程特征管道):acquire 使场景前进后,绑定会自动刷新而 planner 选定的瓶口/烧杯口特征引用冻在旧 revision——pour 的 held 准备在 simulator-truth 链上永远拿不到当前特征(records 的 features=None,只有候选列表),run24e 成为全链历史第一次走到 pour prepare_held 即死。修复三件:① RuntimeSubtaskDriver 的 revision 刷新块对带过程特征的 pour/stir 子任务**重查重选**——同 planner 同构地跑 manipulation.process_features(propose)→按角色确定性选(pour:源 pour_lip rim+目的 rim 各一;stir:endpoint_a/b+目的 rim,首个可用者胜,同抓取候选"第一个可用即胜"原则)→manipulation.prepare_process_features(validate_selection)资格化→更新 spec 引用;拿不到当前特征即诚实 fail-closed(refresh_perception_before_motion 族)。② held 工具族输入 schema 新增**可选** process_feature_refs/process_feature_candidate_set_ref(不进 required;place/legacy 无特征照旧),刷新后的引用随 prepare_held 请求下行,经 prepared_arguments 回声流入 object.pour 执行;published contracts 同步再生(prepare_held/pour/stir;object.place 合同保持 legacy 形状不动)。③ paos_client.prepare_held 把合并请求的 process_type 透传给 refresh_process,任务条件化的倾倒方向(pour_direction)在刷新后与初始准备同语义存活。 / run24e's death closed (cross-revision process-feature plumbing): after the acquire advances the scene, the binding refreshes itself but the planner-selected rim references stay frozen at the old revision — pour held preparation on the simulator-truth chain can never see current features (record features=None, only candidate lists), and run24e was the first run in chain history to reach pour prepare_held and die there. Three fixes: ① the RuntimeSubtaskDriver revision-refresh block now **re-queries and re-selects** process features for pour/stir subtasks that carry them — the same Query/Preparation pair the planner used: manipulation.process_features (propose), deterministic role selection (pour: one source pour_lip rim plus one destination rim; stir: endpoint_a/b plus the destination rim; first available wins, the same principle as grasp candidates), manipulation.prepare_process_features (validate_selection), then the spec refs update; absent current features fail closed honestly (refresh_perception_before_motion family). ② the held tool family's input schema gains **optional** process_feature_refs/process_feature_candidate_set_ref (not required; place/legacy flows unchanged), so the refreshed refs ride the prepare_held request and, echoed through prepared_arguments, flow into object.pour execution; published contracts regenerated to match (prepare_held/pour/stir; the object.place contract keeps its legacy shape untouched). ③ paos_client.prepare_held passes the merged request's process_type through to refresh_process so the task-conditioned pour direction survives the refresh with the same semantics as the initial preparation.
+
+### File Changes
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`(刷新块 +_refresh_process_features/_select_process_features;prepare_held 参数注入 spec 特征引用)。`held_manipulation.py`(可选特征属性,不进 required)。`contracts/{manipulation.prepare_held,object.pour,tool.stir}.tool.yaml` 再生。`examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`(refresh_process 透传 process_type)。测试:`test_subtask_executor.py` +3(revision 前进→prepare_held 收到 :N 引用而非 :0;特征不可用→诚实 refresh_perception_before_motion 且不动 pour;held schema 接受可选特征);`test_phase_pipeline.py` 夹具注册特征 Query/Preparation(生产 pour/stir 必带特征);`runtime_with_subtask_endpoint` 同步。 / subtask_executor.py (refresh block + _refresh_process_features/_select_process_features; prepare_held arguments inject the spec's feature refs); held_manipulation.py (optional feature properties, excluded from required); contracts/{manipulation.prepare_held,object.pour,tool.stir}.tool.yaml regenerated; paos_client.py (refresh_process receives process_type). Tests: +3 in test_subtask_executor.py (revision advance → prepare_held receives :N refs, never :0; features unavailable → honest refresh_perception_before_motion without touching pour; the held schema accepts optional features); test_phase_pipeline.py fixture registers the feature Query/Preparation (production pour/stir always carry features); runtime_with_subtask_endpoint likewise.
 
 ### 架构与验证 / Architecture and Validation
-- 修复只改 provider 输出形状；gate/资格链不变。isaacsim_lab 全量 `498 passed, 2 skipped`；未运行仿真。 / Only the provider output shape changed; gate and qualification are unchanged. Full isaacsim_lab suite `498 passed, 2 skipped`; no simulation was run.
+- 规范门 598 passed / 2 预存(scene_physics);全技能套件(async 开启)663/666,失败 13 项与 HEAD 基线逐一相同(环境性,worktree 对照验证)。判据 run24f(同 profile 同配置,工作区 out/labutopia-oracle-run24f):acquire 成功后 pour 准备应首次拿到 :1 特征并执行倾倒(对准由其自身尖端/轴门裁决),随后放置/回归;若倾倒物理判负,如实体审。 / Canonical gate 598 passed / 2 pre-existing; full skill suite (async enabled) 663/666 with the 13 failures identical to the HEAD baseline (environmental, verified by worktree comparison). Criteria for run24f (same profile and config, workspace out/labutopia-oracle-run24f): after the acquire succeeds, pour preparation should receive :1 features for the first time and execute the pour (alignment adjudicated by its own tip/axis gates), then placement and return; if the pour physics fails its gates, that fact stands.
 
-### Git 提交 / Git Commit
-- Implementation commit: `343503b3`; branch: `feature/planning-loop`. / Implementation commit: `343503b3`; branch: `feature/planning-loop`.
+## v17.6.28 (2026-11-19) - claude
 
-## v17.5.1 (2026-11-09 13:30) - codex
+### 完成范围 / Scope
+- 用户裁决 run24d:"一直还夹着没掉 这不就是成功了吗"——attached 段(lift/携带)失持判据改为与 close settle 相同的语义:**只有真实双侧接触丢失才停**;携带中的 mm 级相对滑移是平行爪的物理,只记录不判死。具体:①attached 段逐步门从"接触+变换容差"改为只认接触丢失(support_manifold 瞬态窗口照旧);②终点判(possession="holding" 与 acquire/pour 完成后置条件)同改接触语义(`carried`)。8mm 容差数值与全部冻结不变量零变化——它仍诚实地活着在 lift 入口 grasp_check(一次判)与倾倒尖端/轴误差、放置各自门里;遥测 grasp_valid 保持变换语义如实记录。 / Per the user's ruling on run24d ("it never dropped — that's a success"): the attached-phase (lift/carry) grasp-loss gate now carries the same semantics as the close settle — only a real loss of bilateral contact stops; mm-level relative slip during a carry is parallel-jaw physics, recorded but not fatal. Specifically: ① the per-step attached gate drops its transform bound (contact loss only; the support-manifold transient window unchanged); ② the terminal judgment (possession="holding" and the acquire/pour completion postconditions) moves to the same contact semantics (`carried`). The 8mm tolerance value and every frozen invariant are unchanged — it still lives honestly in the lift-entry grasp check (judged once) and in the pour tip/axis and placement gates; telemetry keeps recording grasp_valid with the transform semantics.
 
-### 完成范围 / Completed Scope
-- [env] [feat] `StackBlocksThreeTaskAdapter.postcondition_evidence`：对 goal 的每个 `produced_evidence` 键实测支撑关系与稳定放置（直立、支撑足迹内水平偏移、近接触垂直净空），输出 satisfied/violated/unmeasured 测量并标 `geometry_source: simulator_actor_geometry`；不可测保持 unmeasured，绝不升格为满足，不改任务状态、不授权运动。 / Add `StackBlocksThreeTaskAdapter.postcondition_evidence`: measures support-relation and stable-placement facts per goal `produced_evidence` key (upright orientation, footprint-bounded horizontal offset, near-contact vertical gap) with satisfied/violated/unmeasured status and `geometry_source: simulator_actor_geometry`; unmeasurable facts stay unmeasured, task state and motion authorization are untouched.
-- [eval] [test] 3 项新测试：静止支撑满足、偏移/悬空违反、绑定缺失与未知键 unmeasured。 / Three new tests: resting support satisfied, offset/floating violated, missing bindings and unknown keys unmeasured.
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py`：`StackBlocksThreeTaskAdapter.postcondition_evidence`（复用 `_matrix`/`_half_extents`，与 relation_target 相同的 actor 几何源）。 / `StackBlocksThreeTaskAdapter.postcondition_evidence` reusing `_matrix`/`_half_extents` and the same actor geometry source as `relation_target`.
-- [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py`（+3 测试）。 / Three additional tests.
-
-### 关键 Diff / Key Diff
-```diff
-before: stack goal produced_evidence keys (support-relation/stable-placement)
-        had no Adapter-side measurement
-after:  per-key measured geometry predicates with explicit tolerances;
-        unmeasurable stays unmeasured (fail-closed)
-```
+### File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`(attached 逐步门改接触键;终点 possession/completed 改 carried)。`tests/test_contact_timing.py` +1(run24d 形态:双指持续带载+携带滑移超容差→跑完,possession=holding,遥测如实记 grasp_valid=False)。 / phase_motion.py (per-step attached gate keyed on contact; terminal possession/completed via carried); +1 test_contact_timing test (the run24d shape: persistent bilateral load with carry slip past the bound runs to completion, possession=holding, telemetry honestly records grasp_valid=False).
 
 ### 架构与验证 / Architecture and Validation
-- 证据只读测量归 Task Adapter；PAOS 任务状态、settlement 与 motion 授权不变。 / Evidence is a read-only Adapter measurement; PAOS task state, settlement and motion authorization are unchanged.
-- 验证：`test_robotwin_task_adapters.py` 13 passed（10 既有 + 3 新）；未运行仿真或运动。 / `test_robotwin_task_adapters.py` 13 passed (ten pre-existing plus three new); no simulation or motion was run.
+- 规范门 595 passed / 2 预存(scene_physics)。判据 run24e(同 profile 同配置,工作区 out/labutopia-oracle-run24e):lift 携带段不再被 8mm 中途杀,链路应首次走完 lift→transport→倾倒→放回;倾倒对准由其自身尖端/轴误差门诚实裁决;若终点 carried 判负(接触真丢)则物理事实如实上报。 / Canonical gate 595 passed / 2 pre-existing. Criteria for run24e (same profile and config, workspace out/labutopia-oracle-run24e): the lift carry is no longer killed mid-way at 8mm, and the chain should complete lift→transport→pour→return for the first time; pour alignment is honestly adjudicated by its own tip/axis gates; if the terminal carried check fails (contact truly lost) the physical fact is reported as-is.
 
-### Git 提交 / Git Commit
-- Implementation commit: `c113b936`; branch: `feature/planning-loop`. / Implementation commit: `c113b936`; branch: `feature/planning-loop`.
+### run24e 判决(2026-11-19 11:53 终态,失败,acquire 历史首次成功)/ run24e verdict (2026-11-19 11:53 terminal, failed, first-ever successful acquire)
+- **v17.6.28 全效**:acquire 操作 status=succeeded(全链历史首次)——135 个 lift 采样全部双侧带载,attach 误差峰值 17.5mm(旧 8mm 判据 2.2 倍)运完,物体跟 TCP 71%,终点 possession=holding。机器人首次把 R05 提起并保持在握。 / v17.6.28 fully effective: the acquire operation reports status=succeeded (first time in the chain's history) — all 135 lift samples carry bilateral load, a peak attach error of 17.5mm (2.2× the old bound) is carried through, the object follows the TCP at 71%, and possession=holding at the finish. The robot lifts and holds R05 for the first time.
+- **新失败面=倾倒准备的跨 revision 过程特征管道(非物理)**:acquire 使场景 revision :0→:1;refresh_binding 正常重跑完整绑定链(第二轮感知全绿,空中瓶+BEAKER 均被感知),但 subtask spec 的 process_feature_refs 冻结在 :0 证据 → pour 准备 stale 失败,倾倒未执行;agent 诚实 finalize(subtask_failed——replan 路由缺口第三处:subtask_executor._result 对运动后失败不给 replan 建议),机械臂终态仍持瓶。修复方向:pour/stir 子任务在 revision 前进后重查+重选过程特征(与绑定刷新同构)。 / New failure face is the cross-revision process-feature plumbing in pour preparation (not physics): the acquire advanced the scene revision :0→:1; refresh_binding correctly re-ran the full binding chain (second perception wave all green, held bottle and BEAKER both perceived), but the subtask spec's process_feature_refs stay frozen on :0 evidence → pour preparation failed as stale, the pour never executed; the agent honestly finalized (subtask_failed — a third instance of the replan-routing gap: subtask_executor._result gives no replan recommendation for post-motion failures), the arm still holding the bottle. Fix direction: pour/stir subtasks re-query and re-select process features after a revision advance, mirroring the binding refresh.
 
-## v17.5.0 (2026-11-09 12:50) - codex
+## v17.6.27 (2026-11-19) - claude
 
-### 完成范围 / Completed Scope
-- [env] [feat] RoboTwin persistent 执行链新增 config 门控的 acquire 安全恢复：`_execute_segment`/`_set_gripper` 逐步记录已下发关节命令；已知 lift 后置失败（`AcquisitionPostconditionError`：物体仍在支撑、夹爪为空）且 profile 开启 `acquire_safe_recovery` 时，引擎在控制器存活期内执行 `recover_acquire_to_observation`（开爪保持→逆序重放命令日志→回起点保持），验证支撑净空与无夹持接触后以 `AcquireSafeRecoveryError` 回执——字段精确匹配通用恢复契约（empty/on_support/returned_to_safe_pose/observation_ready/requires_replan/refresh_perception_before_motion + 新 scene revision）；任何条件无法证明则以 `acquire_recovery_postcondition_failed` 保持 unknown。 / Add config-gated safe acquire recovery to the RoboTwin persistent chain: `_execute_segment`/`_set_gripper` log every commanded joint step; on a known lift postcondition failure (`AcquisitionPostconditionError`: object still supported, gripper empty) with `acquire_safe_recovery` enabled, the engine runs `recover_acquire_to_observation` while controllers are still alive (open while holding -> reverse-replay the command log -> hold at the start), verifies support clearance and no gripper contact, and receipts via `AcquireSafeRecoveryError` with fields exactly matching the generic recovery contract; any unproven condition stays unknown as `acquire_recovery_postcondition_failed`.
-- [env] [feat] 新增评测专用失败注入：profile `failure_injection`（默认关闭）支持 `gripper_close_offset`，由引擎按 scene revision+invocation 确定性决定并写入 action artifact，探针仅在本 Action 的 close 值上应用偏移，路线契约不变。 / Add evaluation-only failure injection: profile `failure_injection` (default off) supports `gripper_close_offset`, decided deterministically by the engine from scene revision plus invocation identity and recorded in the action artifact; the probe applies the offset only to this Action's close value without changing the route contract.
-- [eval] [test] 8 项新测试：命令日志记录、逆序重放与保持、支撑未证/残余夹持接触 fail-closed、回执字段契约镜像、注入解析门控与确定性。 / Eight new tests: command-log recording, reverse replay and hold, fail-closed unproven support or residual gripper contact, receipt-field contract mirror, and injection-resolution gating with determinism.
+### 完成范围 / Scope
+- 行走杠杆 (C) 落地(用户裁决"追深发散即冻结"):hold-follow 的每步 −retain 重冻追深仅在双指**对称推进**(合法锥面退让跟随,v17.6.13 本意)时继续;检出**发散**——一指绝对回退(被顶回 >0.1mm)而另一指推进,即 run24b/c 侧走特征——立即冻结指目标(粘性,贯穿 close+lift),不再喂深。retain 0.002/hold_follow 本体与全部冻结容差零变化——变的是跟随的适用条件。run24c 证明首触即达标(0.22mm),追深是行走唯一驱动,冻结后 settle 误差预计停在 ~1-2mm。 / Walk lever (C) per the user's ruling: the hold-follow -retain re-freeze chase continues only while both fingers advance symmetrically (legitimate taper-recession tracking, the v17.6.13 intent); on divergence — one finger forced back in absolute terms (>0.1mm) while the other advances, the run24b/c lateral-walk signature — the finger target freezes (sticky across close and lift) and stops feeding depth. retain 0.002, hold_follow itself, and every frozen tolerance unchanged — what changes is the chase's applicability condition. run24c proved the first touch already qualifies (0.22mm) and the chase is the walk's only driver; with the freeze the settled error should stop at ~1-2mm.
 
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`：`AcquireSafeRecoveryError`/`AcquireRecoveryFailedError`、命令日志、`_gripper_holds_target`、`recover_acquire_to_observation`、注入应用点。 / New error classes, the command log, `_gripper_holds_target`, `recover_acquire_to_observation` and the injection application point.
-- [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`：AcquisitionPostconditionError 定向捕获与恢复编排、回执布尔字段透传、`_resolve_failure_injection` 与 artifact 记录。 / Targeted AcquisitionPostconditionError catch with recovery orchestration, receipt flag passthrough, `_resolve_failure_injection` and artifact recording.
-- [新增] `examples/forge-adapters/robotwin20/tests/test_acquire_safe_recovery.py`（8 测试）。 / Eight new tests.
-- [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py`、`tests/test_persistent_task_video.py`：部分构造的引擎补 `engine.profile = {}`（真实 `__init__` 总会设置）。 / Partially constructed test engines now set `engine.profile = {}` as the real `__init__` always does.
-
-### 关键 Diff / Key Diff
-```diff
-before: known acquire-postcondition failure -> known failed + measured replan,
-        arm left where the failure happened, no observation-ready receipt
-after:  config-gated reverse-replay recovery -> empty/supported/safe-pose
-        receipt -> fresh-observation replan; unproven retreat stays unknown
-added:  evaluation-only gripper_close_offset injection, engine-decided and
-        recorded per action; route contract and safety checks unchanged
-```
+### File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`(循环态 +follow_diverged/last_follow_fingers;closure 块追深分支加发散检测与冻结;attached-motion 跟随分支加 not follow_diverged 守卫)。`tests/test_contact_timing.py` +1(左指绝对回退伪装置:发散后目标恒定不追深,含 lift;断言冻结值=首触实测−retain)。 / phase_motion.py (loop state + follow_diverged/last_follow_fingers; divergence detection and freeze in the closure chase branch; the attached-motion follow gains the not-follow_diverged guard); +1 test_contact_timing test (absolute left-finger retreat fake plant: targets constant after divergence through lift; the frozen value equals first-contact measured minus retain).
 
 ### 架构与验证 / Architecture and Validation
-- 恢复驱动全部位于 RoboTwin 执行探针（Adapter 私有），引擎只做定向捕获与回执透传；Coordinator/AgentLoop/通用恢复契约零改动。逆序重放复用与正向执行相同的逐步守卫（deadline/stop/输入摘要/控制器源摘要/有界步进）。 / The recovery driver lives entirely in the RoboTwin execution probe (Adapter-private); the engine only catches, orchestrates and passes through the receipt. Coordinator, AgentLoop and the generic recovery contract are unchanged. Reverse replay reuses the identical per-step guards as forward execution.
-- 验证：robotwin20 全套与 HEAD 基线失败集完全一致（12 grounding + 1 video，均为既有、与本次无关），新增 8 项全部通过；ruff、compileall 通过。未运行 RoboTwin 仿真、Action admission 或运动。 / The full robotwin20 suite matches the HEAD baseline failure set exactly (twelve grounding plus one video, all pre-existing and unrelated), all eight new tests pass, and ruff/compileall pass. No RoboTwin simulation, Action admission or motion was run.
+- 规范门 594 passed / 2 预存(scene_physics 环境)。判据 run24d(同 profile 同配置,工作区 out/labutopia-oracle-run24d):close 完成 + grasp_check 误差显著缩小(<8mm)→ 进 lift;lift 段 attach 曲线=预期物理下蠕变初测(冻结握持下的残余蠕变率);若残余行走仍越 8mm,settle 判负→(D) 换带升级为主杠杆。 / Canonical gate 594 passed / 2 pre-existing. Criteria for run24d (same profile and config, workspace out/labutopia-oracle-run24d): close completes and the grasp_check error shrinks decisively (<8mm) into lift; the lift attach curve then measures the residual creep under intended physics (frozen grip); if the residual walk still crosses 8mm, the settle judgment fails honestly and (D) band selection becomes the primary lever.
 
-### Git 提交 / Git Commit
-- Implementation commit: `eb9eb5b4`; branch: `feature/planning-loop`. / Implementation commit: `eb9eb5b4`; branch: `feature/planning-loop`.
+### run24d 判决(2026-11-19 10:42 终态,失败,但双重翻页)/ run24d verdict (2026-11-19 10:42 terminal, failed, but two page-turns
+- **(C) 全效,侧走族死亡**:close 完整走完(err 峰 2.24mm),settle 点 grasp_check **1.86mm 通过**(run24c 同点 18.1mm 关节限位),lift 首次进入——预测→路线→抓→闭合→资格核对→提升全链贯通;指目标全程冻结 [0.01633,0.01631](48 个 lift 采样逐帧核对)。 / Lever (C) fully effective, the lateral-walk family is dead: close runs to completion (peak err 2.24mm), the settle-point grasp_check passes at 1.86mm (18.1mm at the joint limit in run24c), and lift is entered for the first time — prediction→route→grasp→closure→qualification→lift all chained; finger targets stay frozen at [0.01633,0.01631] through every one of the 48 lift samples.
+- **第二重翻页:残余蠕变=轴向挤出**:物体世界行走 [0.09,0.27,20.49]mm vs TCP [0.06,0.12,28.69]mm(横向仅 0.3mm),瓶沿轴下滑 8.2mm(跟随率 71%),0.78s 内 err 0→8.20mm 触线判 physical_grasp_lost(2639-2641 attached 逐步变换判),双侧接触全程未丢。机制:发散冻结把目标冻在行走中途→右指 3.9mm 稳态位置误差→挤压饱和 20N cap 作用于肩带斜面→轴向射流(run21b 跟随模式小挤压同族 9.85%,本轮 28.6%)。斜带几何是根因;(c) 提距再证死路(~10.5mm/s 时间性)。 / Second page-turn: the residual creep is axial extrusion: object world walk [0.09,0.27,20.49]mm vs TCP [0.06,0.12,28.69]mm (lateral only 0.3mm), the bottle slides down its own axis 8.2mm (71% follow), err 0→8.20mm in 0.78s trips the per-step attached-transform check as physical_grasp_lost, bilateral contact never lost. Mechanism: the divergence freeze froze the targets mid-walk — the right finger sits 3.9mm open of target (squeeze saturated at the 20N cap) pressing the sloped shoulder band, producing an axial jet (the run21b small-squeeze family was 9.85%; saturated squeeze here 28.6%). The sloped band is the root cause; the lift-distance lever (c) is confirmed dead again (~10.5mm/s, time-based).
+- **(D) 换带升为主杠杆**:肩带 z0.7700(r18.3)→平坦颈带 z0.792-0.817(r14.0-14.5,|dr/dz|≤0.19,run21b 微观分析估价裕度 ×2.9);实现前先取证 rank 为何在 28/32 合格候选中选中肩带;喇叭缘 0.817-0.827 由既有碰撞资格化诚实裁决。 / (D) band selection becomes the primary lever: shoulder band z0.7700 (r18.3) → flat neck band z0.792-0.817 (r14.0-14.5, |dr/dz|≤0.19, run21b microanalysis rated this direction ×2.9 margin); first a forensic on why the ranker picked the shoulder band among 28/32 qualified candidates; the flared lip at 0.817-0.827 is honestly adjudicated by the existing collision qualification.
 
-## v17.4.0 (2026-11-09 11:40) - codex
+## v17.6.26 (2026-11-19) - claude
 
-### 完成范围 / Completed Scope
-- [env] [feat] 实验室线新增显式 oracle 执行模式：`grasp_source: "simulator_truth_oracle"` 由 final-composed USD 真值直接产出类别感知抓取候选（瓶身轴向带内避让瓶口、棒杆留出工作端），镜像 GraspNet 候选形状经同一 `RecordedGraspProvider` 记录，并继续走未改变的 task-affordance gate 与 approach probe；全程标注 `simulator_ground_truth`，不冒充传感器推导。 / Add the explicit oracle execution mode to the lab line: `grasp_source: "simulator_truth_oracle"` derives category-aware grasp candidates directly from final-composed USD truth (vessel body band below the rim, rod shaft leaving the working end free), mirrors the GraspNet candidate shape through the same `RecordedGraspProvider`, and still passes the unchanged task-affordance gate and approach probe; lineage stays `simulator_ground_truth` and never masquerades as sensor-derived.
-- [env] [feat] acquire 路线新增 `simulator_truth_preselected` 策略：各搜索维度（策略/走廊/净空/转运朝向/轴向角）收敛到首个配置元素，只资格检查唯一变体（O(1) 取代 104 变体枚举）；关节限位、跟踪、碰撞、接触窗口、取消与安全恢复全部保留——豁免的是搜索，不是安全边界。 / Add the `simulator_truth_preselected` acquire route policy: every search dimension collapses to its first configured element and exactly one variant is qualified (O(1) instead of the 104-variant enumeration); joint limits, tracking, collision, contact windows, cancellation and safe recovery are unchanged — the exemption is the search, not the safety boundary.
-- [env] [config] 新增 `labutopia-oracle` 部署 profile 与 oracle 感知/运动配置（显式命名；oracle 抓取几何来自配置夹爪参数）。 / Add the explicitly named `labutopia-oracle` deployment profile plus oracle perception/motion configurations (oracle grasp geometry comes from configured gripper parameters).
-- [eval] [test] 14 项新测试覆盖几何正反例（瓶带/棒端自由/平行轴确定性回退）、候选形状与 `candidate_world_pose` 约定、同捕获真值记录 fail-closed、歧义类别、profile 装配与单变体资格。 / Fourteen new tests cover geometry positive/negative cases, candidate shape and the `candidate_world_pose` convention, same-capture truth fail-closed checks, ambiguous categories, profile assembly and single-variant qualification.
+### 完成范围 / Scope
+- close 瞬态判据语义按用户裁决落地(2026-11-19"这种几个mm的移动没啥问题 之后后面稳定加持住了就可以……你现在杀得太早了";run24b 现场:瓶被双侧实持、grip z 恒定、旋转 ≤0.016rad,却被 hold-follow 深推拖行 7.7mm 撞 8mm 资格线中止):**资格抓取关系核对从 close 每帧挪到 settle 点一次判**(既有 lift 入口 grasp_check,冻结 8mm/0.08rad 零变化);close 瞬态期间唯一停止条件=双侧接触丢失(真失持;physical_grasp_lost 改按 contacts() 判,不再被关系误差染指)与既有碰撞/界限门;displaced 锚点门在双侧接触建立后让位(settle 判接手),approach/grasp/接触前的 close 照旧;stable_frames 改数接触保持帧。容差值零变化——变的是判定时机语义。 / Close-transient gating semantics per the user's ruling (a few mm of settling motion is fine as long as the grip later stabilizes; "you are killing it too early"; run24b died exactly this way — a bilaterally held bottle dragged 7.7mm by the hold-follow squeeze into the frozen 8mm line): the qualified-grasp comparison moves from per-frame during close to a single settled judgment at the existing lift-entry grasp check (frozen 8mm/0.08rad untouched); during the closure transient the only grasp stop is a real loss of bilateral contact (physical_grasp_lost now keyed on contacts(), not the relation-tainted held) plus the existing collision/bound gates; the displaced anchor gate stands down once both pads hold the body (the settled judgment takes over) and stays active for approach/grasp/pre-contact close; stable_frames now counts maintained contact. Zero tolerance-value changes — the change is when the judgment is made.
 
-### 文件变更详情 / File Changes
-- [新增] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/oracle_grasp_geometry.py`：真值语义抓取几何与 `OracleSimulatorTruthGraspProvider`。 / Truth semantic grasp geometry and `OracleSimulatorTruthGraspProvider`.
-- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/perception_runtime.py`：`grasp_source` 分支、oracle 块 fail-fast 校验、records 绑定。 / `grasp_source` branching, fail-fast oracle block validation and records binding.
-- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L366-L371, L1203-L1218：新策略枚举与单变体收敛。 / New policy value and single-variant collapse.
-- [新增] `configs/labutopia-oracle.json`、`configs/labutopia-oracle-perception.json`、`configs/labutopia-oracle-motion.json`。 / Explicit oracle deployment, perception and motion configurations.
-- [新增] `examples/forge-adapters/isaacsim_lab/tests/test_oracle_grasp.py`（14 测试）。 / Fourteen oracle-mode tests.
-
-### 关键 Diff / Key Diff
-```diff
-before: grasp candidates only from the GraspNet worker funnel; acquire search
-        enumerated 104 variants (R05 route_search_timeout at 600s)
-after:  optional oracle provider derives semantic candidates from recorded
-        truth; the preselected policy qualifies exactly one configured variant
-unchanged: task-affordance gate, approach probe, route qualification,
-           contact windows, settlement, v17.0.0 safe recovery
-```
+### File Changes
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`(displaced 门加"接触建立后让位"条件与注释;closure 块:mid-close mismatch 删除、physical_grasp_lost 改接触键、freeze/stable_frames 改 contacts())。`tests/test_phase_motion.py` +2(横移瞬态存活至 lift 入口判负并留 grasp_check 采样;接触丢失照杀)。`tests/test_contact_timing.py` 旧"错位即停"测试改语义(错位接触闭夹续推、lift 入口一次判负;设 retain 0.002 令生产冻结深度在伪装置可见)。 / phase_motion.py (displaced gate gains a post-contact stand-down; closure block rewritten: mid-close mismatch removed, physical_grasp_lost contact-keyed, freeze/stable_frames on contacts()); +2 phase_motion tests; the old misaligned-contact-stops test rewritten to the settled semantics with retain 0.002 to make the production freeze depth visible in the fake plant.
 
 ### 架构与验证 / Architecture and Validation
-- Oracle 只作为可替换 Provider 插在既有感知端口后面；AgentLoop、execute_subtask 契约、Coordinator settlement 与安全恢复零改动。真值候选与模型候选共用同一 gate，语义校验不因来源放行。 / The oracle is a replaceable Provider behind the existing perception ports; AgentLoop, the execute_subtask contract, Coordinator settlement and safe recovery are untouched. Truth candidates share the same gate as model candidates; qualification never relaxes by provenance.
-- 验证：isaacsim_lab 全量 `498 passed, 2 skipped`；ruff、compileall 通过。未运行 Isaac 仿真、PAOS task 或运动。 / Full isaacsim_lab suite `498 passed, 2 skipped`; ruff and compileall pass. No Isaac simulation, PAOS task or motion was run.
-
-### Git 提交 / Git Commit
-- Implementation commit: `faaadee2`; branch: `feature/planning-loop`. / Implementation commit: `faaadee2`; branch: `feature/planning-loop`.
-
-## v17.3.15 (2026-11-09 10:20) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] Isaac acquire 路线搜索新增两项正向证据剪枝：`acquire_min_reorient_radius_m` 把姿态变化前的 raised/staging 航点径向推出基座折叠区；`_sample_terminal_arm_branches` 在路线搜索前对最终抓取位姿采样确定性 IK 分支，"有解且全部碰撞"才以 `grasp_terminal_arm_infeasible` 剪掉候选（零解不剪），碰撞自由分支反哺 pre-grasp IK warm start。 / Add two positive-evidence prunings to the Isaac acquire route search: `acquire_min_reorient_radius_m` pushes raised/staging waypoints radially out of the near-base wrist-fold region before orientation change; `_sample_terminal_arm_branches` samples deterministic IK branches at the final grasp pose before search and prunes only on positive evidence (solutions exist and all collide) as `grasp_terminal_arm_infeasible`, feeding collision-free branches back as pre-grasp IK warm starts.
-- [env] [feat] `LabGraspTaskAffordanceProvider` 新增抓取漏斗统计（evaluated / geometry_qualified / gate_rejects / probe_rejects / qualified），持久化为 `grasp-affordance-funnel` artifact 并写入 diagnostics；新增离线回放脚本 `replay_task_affordance_funnel.py`。 / Add grasp funnel statistics to `LabGraspTaskAffordanceProvider` (evaluated / geometry_qualified / gate_rejects / probe_rejects / qualified), persisted as a `grasp-affordance-funnel` artifact with diagnostics, plus an offline replay script `replay_task_affordance_funnel.py`.
-- [eval] [test] 新增/扩展 phase_motion 与 visual_perception 回归覆盖新配置、径向外推、terminal branch 剪枝与漏斗计数。 / Add/extend phase_motion and visual_perception regressions covering the new knobs, radial push-out, terminal-branch pruning and funnel counts.
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`：新增 `acquire_min_reorient_radius_m: 0.5`、`acquire_probe_terminal_seed_count: 8`。 / Add `acquire_min_reorient_radius_m: 0.5` and `acquire_probe_terminal_seed_count: 8`.
-- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L259-L340, L424-L446, L470-L480, L1620-L1660：reorient 半径校验/外推、terminal IK 分支采样与正向证据剪枝、deterministic_ik_seeds。 / Reorient-radius validation/push-out, terminal IK branch sampling with positive-evidence pruning, and deterministic_ik_seeds.
-- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L322-L510：gate/probe 拒绝按码计数并发布 funnel artifact。 / Count gate/probe rejects by code and publish the funnel artifact.
-- [新增] `examples/forge-adapters/isaacsim_lab/scripts/replay_task_affordance_funnel.py`：离线回放历史 run 的漏斗直方图。 / Offline replay of historical run funnels.
-- [修改] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`（+131）、`tests/test_visual_perception.py`（+27）。 / Regression additions in both test files.
-
-### 关键 Diff / Key Diff
-```diff
-before: every acquire variant enumerated through full corridor qualification
-        (R05: 65/104 variants, 600s route_search_timeout)
-after:  terminal pose IK branches sampled first; positive-evidence doomed
-        variants pruned as grasp_terminal_arm_infeasible; reorientation
-        moved to >=0.5m base radius; funnel counts persisted per run
-unchanged: route qualification, safety checks, settlement and recovery
-```
-
-### 架构与验证 / Architecture and Validation
-- 剪枝只发生在 Adapter 私有的运动几何层，且只凭正向证据（有解且全碰）剪枝；路线资格、接触窗口、settlement 与 v17.0.0 安全恢复不变。 / Pruning is Adapter-private motion geometry and positive-evidence only; route qualification, contact windows, settlement and v17.0.0 safe recovery are unchanged.
-- 定向 pytest：`PYTHONPATH=... .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests -q` -> `484 passed, 2 skipped`。 / Focused pytest over the full isaacsim_lab suite: `484 passed, 2 skipped`.
-- 未运行仿真、PAOS task、Action 或运动。 / No simulation, PAOS task, Action or motion was run.
-
-### Git 提交 / Git Commit
-- Implementation commit: `64b97575`; branch: `feature/planning-loop`. / Implementation commit: `64b97575`; branch: `feature/planning-loop`.
-
-## v17.3.9 (2026-11-08 15:10) - codex
-
-### 完成范围 / Completed Scope
-- [env] [fix] RoboTwin Persistent Runtime Bundle 现在将可选 `relation.establish` Provider 与 Coordinator context resolver 转发到通用 Runtime；未提供时维持原有工具集合，不注册 Action。 / Forward the optional `relation.establish` Provider and Coordinator context resolver to the generic Runtime; when omitted, preserve the existing tool set and do not register the Action.
-- [eval] [test] 增加 no-motion Provider substitution 集成测试，验证 Provider/resolver 到达 endpoint，且不执行 Action admission。 / Add a no-motion Provider-substitution integration test proving the Provider/resolver reach the endpoint without Action admission.
-- [docs] [diag] 记录 RoboTwin bundle 注入断层和本次边界；具体 stack Provider、table geometry、route/contact qualification 与 simulation evidence 仍缺失。 / Record the RoboTwin bundle injection gap and repair boundary; the concrete stack Provider, table geometry, route/contact qualification and simulation evidence remain absent.
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L169-L170, L195-L210：增加并转发可选 Provider/resolver。 / Add and forward optional Provider/resolver ports.
-- [新增] `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L317-L348：验证注入替换能力并避免调用 Action。 / Verify injected Provider substitution without Action invocation.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L89-L108：保存本次失败场景、归属与残余阻断。 / Record the failure scenario, ownership and remaining blockers.
-- [修改] `changelog/2026-11_part2.md` L605-L640：保存双语变更、精确行号、关键 Diff、测试与 Git 回执。 / Record bilingual changes, exact lines, key diff, tests and Git receipt.
-- [修改] `CHANGELOG.md` L52-L70：加入 v17.3.9 并滚动最近五版本。 / Add v17.3.9 and roll the latest-five index.
-
-### 关键 Diff / Key Diff
-```diff
-before: RoboTwin bundle -> generic Runtime without relation Action Provider/resolver
-after:  RoboTwin bundle -> generic Runtime(relation_execution_provider,
-        resolve_relation_context) -> registered relation.establish endpoint
-still:  no concrete stack Provider or motion qualification; stack remains disabled
-```
-
-### 架构与验证 / Architecture and Validation
-- 通用 Runtime/endpoint 保持 Provider-neutral，Coordinator/AgentLoop 生命周期不变；RoboTwin Adapter 仅传递可替换机制，不承担通用语义。 / Generic Runtime/endpoint remain Provider-neutral and Coordinator/AgentLoop lifecycle is unchanged; the RoboTwin Adapter only passes the replaceable mechanism, not generic semantics.
-- 定向 pytest `22 passed, 1 warning`；Ruff 和 scoped `git diff --check` 通过。 / Focused pytest: `22 passed, 1 warning`; Ruff and scoped `git diff --check` pass.
-- 未创建 task、未调用 Action、未启动仿真或机器人运动；stack 仍不可执行。 / No task or Action was started, and no simulation or robot motion occurred; stack remains non-executable.
-
-### Git 提交 / Git Commit
-- Implementation: `191478e8`; receipt: `24ae9691`; branch: `feature/planning-loop`; both pushes succeeded at 2026-11-08 15:28 Asia/Shanghai. / Implementation: `191478e8`; receipt: `24ae9691`; branch: `feature/planning-loop`; both pushes succeeded at 2026-11-08 15:28 Asia/Shanghai.
-
-## v17.3.8 (2026-11-08 10:01) - codex
-
-### 完成范围 / Completed Scope
-- [policy] [feat] 新增可选 provider-neutral `relation.establish` Action Tool，经现有 CapabilityRuntime `ActionAdmission` deferred start 接入；Action 使用 Coordinator 绑定身份和实际 `relation.target` Query 结果重建候选 binding，只将几何与 lineage 传给 Provider。Provider 负责 support geometry、route/contact qualification、运动与执行反馈；AgentLoop/Coordinator 生命周期不变。 / Add an optional provider-neutral `relation.establish` Action Tool through the existing CapabilityRuntime `ActionAdmission` deferred-start path; rebuild the candidate binding from Coordinator-bound identity and the actual `relation.target` Query result, then pass only geometry and lineage to the Provider. The Provider owns support geometry, route/contact qualification, motion and execution feedback; AgentLoop/Coordinator lifecycle is unchanged. (local)
-- [policy] [fix] relation plan node 写入校准引用；Action 静态 input binding keys 与 `PlanNode.input_bindings` 对齐，Query result 作为来源约束的动态前驱参数，当前 `on` relation 必须来自 `relation.target`。 / Include calibration reference in relation plan nodes; align static Action input-binding keys with `PlanNode.input_bindings`, keep the Query result as a source-constrained dynamic predecessor argument, and require `relation.target` provenance for current `on` relations. (local)
-- [eval] [test] 测试覆盖 ToolSpec 投影/Agent 候选路由、Coordinator/Query lineage 拒绝、Provider substitution、显式 unavailable 和 provider exception 转 unknown；stack motion-disabled regression 保持通过。 / Tests cover ToolSpec projection/Agent candidate routing, Coordinator/Query-lineage rejection, Provider substitution, explicit unavailable and provider-exception-to-unknown; the stack motion-disabled regression remains passing. (local)
-
-### 文件变更详情 / File Changes
-- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L302-L401：将 `calibration_ref` 加入 relation planning inputs/PlanNode，保持 current-scene identity 完整。 / Add `calibration_ref` to relation planning inputs/PlanNode, preserving complete current-scene identity.
-- [新增] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_execution.py` L1-L194：定义 relation Provider port、ToolSpec、Coordinator-bound Action endpoint、deferred Runtime registration。 / Define the relation Provider port, ToolSpec, Coordinator-bound Action endpoint and deferred Runtime registration.
-- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L33-L34, L664-L666, L762-L763, L860-L866：增加 Provider/resolver 成对注入和可选 Action 注册。 / Add paired Provider/resolver injection and optional Action registration.
-- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py` L102-L112, L180-L186：导出关系 Action public contract。 / Export the relation Action public contract.
-- [新增] `examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py` L1-L182：覆盖 contract、deferred admission、substitution、stale lineage 和 unknown result。 / Cover the contract, deferred admission, substitution, stale lineage and unknown result.
-- [修改] `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L1-L28, L294-L340：验证 `relation.establish` 被当前 relation PlanNode 选为 Tool candidate，且静态输入键完全匹配。 / Verify `relation.establish` is selected for the current relation PlanNode and its static input keys match exactly.
-- [修改] `.task/robotwin-stack-blocks-three-integration-diagnosis-20261106.md` L205-L261：保存架构职责、具体失败场景、机制理由和 contract/provider/simulation evidence 分层。 / Preserve architecture ownership, the concrete failure scenario, mechanism rationale and separate contract/provider/simulation evidence.
-- [修改] `CHANGELOG.md` L52-L84：更新最近五版本摘要与完整变更详情。 / Update the latest-five summary and complete change details.
-- [修改] `changelog/2026-11_part2.md` L572-L604：记录双语变更、行号、关键 Diff、验证与提交回执。 / Record bilingual changes, line references, key diff, validation and commit receipt.
-
-### 关键 Diff / Key Diff
-```diff
-before: relation.establish had no Action endpoint; relation plan omitted calibration identity
-after:  Agent PlanNode -> existing CapabilityRuntime ActionAdmission -> replaceable Provider
-        relation Query result + selected candidate -> lineage-checked binding -> Provider
-unknown Provider start/result -> outcome_unknown; never inferred as relation success
-RoboTwin stack Provider/table geometry/route qualification remain absent; motion remains disabled
-```
-
-### 架构与验证 / Architecture and Validation
-- Generic layer owns relation identity, current-node and Query lineage checks, candidate projection and Action handoff. Provider owns environment geometry, routes, contact checks, execution and feedback. Runtime owns invocation; Coordinator owns task/revision/settlement; AgentLoop remains the workflow driver. / Generic layer owns relation identity, current-node and Query-lineage checks, candidate projection and Action handoff. Provider owns environment geometry, routes, contact checks, execution and feedback. Runtime owns invocation; Coordinator owns task/revision/settlement; AgentLoop remains the workflow driver.
-- 定向 pytest：`33 passed, 1 warning`；warning 为 pytest 环境不识别 `asyncio_mode`。Ruff 通过。邻接生命周期回归 `52 passed, 1 failed`，唯一失败是 `test_persistent_results_conform_to_published_live_schema[place-spec1]` 的 `returned_to_safe_pose` 输出字段与 schema 不一致，与本次 relation Action 修改无关。 / Focused pytest: `33 passed, 1 warning`; warning is the environment's unrecognized `asyncio_mode`. Ruff passes. Adjacent lifecycle regression: `52 passed, 1 failed`; the sole failure is `test_persistent_results_conform_to_published_live_schema[place-spec1]`, where the output's `returned_to_safe_pose` field does not match the schema; it is unrelated to this relation Action change.
-- 未注册真实 stack Provider、未创建 PAOS task、未调用 Gateway Action、未启动 RoboTwin Runtime/仿真或运动；`stack_blocks_three` 仍不可执行。 / No concrete stack Provider was registered, no PAOS task was created, no Gateway Action was called, and no RoboTwin Runtime/simulation/motion was started; `stack_blocks_three` remains non-executable.
-
-### Git 提交 / Git Commit
-- Implementation commit: `0f5fb8c7`; log-receipt commit: `f86cf9e6`; branch: `feature/planning-loop`; `git push` succeeded at 2026-11-08 10:26 Asia/Shanghai. / Implementation commit: `0f5fb8c7`; log-receipt commit: `f86cf9e6`; branch: `feature/planning-loop`; `git push` succeeded at 2026-11-08 10:26 Asia/Shanghai.
-
-## v17.3.1 (2026-11-06 17:13) - codex
-
-### 回执补全 / Receipt Completion
-- [chore] [docs] 记录 RoboTwin relation-target 实现提交 `d1a838884e546d2ae19e05a10909266794707df0`；向 `origin/feature/planning-loop` 的 HTTPS push 两次挂起且中断，远端回执未取得。 / Record the RoboTwin relation-target implementation commit `d1a838884e546d2ae19e05a10909266794707df0`; two HTTPS pushes to `origin/feature/planning-loop` stalled and were interrupted, so no remote receipt was obtained. (local)
-
-### 文件变更 / File Changes
-- `CHANGELOG.md` L52-L56、`changelog/2026-11_part2.md` L431-L466：更正实现 hash 并记录 push 状态。 / Correct the implementation hash and record push status.
-
-### Git 提交 / Git Commit
-- Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending. / Implementation: `d1a838884e546d2ae19e05a10909266794707df0`; branch: `feature/planning-loop`; push pending.
-
-## v17.2.0 (2026-11-05 22:19) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [feat] 新增关系目标 Agent 规划入口，按当前 observation/scene revision 编译单条义务，并要求前序结算证据；关系目标不投影为静态 `object.place`。 / Add relation-goal Agent planning that compiles one obligation per current observation/scene revision and requires predecessor settlement evidence; relation goals are not projected to static `object.place`. (local)
-- [env] [feat] RoboTwin `stack_blocks_three` Adapter 只暴露关系目标和观测 actor 几何，不生成静态目标位姿；该任务被明确阻止进入 route/motion preparation。 / The RoboTwin `stack_blocks_three` Adapter exposes relation goals and observed actor geometry without static target poses; route/motion preparation is explicitly blocked for this task. (local)
-- [eval] [test] 31 项 Agent planning、RoboTwin approval/Adapter 定向测试通过；Ruff 与 diff whitespace 检查通过。 / 31 focused Agent-planning and RoboTwin approval/Adapter tests pass; Ruff and diff whitespace checks pass. (local)
-
-### 文件变更详情 / File Changes
-- `agent_planning.py` L122-L197, L237-L299, L302-L420：关系目标模型及 fresh-scene 单段编译。 / Relation-goal model and fresh-scene segment compilation.
-- `robotwin_blocks_ranking_adapter.py` L223-L339、`robotwin_persistent_engine.py` L226-L237, L285-L288, L370-L377, L428-L433, L468-L472：stack task facts、Adapter-derived actor identity 与拒绝运动路径。 / Stack task facts, Adapter-derived actor identity and motion-path refusal.
-- `test_agent_planning.py` L308-L394、`test_robotwin_task_adapters.py` L1-L83、`test_persistent_action_approval.py` L267-L276, L327-L337, L418-L430：段规划、fake task 与 capability fixtures 回归。 / Segment-planning, fake-task and capability-fixture regressions.
-- `.task/current.md` L1-L12、`changelog/2026-11_part2.md` L346-L388：状态、边界、验证和后续续段工作。 / Status, boundary, validation and continuation follow-up.
-
-### 关键 Diff / Key Diff
-```diff
-+def compose_relation_goal_plan(..., scene_revision, observation_ref, available_evidence, ...):
-+    # Compile one current-revision relation segment; require settled predecessors.
-+    # Do not lower relation.establish to static object.place.
-+motion_execution_supported = False  # stack_blocks_three
-+if not self.task_adapter.motion_execution_supported:
-+    raise ValueError("task adapter does not support motion route preparation")
-```
-
-### 架构与验证 / Architecture and Validation
-- Coordinator/AgentLoop 尚无父任务续段生命周期入口；本次不宣称支持完整堆叠执行。下一步先实现结算后同父任务追加 revision、新 observation/evidence 接续，再接 relation Provider；期间 stack task 保持不可执行。 / Coordinator/AgentLoop lacks parent-task continuation lifecycle support; this change does not claim end-to-end stacking execution. Next, implement same-parent revision append after settlement with fresh observation/evidence, then connect a relation Provider; keep the stack task non-executable meanwhile.
-- 未启动仿真、相机、Action 或运动。 / No simulator, camera, Action or motion was started.
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`。Implementation commit: `d967fd37`. / Implementation commit: `d967fd37`.
-
-## v17.1.0 (2026-11-05 23:55) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [refactor] 对规划、Isaac 组合层与 pick-place 执行链的 40 项过度防御发现逐项裁决并完成约 20 项低风险清理：集中 stale-scene readiness 谓词、合并三段完全同构的恢复分支、减少同步边界内重复解析与深拷贝、去除已由上游模型保证的结构重复校验，并保留碰撞、IK、运动、possession、scene freshness 与信任边界门禁。 / Adjudicate all 40 over-defense findings across planning, Isaac composition and the pick-place execution chain, applying about 20 low-risk cleanups while retaining collision, IK, motion, possession, scene-freshness and trust-boundary gates. (local)
-- [policy] [fix] `prepare_held` 对期望参数做 JSON 往返归一化，修复 tuple/list 等价值误判；cycle/held Action 在同一同步 admission 流内复用已准入解析结果。 / Normalize expected `prepare_held` parameters through a JSON round trip to avoid tuple/list false positives; cycle and held Actions reuse admitted resolution in the same synchronous admission flow. (local)
-- [docs] [docs] 五项拟删除内容被测试证明为承载行为后已回退，完整裁决与 deferred follow-up 保存于 `docs/reviews/overdefense-review-fullchain-20261105.md`。 / Revert five proposed removals after tests proved them load-bearing; preserve the full adjudication and deferred follow-ups in the review document. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/agent/planning_dispatch.py` L42-L59, L193, L792；`PhyAgentOS/agent/planning_loop.py` L1345-L1372, L1493-L1495, L2081-L2084：集中 stale-scene predicate、合并重复 reconcile 并保留 load-bearing records 重读。 / Centralize the stale-scene predicate, collapse repeated reconciliation and retain the load-bearing records reread. (local)
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L432, L454, L472-L476, L499, L519, L534, L560, L716；`paos_client.py` L10, L234-L239, L303-L310, L326, L362：减少重复复制/能力探测并修复 held-route JSON 假阳性。 / Reduce repeated copies and capability probes and fix the held-route JSON false positive. (local)
-- [修改 / Modified] `cycle_protocol.py` L163, L216；`held_manipulation.py` L439, L464-L466, L655-L663, L756-L759, L843-L845, L925-L931；`persistent_runtime.py` L416-L417；`subtask_executor.py` L339-L352, L465-L475, L639-L642, L865, L1133, L1177：清理重复 gap、解析、结构校验、possession/evidence 汇总。 / Remove duplicate gap, resolution, structural validation, possession and evidence aggregation work. (local)
-- [修改 / Modified] `.task/current.md` L1-L24；`docs/reviews/overdefense-review-fullchain-20261105.md` L95-L132；`changelog/2026-11_part2.md` v17.1.0：保存完成状态、测试证据、回退依据和提交边界。 / Record completion state, test evidence, revert rationale and commit scope. (local)
-
-### 关键 Diff / Key Diff
-```diff
-+def stale_scene_ready_nodes(graph, policies, settlements): ...
--if selected: resume(); else: resume()
-+resume()
--if any(route.get(key) != value for key, value in arguments.items()):
-+expected = json.loads(json.dumps(dict(arguments)))
--resolved = resolve_current()  # repeated at start
-+resolved = deepcopy(admitted)
-```
-
-### 验证 / Validation
-- [eval] [test] 聚焦模块 `410 passed, 6 failed`；完整 Core + Isaac Adapter + pick-place `2226 passed, 2 skipped, 16 failed`；全部失败节点均在独立 HEAD worktree 原样重现，本次新增失败为 0。 / Focused modules: `410 passed, 6 failed`; full Core + Isaac Adapter + pick-place: `2226 passed, 2 skipped, 16 failed`; every failure reproduces unchanged in an isolated HEAD worktree, so this cleanup adds zero failing tests. (local)
-- [eval] [chore] Ruff、compileall 与定向 `git diff --check` 通过；未启动 Runtime、相机、仿真器或运动。 / Ruff, compileall and targeted `git diff --check` pass; no Runtime, camera, simulator or motion was started. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`。Implementation commit: `f2e98f0a`。 / Implementation commit: `f2e98f0a`. (local)
-
-## v17.0.0 (2026-11-05 20:29) - codex
-
-### 完成范围 / Completed Scope
-- [env] [feat] Isaac Adapter 对配置允许的已知 acquire 失败执行有界恢复：先停止，确认物体仍受支撑、速度受限、无持有/接触载荷/双侧 manifold，再固定机械臂开爪并仅逆序执行本次已下发的合格关节命令回观察初始姿态；任一检查、碰撞、跟踪、取消或执行失败均返回 unknown/uncertain。 / For configured known acquire failures, the Isaac Adapter now performs bounded recovery: stop first, prove the object remains supported and slow with no hold/contact load/bilateral manifold, open the gripper at fixed arm joints, and reverse only the qualified joint commands actually issued in this attempt back to observation home; any check, collision, tracking, cancellation or execution failure returns unknown/uncertain. (local)
-- [policy] [fix] Workflow 以 provider-neutral 的 `returned_to_safe_pose`、`observation_ready` 投影已知恢复终态；AgentLoop 只读取当前 revision、当前 node 的最新 Action 回执，在新 scene revision 上提供 fresh Query replan，不暴露 same-capture alternatives，也不复用旧 readiness、preparation、candidate set 或 opaque 引用。 / The workflow projects a known recovered terminal state through provider-neutral `returned_to_safe_pose` and `observation_ready`; AgentLoop reads only the latest Action receipt for the current revision/node and offers a fresh-Query replan on a new scene revision without exposing same-capture alternatives or reusing readiness, preparation, candidate sets or opaque references. (local)
-- [env] [fix] 最终实现复核修复残留接触后置条件：恢复完成即使 `held=false`，只要 selected-body load 或 fresh bilateral manifold 仍存在，就保持 unknown/uncertain 并停止。 / Final implementation review fixes the residual-contact postcondition: even with `held=false`, recovery remains unknown/uncertain and stops whenever selected-body load or a fresh bilateral manifold still exists. (local)
-- [docs] [diag] 保存 R03 抓取失败根因、PAOS 分层、证据新鲜度、停止条件、验收矩阵与最终复核结论。 / Save the R03 grasp-failure diagnosis, PAOS layering, evidence freshness, stop conditions, acceptance matrix and final review result. (local)
-
-### 文件变更详情 / File Changes
-- `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json` L19-L23；`examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L1046-L1053
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L295-L307, L813, L1977-L2131, L2164-L2168, L2296-L2307, L2361-L2429, L2453-L2526
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L1872-L2038
-- `examples/forge-skills/pick-place-workflow/contracts/object.acquire.tool.yaml` L100-L120
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py` L45-L66, L82-L108, L150-L171, L564-L581, L644-L668
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L198-L207, L251-L288
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py` L526-L565, L843-L856, L1153-L1168
-- `examples/forge-skills/pick-place-workflow/tests/test_object_acquire.py` L395-L447；`examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py` L687-L775
-- `PhyAgentOS/agent/recovery_decisions.py` L166-L227, L302-L342, L477-L560；`tests/test_recovery_decisions.py` L352-L510
-- `.task/labutopia-known-grasp-failure-recovery-20261105.md` L1-L130；`CHANGELOG.md` 最近五版本滚动更新
-
-### 关键 Diff / Key Diff
-```diff
-+def _recover_failed_acquire(...):
-+    if held or contact_load_valid or contact_manifold_valid or not supported:
-+        raise PhaseMotionError("acquire_recovery_possession_uncertain", ...)
-+    open_gripper_at_fixed_arm()
-+    for point in reversed(executed_path):
-+        collision_checked_command(point)
-+    if held or contact_load_valid or contact_manifold_valid or not at_home:
-+        raise PhaseMotionError("acquire_recovery_postcondition_failed", ...)
-
-+returned_to_safe_pose: bool = False
-+observation_ready: bool = False
-
-+def _fresh_observation_recovery_record(...):
-+    # latest Action receipt only; require new revision and complete safe facts
-+    ...
-```
-
-### 架构审核 / Architecture Review
-- 通用层仅持有恢复语义、scene revision 与证据生命周期；Isaac Adapter 私有持有关节、接触、USD/仿真实现和逆轨迹。Provider 可替换而不改变 AgentLoop 调用者。 / The generic layer owns only recovery semantics, scene revisions and evidence lifecycle; Isaac-private joints, contacts, USD/simulator mechanisms and reverse trajectories remain in the Adapter. Providers remain replaceable without changing AgentLoop callers.
-- 不新增影子 scheduler、跨 revision 引用、硬编码候选编号、哈希或额外发布门禁；沿用既有 Coordinator/Runtime settlement 所有权与碰撞、关节、workspace、取消检查。 / No shadow scheduler, cross-revision reference, hard-coded candidate number, hash or extra release gate is added; existing Coordinator/Runtime settlement ownership and collision, joint, workspace and cancellation checks are reused.
-- 最终 implementation review 无剩余 Blocker/Major；残余风险是尚未在真实 Isaac live motion 中验证恢复轨迹与新观测闭环。 / Final implementation review has no remaining Blocker or Major; the remaining risk is that the recovery trajectory and fresh-observation loop have not yet been validated in live Isaac motion.
-
-### 验证 / Validation
-- [eval] [test] 聚焦恢复回归 8 passed；Isaac Adapter + acquire/place/held/subtask/recovery 全量 625 passed、2 skipped（既有 native-USD skips）；AgentLoop/long-horizon 65 passed。 / Focused recovery regression passes 8 tests; the full Isaac Adapter plus acquire/place/held/subtask/recovery suite passes 625 with two pre-existing native-USD skips; AgentLoop/long-horizon passes 65. (local)
-- [eval] [chore] Ruff、compileall、motion JSON parse 与 `git diff --check` 通过。pytest 使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 -p pytest_asyncio.plugin` 隔离系统 ROS 插件。 / Ruff, compileall, motion JSON parsing and `git diff --check` pass. Pytest uses `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 -p pytest_asyncio.plugin` to isolate system ROS plugins. (local)
-- [policy] [exp] 本轮未执行仿真或真实 live motion；下一次必须从 fresh reset、空夹爪、新 scene revision、新感知和新 preparation 开始。 / No simulated or real live motion ran in this change; the next execution must begin from a fresh reset, empty gripper, new scene revision, fresh perception and fresh preparation. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`.
-- Implementation commit: `0d92159b976a5b004b67319f7d8b52a7f204ad2d`.
-
-## v16.10.1 (2026-11-05 22:40) - claude
-
-### 变更摘要 / Change Summary
-- [sense] [fix] 修复抓取接近探测的检查范围错配:原 `check_final_gripper_pose` 只验证 palm/finger 几何,而路线资格化以全臂(link5)碰撞击杀候选——漏斗最后一道门验证的性质严格弱于路线要求。探测现对最终抓取位姿做**有界确定性多种子 IK 采样**(`acquire_probe_terminal_seed_count`,默认 8,校验 1–32;当前关节+关节中点+确定性偏移),逐分支运行不变的全臂碰撞检查。 / Fix the grasp-approach probe scope mismatch: `check_final_gripper_pose` validates palm/finger geometry only while the route qualifier kills candidates on whole-arm link5 collisions — the funnel's last gate verified a strictly weaker property than routes require. The probe now samples the final grasp pose with bounded deterministic IK seeds (`acquire_probe_terminal_seed_count`, default 8, validated 1–32; current joints, joint midpoint, deterministic offsets) and runs the unchanged whole-arm collision check per sampled branch. (local)
-- [sense] [fix] 仅凭正向证据快速失败:当采样到 IK 解且**所有分支**碰撞时,变体以 `grasp_terminal_arm_infeasible` 拒绝(走廊枚举改变不了固定终点的死局);零解不剪枝;最后碰撞细节与诊断随错误下发,回执保留碰撞几何。幸存无碰分支反过来播种预抓 IK,替代原单一种子。 / Fail fast on positive evidence only: a variant is rejected with `grasp_terminal_arm_infeasible` when sampled IK solutions exist and every branch collides; zero solutions never prunes; the last collision detail and diagnostics ride on the error so receipts keep collision geometry. Surviving collision-free branches seed the pre-grasp IK, replacing the single current-joints warm start. (local)
-- [sense] [fix] 顺序保持:终态采样惰性执行,仅在某个 distance 的 workspace 边界通过之后进行,`workspace_violation` 仍先于任何 IK,回执顺序保证不变。 / Ordering preserved: terminal sampling runs lazily only after a distance's workspace bound passes, so `workspace_violation` still precedes any IK and the receipt ordering guarantees are unchanged. (local)
-
-### 预期修改 / Planned Files
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`
-- `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py`
-- `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json`
-- `.task/current.md`
-
-### 关键 Diff / Key Diff
-```diff
-+def acquire_probe_terminal_seed_count(config): ...  # 1..32, default 8
-+def deterministic_ik_seeds(seed_joints, limits, count): ...
-+    def _sample_terminal_arm_branches(self, variant_desired, source, ...):
-+        for warm in deterministic_ik_seeds(...):
-+            joints, success = self.solver.compute_inverse_kinematics(..., warm_start=warm, ...)
-+            self._collisions(joints, source, False, False, candidate_relation, False)
-+                    if terminal is None:
-+                        terminal = self._sample_terminal_arm_branches(...)
-+                        if terminal["solution_count"] > 0 and terminal["collision_free_count"] == 0:
-+                            raise PhaseMotionError("grasp_terminal_arm_infeasible", ...)
-+warm_start=branch_seeds[0] if branch_seeds else seed_joints
-```
-
-### 验证 / Validation
-- [eval] [test] phase-motion 154 passed(146+4 新:全分支碰撞拒绝且跳过短路线工作、零解不剪枝、分支播种预抓 IK、校验器拒绝);全量 Isaac Adapter + subtask executor 506 passed、2 skipped(既有 native-USD);Ruff、compileall 通过。 / Phase-motion passes 154 (146 plus four new: all-branches-collide rejection with skipped short-route work, zero-solution no-prune, branch-seeded pre-IK, validator rejection); the full suite passes 506 with two pre-existing native-USD skips; Ruff and compileall pass. (local)
-- [policy] [exp] 预测(待 fresh run 验证):候选 178 的终态位姿在采样分支下将秒级判死,漏斗响应应诚实地给出零合格组合及具体原因,不再烧 600 秒走廊搜索。 / Prediction (pending fresh-run validation): candidate 178's terminal pose should be rejected in seconds under sampled branches, the funnel response should honestly surface zero qualified combinations with the concrete reason, and the 600 s corridor search should no longer burn. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`.
-- 尚未提交,等待用户审核。 / Not committed, pending user review. (local)
-### v16.10.1 预测验证 / Prediction validated (2026-11-05 23:05)
-
-- [eval] [exp] fresh 无运动跑 `out/lab-fullchain-truth-20261105-v16_10_1-no-motion-r1/`(task_7706c39bbe6a47eb)证实预测:漏斗 505→5→**0**,候选 56/60/178 的终态采样均为 solution_count=8、collision_free_count=0,以 `grasp_terminal_arm_infeasible` 秒级拒绝;100 死于终态夹爪碰撞,233 死于物理孔径极限。零路线搜索、零 600 秒燃烧,agent 回复列出全部门因。56/60 的历史单种子否决获正向证据确认。结论:当前夹具不存在任务合格抓取;孔径物理排除、几何门有谱系保留;剩余杠杆为夹具几何(垫高/外移试剂瓶,precedent:rod-storage patch),待用户批准。 / A fresh no-motion run confirms the prediction: funnel 505→5→0 with candidates 56/60/178 each sampled at 8 solutions and 0 collision-free branches, rejected `grasp_terminal_arm_infeasible` in seconds; 100 dies at final-gripper collision and 233 at the physical aperture limit. Zero route search, zero 600-second burn, and the agent response lists every gate reason. The historical single-seed rejections of 56/60 are confirmed with positive evidence. Consequence: no task-qualified grasp exists on this fixture; aperture widening is physically excluded, the gate set stands on lineage, and the remaining lever is fixture geometry (raise or relocate the reagent bottles), pending user approval. (local)
+- 规范门 593 passed / 2 预存(scene_physics 环境)。判据 run24c(同 profile 同配置,工作区 out/labutopia-oracle-run24c):close 存活至完成 + grasp_check——若行走稳定于 8mm 内则进 lift(预期指部物理下蠕变初测,attach 曲线);若 lift 入口判负,经 v17.6.25 路由 replan_with_fresh_perception,agent 重新感知重抓(可换带),即用户裁定的"掉落/失败后重新感知规划"闭环首次在 oracle 线实跑。 / Canonical gate 593 passed / 2 pre-existing (scene_physics env). Criteria for run24c (same profile and config, workspace out/labutopia-oracle-run24c): close survives to completion plus grasp_check — if the walk settles inside 8mm the chain enters lift (the first creep measurement under intended finger physics); if the lift-entry judgment fails, v17.6.25 routes it to replan_with_fresh_perception and the agent re-perceives and re-grasps (possibly on a different band) — the user-ruled drop-recovery loop running live for the first time.
+- **run24c 判决(10:15 终态,失败)**:v17.6.26 机械全效——close 走完全程(192 采样/36 接触有效,run24b 死于第 10 个),settle 判一次执行(grasp_check:err 18.10mm、rot 0.0075rad、双侧接触仍在)。**物理翻页:行走无平衡点**——首触完美(err 0.22mm、双指对称 [0.0183,0.0183])后,hold-follow 每步 −2mm 的追深把桥接凸包凸轮变成持续侧拖,误差 0.0002→0.0181 单调走至**关节限位**(右指打满 0.0000、左指被顶到 0.0365,瓶仍被双侧夹持、世界横移 [7.8,15.9]mm)——"后面会夹稳"在此几何下不成立,行走 100% 由接触后追深驱动。recovery 撤退拒绝(瓶仍被夹、接触实测→possession uncertain),agent 诚实一次即停(acquire-unknown-with-contact 无安全撤退路径,recovery_decisions 的 refresh 路由需要 safely_recovered 全条件——独立已知缺口,另档处理)。 / run24c verdict: v17.6.26 mechanically complete — close runs to completion (192 samples / 36 contact-valid vs run24b's death at the tenth) and the settle judgment fires once (grasp_check: err 18.10mm, rot 0.0075rad, bilateral contact held). The physics turns the page: the walk has NO equilibrium — after a perfect first touch (err 0.22mm, symmetric fingers) the hold-follow -2mm-per-step chase turns the bridged-hull cam into a sustained drag, error monotone 0.0002→0.0181 all the way to the joint limit (right finger bottomed at 0.0000, left forced to 0.0365, bottle still held, world walk [7.8,15.9]mm). "It will stabilize" does not hold in this geometry; the walk is 100% driven by the post-contact squeeze chase. Recovery retreat refused (bottle still gripped, contact measured → possession uncertain); the agent honestly stopped after one attempt (acquire-unknown-with-contact has no safe retreat, and recovery_decisions' refresh route requires the full safely_recovered conjunction — a separate known gap, filed separately).
