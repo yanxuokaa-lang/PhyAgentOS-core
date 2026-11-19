@@ -2102,6 +2102,71 @@ def test_known_lost_grasp_opens_and_reverses_to_observation_home(monkeypatch):
     assert commands
 
 
+def test_closure_settling_walk_is_judged_at_lift_entry_not_per_frame(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if arm_at_grasp and fingers_closed else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+
+    # The body walks laterally while both pads keep holding it: contact-time
+    # settling motion must not stop the closure frame by frame.
+    base = np.array(arguments["phase_route"]["original_return_pose"], dtype=float)
+    first_contact = {"step": None}
+
+    def body_pose(_path):
+        if min(model._test_positions_ref[7:]) < .035 and first_contact["step"] is None:
+            first_contact["step"] = model.world.steps
+        walked = (0.0 if first_contact["step"] is None
+                  else (model.world.steps - first_contact["step"]) * .0011)
+        drifted = base.copy()
+        drifted[0, 3] += walked
+        return drifted
+
+    model.body_pose = body_pose
+    result = model.execute(arguments, Event())
+
+    assert result["failure_code"] == "grasp_transform_mismatch"
+    samples = artifacts[-1][1]["samples"]
+    settled = [sample for sample in samples if sample["stage"] == "close"
+               and sample["contact_load_valid"] and sample["attachment_position_error_m"] > .008]
+    assert len(settled) >= 2
+    assert any(sample["stage"] == "grasp_check" for sample in samples)
+
+
+def test_bilateral_contact_loss_during_closure_settling_fails(monkeypatch):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    state = {"contact_step": None}
+
+    def contact_frame():
+        arm_at_grasp = model._test_positions_ref[0] <= 1e-9
+        fingers_closed = np.min(model._test_positions_ref[7:]) < .035
+        if arm_at_grasp and fingers_closed and state["contact_step"] is None:
+            state["contact_step"] = model.world.steps
+        lost = (state["contact_step"] is not None
+                and model.world.steps >= state["contact_step"] + 5)
+        contacts = ([{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [1., 0., 0.],
+        }] if arm_at_grasp and fingers_closed and not lost else [])
+        return {"time": model.world.current_time, "contacts": contacts}
+
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+    result = model.execute(arguments, Event())
+
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert artifacts[-1][1]["failure_detail"] == "bilateral contact lost during closure settling"
+
+
 def test_recovery_collision_keeps_failed_acquire_outcome_unknown(monkeypatch):
     model, arguments, commands, artifacts = execution_fixture(monkeypatch)
     original_collisions = model._collisions

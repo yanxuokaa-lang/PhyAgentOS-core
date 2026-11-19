@@ -299,14 +299,20 @@ def test_changed_retiming_period_fails_before_command(monkeypatch):
     assert not commands and model.world.steps == 0
 
 
-def test_bilateral_misaligned_contact_stops_without_further_squeezing(monkeypatch):
-    model, args, commands, _ = execution_fixture(monkeypatch)
+def test_bilateral_misaligned_contact_settles_then_fails_at_lift_entry(monkeypatch):
+    model, args, commands, artifacts = execution_fixture(monkeypatch)
     args["phase_route"]["tcp_from_object"][0][3] += .009
+    model.config["finger_retain_overshoot_m"] = .002
     contact_sensors(model, lambda: True)
     result = model.execute(args, Event())
     assert result["failure_code"] == "grasp_transform_mismatch"
-    assert model.world.steps == 1
-    assert all(c[7] > .039 for c in commands)
+    # Contact-time settling is not judged frame by frame: the closure squeezes
+    # on, and the qualified transform is compared once at the lift-entry
+    # grasp check with the frozen tolerances.
+    samples = artifacts[-1][1]["samples"]
+    assert any(sample["stage"] == "grasp_check" for sample in samples)
+    assert model.world.steps > 1
+    assert any(c[7] <= .039 for c in commands)
 
 
 def test_cancellation_during_closure_holds_and_never_starts_lift(monkeypatch):

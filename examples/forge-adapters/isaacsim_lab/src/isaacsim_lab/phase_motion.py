@@ -2583,12 +2583,17 @@ class IsaacPhaseMotion:
                         finger_target = np.maximum(
                             np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
                             0.0)
-                    if operation == "acquire" and stage in {"approach", "grasp", "close"}:
+                    if (operation == "acquire" and stage in {"approach", "grasp", "close"}
+                            and not (closure is not None and contact_established)):
                         # Displacement is judged at the grasp anchor (the TCP
                         # point bound to the object), not at the world origin:
                         # reference/current are world poses, so the generic
                         # helper's origin anchoring would amplify a permitted
                         # touch rotation by the body-to-world-origin lever.
+                        # Once both pads hold the body this gate stands down:
+                        # bounded settling motion is contact-time physics, and
+                        # the settled transform is judged once at the lift-entry
+                        # grasp check with the same frozen tolerances.
                         anchor = -grasp_relation[:3, :3].T @ grasp_relation[:3, 3]
                         drift = grasp_anchor_drift(anchor, original, physical_body)
                         _, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
@@ -2596,11 +2601,15 @@ class IsaacPhaseMotion:
                                 or rotation > self.config["grasp_rotation_tolerance_rad"]):
                             raise PhaseMotionError("grasp_object_displaced", "object moved before a qualified lift")
                     if closure is not None:
-                        if contacts() and not held:
-                            raise PhaseMotionError("grasp_transform_mismatch", "bilateral contact differs from the qualified grasp")
-                        if contact_established and not held:
-                            raise PhaseMotionError("physical_grasp_lost", "bilateral grip lost during closure settling")
-                        if held:
+                        # A parallel-jaw grip on a round body settles with bounded
+                        # contact-time motion; a per-frame qualified-transform
+                        # comparison here killed physically held grips. Only a
+                        # real loss of bilateral contact stops the closure — the
+                        # settled transform is judged once at the lift-entry
+                        # grasp check.
+                        if contact_established and not contacts():
+                            raise PhaseMotionError("physical_grasp_lost", "bilateral contact lost during closure settling")
+                        if contacts():
                             # Hold the grip at the measured bilateral-contact position minus a
                             # bounded retain overshoot. With finger_hold_follow enabled the hold
                             # re-freezes on every held step so the pads keep tracking surface
