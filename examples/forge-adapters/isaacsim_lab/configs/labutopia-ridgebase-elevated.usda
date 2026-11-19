@@ -1,0 +1,96 @@
+#usda 1.0
+(
+    "Adapter deployment: 0.43m arm elevation, grounded chassis, collision-enabled mount column."
+    defaultPrim = "panda_mobile"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "panda_mobile" (
+    prepend references = @/home/yanxu/LabUtopia/assets/robots/ridgeback_franka.usd@
+)
+{
+    over "panda_link0"
+    {
+        double3 xformOp:translate = (0.3000003695487976, 3.960444860950929e-9, 0.7100000011920928)
+    }
+
+    over "panda_link1"
+    {
+        double3 xformOp:translate = (0.3000003695487976, 3.960444416861719e-9, 1.0429999756813049)
+    }
+
+    over "panda_link2"
+    {
+        double3 xformOp:translate = (0.3000003695487976, 5.124597635131067e-9, 1.0430000352859496)
+    }
+
+    over "panda_link3"
+    {
+        double3 xformOp:translate = (0.45800986886024475, -3.2204301447791295e-8, 1.3166586089134216)
+    }
+
+    over "panda_link4"
+    {
+        double3 xformOp:translate = (0.5294555425643921, -3.548131388697584e-8, 1.2754061150550842)
+    }
+
+    over "panda_link5"
+    {
+        double3 xformOp:translate = (0.8790260553359985, 7.52947926230263e-8, 1.454466872215271)
+    }
+
+    over "panda_link6"
+    {
+        double3 xformOp:translate = (0.8790260553359985, 8.25688104555411e-8, 1.454466872215271)
+    }
+
+    over "panda_link7"
+    {
+        double3 xformOp:translate = (0.9640284776687622, 8.815674590323397e-8, 1.4772393035888671)
+    }
+
+    over "panda_hand"
+    {
+        double3 xformOp:translate = (0.9917176961898804, 1.0765243985133566e-7, 1.373884015083313)
+    }
+
+    over "panda_leftfinger"
+    {
+        double3 xformOp:translate = (1.0068303346633911, -0.03499991446733475, 1.3174732851982116)
+    }
+
+    over "panda_rightfinger"
+    {
+        double3 xformOp:translate = (1.0068303346633911, 0.03500008583068848, 1.3174732851982116)
+    }
+
+    over "endeffector"
+    {
+        double3 xformOp:translate = (1.0184624195098877, 1.2702172114131827e-7, 1.2740544605255126)
+    }
+
+    over "arm_mount_link"
+    {
+        point3f physics:centerOfMass = (0.3, 0, 0.215)
+        float3 physics:diagonalInertia = (0.09965, 0.09965, 0.0144)
+        float physics:mass = 6
+
+        over "panda_arm_mount_joint"
+        {
+            point3f physics:localPos0 = (0.3, 0, 0.43)
+        }
+
+        def Cube "elevation_column" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            bool physics:collisionEnabled = 1
+            color3f[] primvars:displayColor = [(0.28, 0.32, 0.36)]
+            double size = 1
+            float3 xformOp:scale = (0.12, 0.12, 0.43)
+            double3 xformOp:translate = (0.3, 0, 0.215)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+    }
+}

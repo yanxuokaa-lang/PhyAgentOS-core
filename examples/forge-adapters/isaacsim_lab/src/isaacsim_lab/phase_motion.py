@@ -1235,6 +1235,9 @@ class IsaacPhaseMotion:
         groups = []
         robot_path = self.robot.prim_path + "/"
 
+        def ignore_robot(path):
+            return path.startswith(robot_path) and path not in self.config["mount_collision_paths"]
+
         def reject(code, detail, **geometry):
             raise PhaseMotionError(code, detail, diagnostics={
                 "evidence_kind": "collision_model_overlap", "frame_id": "world",
@@ -1244,7 +1247,7 @@ class IsaacPhaseMotion:
 
         def hits(center, radius, link, ignore_source=False):
             def ignore(path):
-                if path.startswith(robot_path) or (ignore_source and (path == source_path or path.startswith(source_path + "/"))):
+                if ignore_robot(path) or (ignore_source and (path == source_path or path.startswith(source_path + "/"))):
                     return True
                 if link == "panda_link0" and path in self.config["mount_collision_paths"]:
                     return True
@@ -1268,7 +1271,7 @@ class IsaacPhaseMotion:
         tcp = self.tcp(joints)
         hand = tcp @ np.linalg.inv(self.hand_from_tcp)
         def ignore_finger(path):
-            return path.startswith(robot_path) or (
+            return ignore_robot(path) or (
                 (attached or released_pose is not None or allow_contact)
                 and (path == source_path or path.startswith(source_path + "/")))
         for box_index, (lower, upper) in enumerate(self.finger_boxes(measured=held_fingers)):
@@ -1311,7 +1314,7 @@ class IsaacPhaseMotion:
             payload = self.tcp(joints) @ tcp_from_object if attached else released_pose
             quaternion = Rotation.from_matrix(payload[:3, :3]).as_quat()
             def ignore_payload(path):
-                if path.startswith(robot_path) or path == source_path or path.startswith(source_path + "/"):
+                if ignore_robot(path) or path == source_path or path.startswith(source_path + "/"):
                     return True
                 if (support_contact or released_pose is not None) and any(
                     prim_path_is_within(path, support)

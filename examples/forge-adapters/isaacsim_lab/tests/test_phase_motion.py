@@ -2991,3 +2991,48 @@ def test_observed_frame_tracks_body_displacement_without_using_body_origin_as_to
     model.body_from_observed = {'object': body_from_observed}
     model.body_pose = lambda _: motion @ captured_body
     assert model.observed_pose('object') == pytest.approx(motion @ observed_frame)
+
+
+@pytest.mark.parametrize("kind", ["panda_link0", "panda_link2", "finger", "payload"])
+@pytest.mark.parametrize("explicit_mount", [False, True])
+def test_internal_mount_collider_is_checked_except_at_link0_connection(monkeypatch, kind, explicit_mount):
+    import sys
+    import types
+
+    mount = "/World/Ridgebase/arm_mount_link/elevation_column"
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.config["mount_collision_paths"] = [mount]
+    model.robot = SimpleNamespace(prim_path="/World/Ridgebase")
+    model.hand_from_tcp = np.eye(4)
+    model.tcp = lambda _q: pose_matrix([0., 0., 1.], [0., 0., 0., 1.])
+    model.solver = SimpleNamespace(compute_forward_kinematics=lambda _link, _q: (np.array([0., 0., 1.]), np.eye(3)))
+    model.spheres = [{kind: [{"center": [0., 0., 0.], "radius": .02}]}] if kind.startswith("panda_link") else []
+    box = (np.array([-.01, -.01, -.01]), np.array([.01, .01, .01]))
+    model.finger_boxes = lambda **_kw: [box] if kind == "finger" else []
+    model.payload_geometry = {"/source": [box]}
+    carb = types.ModuleType("carb")
+    carb.Float3 = carb.Float4 = lambda *args: tuple(args)
+    monkeypatch.setitem(sys.modules, "carb", carb)
+    physx = types.ModuleType("omni.physx")
+    queried = []
+
+    def overlap(*args):
+        path = mount if explicit_mount else "/World/Ridgebase/panda_link2/geometry"
+        queried.append(path)
+        args[-2](SimpleNamespace(collision=path))
+
+    physx.get_physx_scene_query_interface = lambda: SimpleNamespace(overlap_box=overlap, overlap_sphere=overlap)
+    monkeypatch.setitem(sys.modules, "omni.physx", physx)
+
+    def check():
+        model._collisions(np.zeros(7), "/source", False, kind == "payload", np.eye(4))
+
+    if explicit_mount and kind != "panda_link0":
+        with pytest.raises(PhaseMotionError) as caught:
+            check()
+        assert caught.value.code == ("payload_collision" if kind == "payload" else "route_collision")
+        assert mount in str(caught.value)
+    else:
+        check()
+    assert queried
