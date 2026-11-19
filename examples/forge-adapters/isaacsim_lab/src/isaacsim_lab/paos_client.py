@@ -229,7 +229,12 @@ class LabUtopiaCycleProvider:
                        "assignment": assignment}
             refresh = getattr(self.target_resolver, "refresh_process", None)
             if refresh is not None:
-                request["manipulation_target"] = refresh(arguments, request["manipulation_target"],
+                # The held schema carries no process_type; the merged request's
+                # type keeps the task-conditioned pour direction alive through
+                # the refresh, exactly as the initial preparation projected it.
+                request["manipulation_target"] = refresh(
+                    {**arguments, "process_type": request.get("process_type")},
+                    request["manipulation_target"],
                     observation_model=request["observation_model"], phase_route=request["phase_route"])
             result = prepare(request)
             if not isinstance(result, Mapping) or result.get("status") != "available":

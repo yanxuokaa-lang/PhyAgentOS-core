@@ -142,6 +142,40 @@ def run_mixture(tmp_path, fail_operation=None):
         return observed(binding.semantic_label, revision)
     register_subtask_tool(bundle.runtime, refresh, lambda _tool: {"ready": True}, lambda _caller: context,
                           bundle.client._assignment_store)
+
+    def propose_process_features(arguments):
+        revision = arguments["scene_revision"]
+        source, destination = arguments["entity_refs"]
+        rim = {"feature_ref": f"process-feature://{revision}/destination", "entity_ref": destination,
+               "feature_kind": "rim", "feature_role": "opening"}
+        if arguments["operation"] == "pour":
+            candidates = [{"feature_ref": f"process-feature://{revision}/source", "entity_ref": source,
+                           "feature_kind": "rim", "feature_role": "pour_lip"}, rim]
+        else:
+            candidates = [
+                {"feature_ref": f"process-feature://{revision}/endpoint-a", "entity_ref": source,
+                 "feature_kind": "rod_endpoint_pair", "feature_role": "endpoint_a"},
+                {"feature_ref": f"process-feature://{revision}/endpoint-b", "entity_ref": source,
+                 "feature_kind": "rod_endpoint_pair", "feature_role": "endpoint_b"},
+                rim,
+            ]
+        return {"status": "available", "candidate_set_ref": f"process-feature-set://{revision}",
+                "candidates": candidates}
+
+    def validate_process_features(arguments):
+        return {"status": "available", "candidate_set_ref": arguments["candidate_set_ref"],
+                "selected_feature_refs": list(arguments["selected_feature_refs"])}
+
+    # Pour/stir subtasks carry planner-selected process features; the driver
+    # re-selects them after every scene revision advance.
+    for tool_id, endpoint_id, operation, endpoint in (
+        ("manipulation.process_features", "process_features", "propose", propose_process_features),
+        ("manipulation.prepare_process_features", "process_feature_preparation", "validate_selection", validate_process_features),
+    ):
+        bundle.runtime.register_tool(
+            {"tool_id": tool_id, "endpoint_id": endpoint_id, "operation": operation, "semantics": "query"},
+            SimpleNamespace(invoke=endpoint),
+        )
     outcomes = []
     try:
         for node, entity, operation, params in (

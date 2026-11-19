@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
@@ -841,6 +841,12 @@ class SubtaskExecutor:
 
             common["parameters"] = dict(spec.parameters) if call.arguments.get("operation") != "place" else {}
             common["operation"] = call.arguments["operation"]
+            if spec.process_feature_refs and spec.process_feature_candidate_set_ref is not None:
+                # Held preparation consumes rim evidence at the current scene
+                # revision; after the driver's refresh these are the re-selected
+                # features, never the pre-acquire candidate set.
+                common["process_feature_refs"] = list(spec.process_feature_refs)
+                common["process_feature_candidate_set_ref"] = spec.process_feature_candidate_set_ref
             return {key: value for key, value in common.items()
                     if key in input_schema(action=False)["properties"]}
         return common
@@ -982,6 +988,8 @@ class RuntimeSubtaskDriver:
                     refreshed, self.spec.binding, self.context.scene_revision,
                 )
                 self.spec = self.spec.model_copy(update={"binding": refreshed})
+                if self.spec.process_feature_refs and self.spec.operation in {"pour", "stir"}:
+                    self.spec = self._refresh_process_features(self.spec)
                 if self.index == 0 and self.context.trusted_intent is not None:
                     # The persisted outer intent still names the original
                     # observation. Only internal preparation evidence advances;
@@ -1269,6 +1277,92 @@ class RuntimeSubtaskDriver:
         for field_name in ("candidate_set_ref", "candidate_ref"):
             if getattr(refreshed, field_name) == getattr(previous, field_name):
                 raise ValueError(f"refreshed perception reused stale {field_name}")
+
+    def _refresh_process_features(self, spec: SubtaskSpec) -> SubtaskSpec:
+        """Re-select pour/stir process features at the advanced scene revision.
+
+        A physical acquire advances the scene revision; the binding refresh
+        re-runs perception, but the planner-selected rim references stay bound
+        to the pre-acquire capture. Re-run the same Query/Preparation pair the
+        planner used so held preparation receives current rim evidence instead
+        of a candidate set from a revision the world has left behind.
+        """
+        binding = spec.binding
+        destination_entity = "entity://" + binding.destination_ref.removeprefix("destination://")
+        entity_refs = [binding.entity_ref, destination_entity]
+        identity = {
+            "operation": spec.operation,
+            "entity_refs": entity_refs,
+            "observation_ref": binding.observation_ref,
+            "scene_revision": binding.scene_revision,
+            "frame_id": binding.frame_id,
+            "calibration_ref": binding.calibration_ref,
+            "freshness_ms": binding.freshness_ms,
+            "max_age_ms": binding.max_age_ms,
+        }
+        propose = self.runtime.get_tool("manipulation.process_features")
+        proposed = self.runtime.invoke_internal_query(
+            propose["endpoint_id"], propose["operation"], dict(identity),
+        )
+        if proposed.get("status") != "available":
+            raise ValueError(
+                f"process features are unavailable at scene revision {binding.scene_revision}: "
+                f"{proposed.get('error', proposed.get('status'))}"
+            )
+        candidate_set_ref = proposed.get("candidate_set_ref")
+        candidates = [item for item in proposed.get("candidates", []) if isinstance(item, Mapping)]
+        selected = self._select_process_features(spec.operation, candidates, entity_refs)
+        validate = self.runtime.get_tool("manipulation.prepare_process_features")
+        validated = self.runtime.invoke_internal_query(
+            validate["endpoint_id"], validate["operation"], {
+                **identity,
+                "candidate_set_ref": candidate_set_ref,
+                "selected_feature_refs": selected,
+            },
+        )
+        if validated.get("status") != "available":
+            raise ValueError(
+                f"refreshed process features failed Preparation: {validated.get('error', validated.get('status'))}"
+            )
+        return spec.model_copy(update={
+            "process_feature_refs": tuple(selected),
+            "process_feature_candidate_set_ref": candidate_set_ref,
+        })
+
+    @staticmethod
+    def _select_process_features(
+        operation: str,
+        candidates: list[Mapping[str, Any]],
+        entity_refs: Sequence[str],
+    ) -> list[str]:
+        """First-available role selection mirroring the Preparation constraints."""
+        source_ref, destination_ref = entity_refs
+        per_entity = {
+            entity: [item for item in candidates if item.get("entity_ref") == entity]
+            for entity in entity_refs
+        }
+        missing = [entity for entity, items in per_entity.items() if not items]
+        if missing:
+            raise ValueError(f"process feature Query returned no candidate for {', '.join(missing)}")
+
+        def first_rim(entity: str) -> str:
+            for item in per_entity[entity]:
+                if item.get("feature_kind") == "rim":
+                    return item["feature_ref"]
+            raise ValueError(f"no rim process feature for {entity} at the refreshed scene revision")
+
+        if operation == "pour":
+            # The pour Query only emits task-conditioned source lips that admit
+            # a pour toward the destination; the first pairing wins, exactly as
+            # the first prepared grasp candidate wins.
+            return [first_rim(source_ref), first_rim(destination_ref)]
+        endpoints: dict[str, str] = {}
+        for item in per_entity[source_ref]:
+            if item.get("feature_kind") == "rod_endpoint_pair":
+                endpoints[item.get("feature_role") or ""] = item["feature_ref"]
+        if set(endpoints) != {"endpoint_a", "endpoint_b"}:
+            raise ValueError("stir requires distinct endpoint_a and endpoint_b features at the refreshed scene revision")
+        return [endpoints["endpoint_a"], endpoints["endpoint_b"], first_rim(destination_ref)]
 
 
 class SubtaskActionEndpoint:

@@ -111,6 +111,16 @@ input_schema:
     max_age_ms:
       type: integer
       minimum: 1
+    process_feature_candidate_set_ref:
+      type: string
+      pattern: ^process-feature-set://\S+$
+    process_feature_refs:
+      type: array
+      minItems: 2
+      uniqueItems: true
+      items:
+        type: string
+        pattern: ^process-feature://\S+$
     preparation_ref:
       type: string
       minLength: 1
@@ -164,12 +174,18 @@ input_schema:
           type: object
           additionalProperties: false
           properties:
-            radius_m: &id001
+            radius_m:
               type: number
               exclusiveMinimum: 0
-            depth_m: *id001
-            turns: *id001
-            duration_s: *id001
+            depth_m:
+              type: number
+              exclusiveMinimum: 0
+            turns:
+              type: number
+              exclusiveMinimum: 0
+            duration_s:
+              type: number
+              exclusiveMinimum: 0
             direction:
               enum:
               - cw
@@ -198,11 +214,11 @@ output_schema:
   - attempt_id
   - phase
   properties:
-    invocation_id: &id002
+    invocation_id: &id001
       type: string
       minLength: 1
-    attempt_id: *id002
-    phase: *id002
+    attempt_id: *id001
+    phase: *id001
     result:
       type: object
       additionalProperties: false
@@ -248,6 +264,16 @@ output_schema:
         max_age_ms:
           type: integer
           minimum: 1
+        process_feature_candidate_set_ref:
+          type: string
+          pattern: ^process-feature-set://\S+$
+        process_feature_refs:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^process-feature://\S+$
         preparation_ref:
           type: string
           minLength: 1
@@ -271,7 +297,7 @@ output_schema:
           type: object
         evidence_refs:
           type: array
-          items: *id002
+          items: *id001
         capability_outcome_summary:
           type: object
       required:

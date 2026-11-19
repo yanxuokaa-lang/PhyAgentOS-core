@@ -51,15 +51,26 @@ _PROPERTIES["acquire_invocation_ref"]["pattern"] = r"^invocation://object-acquir
 _PROPERTIES["held_invocation_ref"]["pattern"] = r"^invocation://[^/]+/[^/]+$"
 
 
+_PROCESS_FEATURE_OPTIONAL_PROPERTIES = {
+    # Fresh pour/stir rim evidence after a mid-subtask scene revision advance.
+    # Optional: place and legacy flows carry no process features.
+    "process_feature_candidate_set_ref": {"type": "string", "pattern": r"^process-feature-set://\S+$"},
+    "process_feature_refs": {"type": "array", "minItems": 2, "uniqueItems": True,
+                             "items": {"type": "string", "pattern": r"^process-feature://\S+$"}},
+}
+
+
 def input_schema(*, action: bool, operation: str | None = None) -> dict[str, Any]:
     properties = deepcopy(_PROPERTIES)
+    properties.update(deepcopy(_PROCESS_FEATURE_OPTIONAL_PROPERTIES))
     if operation:
         properties["operation"] = {"const": operation}
     if action:
         properties.update(preparation_ref=deepcopy(_TEXT), assignment_ref=deepcopy(_TEXT))
+    required = [key for key in properties if key not in _PROCESS_FEATURE_OPTIONAL_PROPERTIES]
     return {
         "type": "object", "additionalProperties": False,
-        "properties": properties, "required": list(properties),
+        "properties": properties, "required": required,
         "allOf": [
             {"if": {"properties": {"operation": {"const": kind}}},
              "then": {"properties": {"parameters": {

@@ -60,6 +60,16 @@ input_schema:
     max_age_ms:
       type: integer
       minimum: 1
+    process_feature_candidate_set_ref:
+      type: string
+      pattern: ^process-feature-set://\S+$
+    process_feature_refs:
+      type: array
+      minItems: 2
+      uniqueItems: true
+      items:
+        type: string
+        pattern: ^process-feature://\S+$
   required:
   - entity_ref
   - destination_ref
@@ -105,12 +115,18 @@ input_schema:
           type: object
           additionalProperties: false
           properties:
-            radius_m: &id001
+            radius_m:
               type: number
               exclusiveMinimum: 0
-            depth_m: *id001
-            turns: *id001
-            duration_s: *id001
+            depth_m:
+              type: number
+              exclusiveMinimum: 0
+            turns:
+              type: number
+              exclusiveMinimum: 0
+            duration_s:
+              type: number
+              exclusiveMinimum: 0
             direction:
               enum:
               - cw
@@ -144,7 +160,7 @@ output_schema:
     properties:
       status:
         const: available
-      entity_ref: &id003
+      entity_ref: &id001
         type: string
         minLength: 1
       arguments:
@@ -195,6 +211,16 @@ output_schema:
           max_age_ms:
             type: integer
             minimum: 1
+          process_feature_candidate_set_ref:
+            type: string
+            pattern: ^process-feature-set://\S+$
+          process_feature_refs:
+            type: array
+            minItems: 2
+            uniqueItems: true
+            items:
+              type: string
+              pattern: ^process-feature://\S+$
           preparation_ref:
             type: string
             minLength: 1
@@ -248,12 +274,18 @@ output_schema:
                 type: object
                 additionalProperties: false
                 properties:
-                  radius_m: &id002
+                  radius_m:
                     type: number
                     exclusiveMinimum: 0
-                  depth_m: *id002
-                  turns: *id002
-                  duration_s: *id002
+                  depth_m:
+                    type: number
+                    exclusiveMinimum: 0
+                  turns:
+                    type: number
+                    exclusiveMinimum: 0
+                  duration_s:
+                    type: number
+                    exclusiveMinimum: 0
                   direction:
                     enum:
                     - cw
@@ -286,6 +318,6 @@ output_schema:
     properties:
       status:
         const: unavailable
-      error: *id003
+      error: *id001
       motion_authorized:
         const: false

@@ -157,7 +157,8 @@ class SubtaskPreparationEndpoint:
 
 def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False,
                                   validate_production_schemas=False, assignment_store=None,
-                                  acquire_result=None, preparation_endpoint=None):
+                                  acquire_result=None, preparation_endpoint=None,
+                                  process_feature_status="available"):
     runtime = CapabilityRuntime()
     for tool_id, result in {
         "object.acquire": acquire_result or {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
@@ -207,6 +208,10 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
         runtime, refresh_binding, lambda _caller_id: coordinator_context(),
         assignment_store=assignment_store,
     ))
+    # Production pour/stir subtasks always carry planner-selected process
+    # features, and the driver re-selects them after a scene revision advance.
+    proposals, validations = register_process_feature_tools(runtime, status=process_feature_status)
+    runtime.feature_proposals, runtime.feature_validations = proposals, validations
     return runtime
 
 
@@ -583,6 +588,161 @@ def test_runtime_driver_rejects_refresh_with_stale_motion_candidates():
             break
     assert result["status"] == "unknown"
     assert result["result"]["subtask_result"]["error"]["message"] == "refreshed perception reused stale candidate_set_ref"
+
+
+def task_qualified_pour_spec():
+    observed = binding()
+    return SubtaskSpec(
+        subtask_id="pour-a", operation="pour", binding=observed, parameters=pour_parameters(),
+        process_feature_refs=(
+            "process-feature://scene-1/source/0",
+            "process-feature://scene-1/destination/0",
+        ),
+        process_feature_candidate_set_ref="process-feature-set://scene-1/pour",
+        grasp_task_affordance_candidate_set_ref="grasp-affordance-set://scene-1/pour",
+        grasp_task_affordance_ref="grasp-affordance://scene-1/pour/qualified",
+        selected_grasp_candidate_ref=observed.candidate_ref,
+        qualified_grasp_candidate_refs=(observed.candidate_ref,),
+        affordance_selection="task_qualified",
+    )
+
+
+def register_process_feature_tools(runtime, *, status="available"):
+    proposals, validations = [], []
+
+    def propose(arguments):
+        proposals.append(dict(arguments))
+        if status != "available":
+            return {"status": status, "error": f"no rim evidence at {arguments['scene_revision']}"}
+        revision = arguments["scene_revision"]
+        return {
+            "status": "available",
+            "candidate_set_ref": f"process-feature-set://{revision}/pour",
+            "candidates": [
+                {"feature_ref": f"process-feature://{revision}/source/0",
+                 "entity_ref": arguments["entity_refs"][0], "feature_kind": "rim", "feature_role": "pour_lip"},
+                {"feature_ref": f"process-feature://{revision}/destination/0",
+                 "entity_ref": arguments["entity_refs"][1], "feature_kind": "rim", "feature_role": "opening"},
+            ],
+        }
+
+    def validate_selection(arguments):
+        validations.append(dict(arguments))
+        return {"status": "available", "candidate_set_ref": arguments["candidate_set_ref"],
+                "selected_feature_refs": list(arguments["selected_feature_refs"])}
+
+    runtime.register_tool(
+        {"tool_id": "manipulation.process_features", "endpoint_id": "process_features",
+         "operation": "propose", "semantics": "query"},
+        ImmediateQueryEndpoint(propose),
+    )
+    runtime.register_tool(
+        {"tool_id": "manipulation.prepare_process_features", "endpoint_id": "process_feature_preparation",
+         "operation": "validate_selection", "semantics": "query"},
+        ImmediateQueryEndpoint(validate_selection),
+    )
+    return proposals, validations
+
+
+def test_scene_revision_advance_refreshes_process_features_before_held_preparation():
+    def refresh(current, revision):
+        return current.model_copy(update={
+            "scene_revision": revision,
+            "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
+            "candidate_set_ref": f"candidate-set://{revision}/reagent-a",
+            "grasp_candidate_ref": f"candidate-set://{revision}/reagent-a",
+            "candidate_ref": f"candidate://{revision}/reagent-a/0",
+            "freshness_ms": 0,
+        })
+
+    runtime = runtime_with_subtask_endpoint(refresh)
+    outer = runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(task_qualified_pour_spec()),
+        caller_id="paos:task-1:revision-1:record-1",
+    )["invocation_id"]
+    result = None
+    for _ in range(20):
+        result = runtime.invocation_result(outer)
+        if result["status"] != "pending":
+            break
+    assert result["status"] == "succeeded"
+    subtask = result["result"]["subtask_result"]
+    assert subtask["status"] == "completed"
+    # The re-query ran at the advanced revision against both task entities.
+    proposals, validations = runtime.feature_proposals, runtime.feature_validations
+    assert proposals and proposals[0]["scene_revision"] == "scene-2"
+    assert proposals[0]["entity_refs"] == ["entity://reagent-a", "entity://beaker-1"]
+    assert validations[0]["candidate_set_ref"] == "process-feature-set://scene-2/pour"
+    # Held preparation received the refreshed rim evidence, never the
+    # pre-acquire candidate set the acquire left behind.
+    held = next(
+        item for item in subtask["receipts"]
+        if item["tool_id"] == "manipulation.prepare_held"
+        and item["response"].get("arguments", {}).get("operation") == "pour"
+    )
+    arguments = held["response"]["arguments"]
+    assert arguments["process_feature_refs"] == [
+        "process-feature://scene-2/source/0", "process-feature://scene-2/destination/0",
+    ]
+    assert arguments["process_feature_candidate_set_ref"] == "process-feature-set://scene-2/pour"
+    assert "process-feature-set://scene-1" not in str(arguments)
+
+
+def test_process_feature_refresh_failure_fails_honestly_before_held_motion():
+    def refresh(current, revision):
+        return current.model_copy(update={
+            "scene_revision": revision,
+            "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
+            "candidate_set_ref": f"candidate-set://{revision}/reagent-a",
+            "grasp_candidate_ref": f"candidate-set://{revision}/reagent-a",
+            "candidate_ref": f"candidate://{revision}/reagent-a/0",
+            "freshness_ms": 0,
+        })
+
+    runtime = runtime_with_subtask_endpoint(refresh, process_feature_status="empty")
+    outer = runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(task_qualified_pour_spec()),
+        caller_id="paos:task-1:revision-1:record-1",
+    )["invocation_id"]
+    result = None
+    for _ in range(20):
+        result = runtime.invocation_result(outer)
+        if result["status"] != "pending":
+            break
+    assert result["status"] == "unknown"
+    subtask = result["result"]["subtask_result"]
+    assert subtask["recommended_action"] == "refresh_perception_before_motion"
+    assert "scene-2" in subtask["error"]["message"]
+    assert subtask["completed_tool_ids"] == ["manipulation.prepare", "object.acquire"]
+    assert not any(item["tool_id"] == "object.pour" for item in subtask["receipts"])
+
+
+def test_held_schema_accepts_optional_process_feature_refs():
+    from pick_place_workflow.held_manipulation import validate
+
+    base = {
+        "entity_ref": "entity://reagent-a", "destination_ref": "destination://beaker-1",
+        "observation_ref": "observation://lab/scene-2", "scene_revision": "scene-2",
+        "frame_id": "lab-camera-front", "calibration_ref": "artifact://calibration/lab-v1",
+        "capability_snapshot_ref": "artifact://capabilities/lab-v1",
+        "acquire_invocation_ref": "invocation://object-acquire/1",
+        "held_invocation_ref": "invocation://object-pour/1",
+        "operation": "pour", "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
+        "freshness_ms": 10, "max_age_ms": 1000,
+    }
+    validate(base, action=False)
+    with_refs = {
+        **base,
+        "process_feature_refs": [
+            "process-feature://scene-2/source/0", "process-feature://scene-2/destination/0",
+        ],
+        "process_feature_candidate_set_ref": "process-feature-set://scene-2/pour",
+    }
+    validate(with_refs, action=False)
+    validate({**with_refs, "preparation_ref": "preparation://scene-2/lab-camera-front",
+              "assignment_ref": "artifact://assignments/task-1/pour-scene-2"}, action=True)
 
 
 def test_runtime_outer_cancel_propagates_to_active_internal_invocation():
