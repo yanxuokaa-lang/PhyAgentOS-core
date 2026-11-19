@@ -1,0 +1,16 @@
+{
+  "assumptions": "Deployment copy of labutopia-mixture-physics.json with robot paths under /World/Ridgebase: the tabletop scene embeds an authored fixed Franka at /World/Franka that silently claims the finger material and drive cap, leaving a ridgeback-profile live robot on USD defaults. Values are identical; only the paths move.",
+  "materials": {
+    "glass": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.0},
+    "finger": {"static_friction": 0.8, "dynamic_friction": 0.6, "restitution": 0.0},
+    "table": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.0}
+  },
+  "bodies": [{"asset_type": "reagent_bottle", "mass_kg": 0.10, "material": "glass", "hull_vertex_limit": 36, "max_convex_hulls": 32}],
+  "surfaces": [
+    {"paths": ["/World/Ridgebase/panda_leftfinger", "/World/Ridgebase/panda_rightfinger"], "material": "finger"},
+    {"paths": ["/World/table"], "material": "table"}
+  ],
+  "drives": [
+    {"joint_path": "/World/Ridgebase/panda_hand/panda_finger_joint1", "max_force_n": 20.0, "max_velocity_m_s": 0.02}
+  ]
+}
