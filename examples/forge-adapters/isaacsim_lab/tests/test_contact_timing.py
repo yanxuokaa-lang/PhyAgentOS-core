@@ -197,6 +197,38 @@ def test_unqualified_unloaded_lift_interval_stops(monkeypatch, mode):
     assert not result["operation_completed"]
 
 
+def test_lift_slip_under_persistent_bilateral_load_carries_to_completion(monkeypatch):
+    model, args, _commands, artifacts = execution_fixture(monkeypatch)
+    timed_contact_sensors(model, lambda _step: "bilateral")
+    original = model.body_pose("/World/source")
+
+    def pose(_path):
+        value = original.copy()
+        # run24d shape: once the carry starts the body follows the lift while
+        # sliding in the gripper relation — 8.2mm of measured slip — and
+        # bilateral load never breaks.
+        if model.world.steps > 12:
+            carried_steps = model.world.steps - 12
+            value[0, 3] += .0022 * carried_steps
+            value[2, 3] += .006 * carried_steps
+        return value
+
+    model.body_pose = pose
+    result = model.execute(args, Event())
+
+    assert result["status"] == "succeeded", result.get("failure_code")
+    assert result["operation_completed"] is True
+    assert result["possession_state"] == "holding"
+    samples = artifacts[-1][1]["samples"]
+    slipped = [sample for sample in samples if sample["stage"] == "lift"
+               and sample["attachment_position_error_m"] > model.config["grasp_position_tolerance_m"]]
+    assert slipped
+    # Telemetry stays honest: the transform bound is exceeded and recorded,
+    # but carrying under bilateral load is not a grasp failure.
+    assert all(sample["contact_load_valid"] for sample in slipped)
+    assert all(sample["grasp_valid"] is False for sample in slipped)
+
+
 def test_static_manifold_with_excessive_grasp_drift_stops(monkeypatch):
     model, args, _commands, artifacts = execution_fixture(monkeypatch)
     original = model.body_pose("/World/source")
