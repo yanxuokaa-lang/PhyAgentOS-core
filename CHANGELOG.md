@@ -62,13 +62,14 @@
 + [not present in rewritten commit tree; local file retained]
 ```
 
-**验证 / Validation**：待推送范围36个提交、merge-base未变、无≥100,000,000字节对象；本地视频存在。历史操作未运行测试，沿用原实现的206 passed结果；push结果待回执。 / The36-commit pending range retains its merge-base, contains no object ≥100,000,000 bytes, and the local video remains present. No tests were run for this history-only change; the original implementation's206-passed result remains applicable, and push outcome is pending.
+**验证 / Validation**：重写前待推送范围为36个提交，merge-base未变，范围内无≥100,000,000字节对象；本地视频存在且不在HEAD树中。历史操作未运行测试，沿用原实现的206 passed结果；历史修复推送与日志回执推送均已成功。 / Before rewriting, the pending range contained36 commits with the same merge-base and no object ≥100,000,000 bytes; the local video remains present and is absent from the HEAD tree. No tests were run for this history-only change; the original implementation's206-passed result remains applicable, and both the history-repair push and log-receipt push succeeded.
 
 ### Git提交 / Git Commit
 - Rewritten commit / 重写提交：`14c8418bc162f8ef8c445fbcdfda8d8609566f02`（替代`67e77c0b461af6141bc8ab7e5771d577ad8e6171`）。
 - Branch / 分支：`feature/planning-loop`。
 - Push / 推送：成功，`09b9d32c` → `ca1fee82`（`git ls-remote`已核验）。
 - [chore] [chore] 2026-11-20 15:45:25 Asia/Shanghai 使用`git push --force-with-lease origin feature/planning-loop`成功，远端从`09b9d32c`更新至`ca1fee82`；`git ls-remote`确认远端指针为`ca1fee82575b8ae9eaccf860db6f5bafccf95001`。GitHub仅提示run9、run12、run13、run14视频超过50 MB建议值，未拒绝推送。 / At 2026-11-20 15:45:25 Asia/Shanghai, `git push --force-with-lease origin feature/planning-loop` succeeded, moving the remote from `09b9d32c` to `ca1fee82`; `git ls-remote` confirmed the remote ref at `ca1fee82575b8ae9eaccf860db6f5bafccf95001`. GitHub only warned that run9, run12, run13 and run14 videos exceed its 50 MB recommendation; the push was accepted. (ca1fee82)
+- [chore] [chore] 日志回执提交`2389016288c0b981475dd155e6f37b7a0032aaa4`已通过`git push origin feature/planning-loop`成功推送；`git ls-remote`确认最终远端指针为`2389016288c0b981475dd155e6f37b7a0032aaa4`。 / Log-receipt commit`2389016288c0b981475dd155e6f37b7a0032aaa4` was pushed successfully with`git push origin feature/planning-loop`; `git ls-remote` confirmed the final remote ref at the same commit. (23890162)
 
 ## v17.8.1 (2026-11-19 20:54) - codex
 
