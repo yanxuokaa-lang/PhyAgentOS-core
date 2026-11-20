@@ -50,6 +50,57 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.5 (2026-11-20 23:33) - codex
+
+### 收尾校正 / Closeout Corrections [完成 / Completed]
+- [docs] [chore] 核验最近五版本顺序为v17.8.5、v17.8.4、v17.8.3、v17.8.2、v17.8.1；v17.8.0及更早版本保留在月档归档。 / Verify the latest-five sequence as v17.8.5, v17.8.4, v17.8.3, v17.8.2 and v17.8.1; retain v17.8.0 and older versions in the monthly archive. (local)
+- [docs] [fix] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L91-L95将v17.8.3复现与结果抽取命令标为历史候选命令，避免与当前v17.8.4 fresh终态混用。 / Mark the v17.8.3 reproduction and extraction commands at L91-L95 as historical candidate commands so they are not confused with the current v17.8.4 fresh outcome. (local)
+- [chore] [eval] 206项回归通过（5.14s，保留既有`asyncio_mode`警告），`git diff --check`通过；本轮不改运动逻辑或运行产物。 / The206-test regression passes in5.14s with the existing`asyncio_mode` warning, and `git diff --check` passes; no motion logic or run artifacts change in this closeout. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [fix] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L91-L95：将复现注释从当前C运行改为历史v17.8.3候选复现。 / Change the reproduction comments from current-C wording to historical-v17.8.3-candidate wording.
+```diff
+-# 复现使用新目录；本次C已执行完毕 / Reproduce in a fresh directory; C is complete:
++# 历史v17.8.3候选复现命令；不代表当前v17.8.4结果 / Historical v17.8.3 candidate reproduction; does not represent the current v17.8.4 result:
+```
+
+### Git提交 / Git Commit [pending]
+- 当前收尾修正待与v17.8.4候选修改一并精确提交并推送；实际hash和远端回执将在提交后补入。 / This closeout correction is pending precise commit and push together with the v17.8.4 candidate changes; the actual hash and remote receipt will be added after commit. (local)
+
+## v17.8.4 (2026-11-20 22:15) - codex
+
+### Ridgebase候选布局复核 / Ridgebase Candidate Placement Recheck [完成 / Completed]
+- [env] [tune] 基于`results-v3`选定并实现单一候选：底盘由`[-1.12,0.10,0.01]m`调整为`[-1.105,0.04,0.01]m`，臂安装增量由`0.53m`降至`0.48m`，fresh读回臂基约`[-0.805,0.04,0.77]m`；桌面布局和运动/碰撞阈值不变。 / Select and implement one candidate: move the chassis to`[-1.105,0.04,0.01]m`, lower mount elevation to`0.48m`, obtain the stated fresh arm-root readback, and preserve tabletop layout and motion/collision thresholds. (local)
+- [eval] [exp] fresh无动作初始化与home碰撞检查通过；125步居中零偏移same-side路线的kinematic/collision/workspace资格检查通过，但完整运行在transport因`inverse_kinematics_failed: measured pour-pose correction is unreachable`失败，未进入process或倾倒保持。 / Fresh initialization and home collision pass; the125-step centered zero-offset same-side route qualifies, but runtime fails in transport with the stated correction-IK error before process or pour hold. (local)
+- [决策边界 / Decision boundary] 最终结论为“路线资格检查通过，实际倾倒失败”；停止继续扫描底盘位置或安装高度，下一决策点仅针对transport实测姿态修正的IK残差、seed连续性和失败边界。 / Final conclusion: route qualification passes but actual pouring fails; stop further chassis or mount-height scanning and limit the next decision point to transport correction residuals, seed continuity and the failure boundary. (local)
+
+### 文件变更详情 / File Changes
+- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L12：`base_position`由`[-1.12,0.10,0.01]`改为`[-1.105,0.04,0.01]`。 / Change the chassis base position to the selected candidate. (local)
+```diff
+-  base_position: [-1.12, 0.10, 0.01]
++  base_position: [-1.105, 0.04, 0.01]
+```
+- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda` L3,L13-L94：12个臂/手/手指/末端刚体z增量由`0.53m`改为`0.48m`，同步安装关节、柱尺寸、COM与惯量。 / Lower the12 arm/end bodies to`0.48m` and update the mounting joint, column geometry, COM and inertia. (local)
+```diff
+-  point3f physics:centerOfMass = (0.3, 0, 0.265)
++  point3f physics:centerOfMass = (0.3, 0, 0.24)
+-  point3f physics:localPos0 = (0.3, 0, 0.53)
++  point3f physics:localPos0 = (0.3, 0, 0.48)
+-  float3 xformOp:scale = (0.12, 0.12, 0.53)
++  float3 xformOp:scale = (0.12, 0.12, 0.48)
+```
+- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py` L36,L62-L72：同步0.48m刚体位移、柱z上界0.76、COM/inertia及底盘坐标断言。 / Update the deployment, column-bound, COM/inertia and chassis assertions for the selected candidate. (local)
+- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L1-L178：区分v17.8.3历史候选与v17.8.4当前候选，记录fresh读回、125步路线资格、transport失败、视频证据和停止继续扫描的决策边界。 / Distinguish the v17.8.3 historical candidate from the v17.8.4 current candidate and record fresh readback, route qualification, transport failure, videos and the stop-scan decision boundary. (local)
+
+### 验证与证据 / Validation and Evidence
+- [eval] [chore] 原回归命令通过**206 passed**，5.12s，保留1项既有`asyncio_mode`配置警告；`git diff --check`通过。 / The focused regression command passes**206 tests** in5.12s with one pre-existing`asyncio_mode` warning; `git diff --check` passes. (local)
+- [eval] [exp] `out/labutopia-elevated-20261120/v17.8.4-candidate/no-motion.json`读回底盘`[-1.1050000191,0.0399999991,0.0099999998]m`、臂基`[-0.8049764633,0.0400000103,0.7700000405]m`，home collision passed、motion_commands=0、柱碰撞启用、旧Franka未激活。 / The no-motion evidence records the stated chassis and arm-root positions, a passed home check, zero motion commands, enabled column collision and no active legacy Franka. (local)
+- [eval] [exp] readiness`a3079b268c5c4b9fab4aebbdb666279d.json`选择125步居中零偏移same-side路线且三项资格均通过；task`task_724bb801fcf742a5`于2026-11-20 22:31:20至22:50:28以return code1失败，pour反馈1653样本全transport，最大倾角0.590846rad，process/hold/transfer均未完成。 / Readiness selects the125-step centered route with all qualification checks passing; the task fails in the stated window with1653 transport-only samples, maximum tilt0.590846rad and no process/hold/transfer completion. (local)
+- [eval] [docs] 证据边界保持为：路线资格通过不等同于实际倾倒成功；当前回执没有失败目标的逐候选执行态IK残差或关节解，因此不继续修改运动逻辑、力配置或位置/高度。 / Preserve the evidence boundary that route qualification is not pour success; receipts lack per-target runtime IK residuals or joint solutions, so motion logic, force configuration and placement/height remain unchanged. (local)
+
+### Git提交 / Git Commit [pending]
+- 当前版本待精确暂存、提交并推送；commit hash将在实际提交后补入。 / This version awaits precise staging, commit and push; the commit hash will be recorded after the actual commit. (local)
+
 ## v17.8.3 (2026-11-20 16:08) - codex
 
 ### 机座位置与高度调整 / Base Placement and Height Adjustment [完成；fresh运行失败 / Completed; fresh runtime failed]
@@ -353,117 +404,6 @@
 - Branch: `feature/planning-loop`
 - 时间 / Time: `2026-11-19 22:50:27 Asia/Shanghai (UTC+8)`
 - [chore] [chore] 主实现commit已完成；push待主会话执行。本receipt仅记录实现提交，不追记receipt自身提交。 / Primary implementation commit is complete; push remains pending with the primary. This receipt records the implementation commit without recursively recording its own commit. (5aa50f07)
-
-## v17.8.0 (2026-11-19 20:00) - codex
-
-### 实施范围 / Implementation Scope [完成]
-- [env] [tune] 仅调整机器人安装高度与位置；桌面物品、操作区及安全阈值保持原值。先依据桌面几何、生产 URDF 与实际抓取/倾倒目标计算单一部署，再修改并执行 fresh-reset 仿真。 / Adjust only robot mounting height and placement, retaining tabletop objects, operation area and safety thresholds; derive one deployment from measured table geometry, production URDF and actual grasp/pour targets before editing and fresh-reset simulation. (local)
-- [env] [feat] 离线分析支持单一增高布局，已新增 Adapter 私有 USD 安装覆盖层，保持底盘落地、关节一致与增高支柱碰撞检查；不修改 LabUtopia 原始资产或公共接口。 / Offline analysis supports one elevated layout; add the Adapter-private elevated USD deployment with grounded chassis, coherent joints and pedestal collision checks, preserving original LabUtopia assets and public interfaces. (local)
-- [eval] [exp] 已保存计算、无运动验证、终态反馈及视频到独立输出目录，补全精确Diff/行号及索引；实际实现提交已记录于下方收据，push尚待主会话执行。 / Preserve calculations, no-motion validation, terminal feedback and video in a separate output directory and complete exact diffs/lines and the index; the completed implementation commit is recorded below, while the push is not yet performed. (local)
-
-### 具体实施文件 / Concrete Implementation Files [完成]
-- [env] [feat] 新增 `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda`，引用原机器人并仅上移全部12个臂/末端刚体0.43m；添加0.12×0.12×0.43m碰撞柱、同步安装关节与质量惯量。 / Reference the source robot, raise its 12 arm/end bodies by0.43m, add the collision column and update the mounting joint and mass properties. (local)
-- [env] [tune] 修改 `configs/labutopia-ridgebase-station.yaml`（路径均相对于Isaac Adapter）机器人位置至[-1.12,.18,.01]及机器人资产路径；修改 `configs/labutopia-ridgebase.json` 选择新机器人与新增 `configs/labutopia-ridgebase-elevated-motion.json`，后者仅追加支柱碰撞路径。桌面layout逐字保留。 / Update robot placement and asset paths, select the elevated asset/motion configuration, and append only the column mount collider; preserve tabletop layout verbatim. (local)
-- [env] [fix] 修改 `src/isaacsim_lab/phase_motion.py` 的 `_collisions`，显式mount碰撞体不再随机器人子树被忽略，保留link0连接豁免。 / Keep explicitly configured internal mount colliders visible to sphere/finger/payload checks while preserving link0 connection exemption. (local)
-- [eval] [chore] 扩充 `tests/test_phase_motion.py`，新增 `tests/test_ridgebase_elevated.py`，验证真实碰撞函数与无运动USD组合；新增 `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` 记录设计、限制及命令。 / Exercise actual collision logic and no-motion USD composition, and document design, limitations and commands. (local)
-- [eval] [exp] `out/labutopia-elevated-20261119/offline-placement-analysis.py/.json/.log` 记录单一布局离线计算。主会话纠正规格：第二lip clearance由错误请求.078m改为现行profile允许的.048m，重算24个候选；运行时阈值不改。 / Correct the caller's second analysis clearance from the initially requested.078m to the existing.048m allowance and recompute24 candidates, changing no runtime threshold. (local)
-- [env] [fix] 新USD显式声明metersPerUnit=1与upAxis=Z，避免独立打开wrapper时使用USD默认厘米单位；组合测试一并断言。 / Declare meter units and Z up explicitly so standalone wrapper reads retain the source frame, and assert them in composition tests. (local)
-- [eval] [exp] 新增 `out/labutopia-elevated-20261119/no-motion-check.py` 与 `run-elevated.py`：前者调用生产Backend/WorkerSession初始化并读回臂基、柱边界、关节及home碰撞；后者保存独立workspace/config/metadata/命令和终态；主会话已触发C并保留失败终态。 / Add production-backed no-motion initialization/readback and a separate full-run launcher preserving workspace, configs, metadata, command and terminal outcome; the primary runs C and retains its failed terminal outcome. (local)
-
-### 文件变更详情 / File Changes [实现完成]
-- [env] [feat] [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda` L1-L96：米/Z-up stage、原asset reference、12个arm/end刚体z+.43、安装joint localPos0[.3,0,.43]、6kg质量/COM/惯量及CollisionAPI柱。 / Meter/Z-up reference wrapper raises12 bodies, updates the mounting joint and mass properties and adds the collision-enabled column. (local)
-```diff
-+ metersPerUnit = 1
-+ upAxis = "Z"
-+ prepend references = @/home/yanxu/LabUtopia/assets/robots/ridgeback_franka.usd@
-- # source arm-root translate z = .2800000011920929
-+ double3 xformOp:translate = (.3000003695487976, 3.960444860950929e-9, .7100000011920928)
-+ point3f physics:localPos0 = (.3,0,.43)
-+ float physics:mass = 6
-+ point3f physics:centerOfMass = (.3,0,.215)
-+ float3 physics:diagonalInertia = (.09965,.09965,.0144)
-+ def Cube "elevation_column" (prepend apiSchemas=["PhysicsCollisionAPI"])
-+ # local translate [.3,0,.215], scale [.12,.12,.43], size1
-```
-- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L11-L12；`labutopia-ridgebase.json` L4/L7。 / Update station asset/position and profile robot/motion selection. (local)
-```diff
-- usd_asset: assets/robots/ridgeback_franka.usd
-- base_position: [-1.05, 0.18, 0.01]
-+ usd_asset: /home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda
-+ base_position: [-1.12, 0.18, 0.01]
-- "motion_config_path": "labutopia-oracle-motion.json"
-- "robot_usd_path": "/home/yanxu/LabUtopia/assets/robots/ridgeback_franka.usd"
-+ "motion_config_path": "labutopia-ridgebase-elevated-motion.json"
-+ "robot_usd_path": "labutopia-ridgebase-elevated.usda"
-```
-- [env] [feat] [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated-motion.json` L1-L112：复制oracle，仅新增mount路径；其他值全等。 / Copy oracle and add only the column mount path; all other values match. (local)
-```diff
-- "mount_collision_paths": ["/World/table"]
-+ "mount_collision_paths": ["/World/table", "/World/Ridgebase/arm_mount_link/elevation_column"]
-```
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1238-L1239/L1250/L1274/L1317：sphere、finger、payload共享局部predicate；原link0 exact-path连接豁免保留。 / Apply the local predicate to all three collision shapes while retaining the original link0 exact-path connection exemption. (local)
-```diff
-+ def ignore_robot(path):
-+     return path.startswith(robot_path) and path not in self.config["mount_collision_paths"]
-- path.startswith(robot_path) or ...
-+ ignore_robot(path) or ...  # sphere / finger / payload
-```
-- [eval] [chore] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2996-L3038，8种生产`_collisions`回归；新增`tests/test_ridgebase_elevated.py` L1-L89，4个配置/USD组合测试。 / Eight actual-collision regressions and four configuration/USD composition tests. (local)
-```diff
-+ @pytest.mark.parametrize("kind", ["panda_link0", "panda_link2", "finger", "payload"])
-+ @pytest.mark.parametrize("explicit_mount", [False, True])
-+ # explicit mount hit rejects link2/finger/payload; link0 connection allowed
-+ # ordinary robot geometry remains ignored
-+ # no-motion USD checks all arm bodies, unchanged chassis, joint anchors, column and units
-+ # pure config test compares complete motion values except the added mount path
-```
-- [docs] [docs] [新增 / Added] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L1-L124：双语部署、原装区别、离线限制、所有权、完整命令、验证及当前实测状态。 / Bilingual deployment design, source differences, offline limits, ownership, commands, validation and current run status. (local)
-```diff
-+ Fixed armroot [-.82,.18,.72]m; one0.43m elevation; table layout preserved.
-+ Endpoint sensitivity only; full fresh-revision qualification still required.
-+ 194 tests pass; production home collision passes; C acquires then fails all24 pour candidates.
-```
-
-### 已完成验证 / Completed Validation
-- [eval] [exp] 离线seed20261119、12 seeds、单一臂基布局，FK最大24.0067µm；8 grasp有5条grasp+lift可达，24 pour有4条各端点可达，其中2条各端点桌/柱余量≥3mm，yaw=-π/2 az0 clearance=.04/.048。最小所选端点余量57.6135mm，最小关节限位余量.1807476rad。只证明独立端点敏感性，不证明路径、自碰撞、载荷、其他物体或夹取接触。 / Offline results establish the stated endpoint sensitivity with deterministic analysis seeds, not full route or physical success. Evidence: `out/labutopia-elevated-20261119/offline-placement-analysis.json`. (local)
-- [eval] [chore] `PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py -q` → **194 passed**；既有asyncio_mode警告保留。 / All194 tests pass with the existing plugin-disabled asyncio configuration warning. (local)
-- [eval] [chore] 首次pytest漏workflow PYTHONPATH致28项导入失败，另1项测试未处理world joint无Body0，均修正后重跑通过；首次no-motion缺repo root路径在Backend导入前停止，retry已通过，原日志保留不记通过。 / Initial harness/import failures were corrected before successful reruns; failed initial logs remain explicit. (local)
-- [eval] [chore] 新`test_ridgebase_elevated.py` Ruff通过，`git diff --check`通过；整体旧文件Ruff保留3个既有问题（phase_motion.py:1015 I001，test_phase_motion.py:2637/2723 E731），不记整体lint通过。 / New-file lint and diff checks pass; three existing old-file lint findings remain and whole-file lint is not reported passing. (local)
-- [data] [exp] `deployment-diff-evidence.json`证明station除位置/机器人资产路径外逐字一致，layout后文本完全相同。主会话filecmp确认外部原robot USD、tabletop scene USDA、tabletop_station.yaml与A/B既有external-scene-snapshot逐字节一致，并独立确认motion JSON移除mount_collision_paths后与oracle逐值相等。 / Exact station/layout and bytewise external-asset comparisons confirm preserved tabletop and sources; independent comparison confirms identical oracle motion values except mount_collision_paths. (local)
-- [env] [exp] 生产Backend/WorkerSession fresh初始化 `status=initialized`、home_collision_check=passed、manipulation_commands=0、读回期间joints不变；actual armroot[-.8199764490,.1800000221,.7199999690]m。柱world bounds=[[-.8799765223,.1200000209,.2899999881],[-.7599765188,.2400000244,.7199999952]]m，collision启用、旧臂inactive、旧碰撞体空。mount joint世界锚点差6.6643e-8m；不声称所有关节锚点零差。 / Production initialization and home collision pass with the stated actual frame and column bounds; mounting-joint alignment is measured without claiming every joint has zero separation. Evidence: `out/labutopia-elevated-20261119/no-motion.json`, fresh revision `labutopia-tabletop-rod-rack-v1:2faca503a5de4b20bc3e3a4ea8b08e03:0`. (local)
-- [env] [chore] 通用层与公共接口未改；部署与碰撞属于Adapter，WorkerSession拥有reset/revision，Runtime保留取消、结算、恢复。临时测试依赖和USD单位review发现均已解决，主会话当前无其余Major。 / Generic contracts remain unchanged; Adapter, WorkerSession and Runtime ownership remains explicit, and the identified test-portability and stage-unit review findings are resolved. (local)
-
-### 完整仿真实测 / Complete Simulation [失败终态 / Failed terminal outcome]
-- [eval] [exp] C目录`out/labutopia-elevated-20261119/C-elevated/`，任务`task_535f6c998fb04d52`已failed；metadata时间2026-11-19T20:12:24.275076+08:00至20:28:19.962926+08:00，returncode=1。28/28 approach probes available，`object.acquire=succeeded`、possession=holding、newrev=`labutopia-tabletop-rod-rack-v1:087c1ba6869a4d73825e4096ee6ddefd:1`；未执行pour/place。 / C records the stated failed terminal task, timestamps and return code1 after available probes and successful acquisition with holding possession; pour/place do not execute. (local)
-- [eval] [exp] C反馈`phase-feedback/1cb8383e4ab8467db70bcf71d3f1bddc.json`共2139样本/113lift，其中42个lift样本grasp_valid，所有阶段79 grasp_valid/150 contact_load_valid；lift attach位置误差峰9.314366924mm。末样grasp_valid=false、contact_load_valid=true，不能写所有样本夹稳有效。 / C retains2139 samples,113 lift samples with42 grasp-valid lift samples,79 total grasp-valid and150 contact-load-valid samples, and a9.314366924mm peak lift attachment error. The final grasp is invalid despite valid load, so success is not generalized to every sample. (local)
-- [eval] [exp] `prepare_held=unavailable/pour_route_unavailable`，24候选按各自报告的首个拒绝原因分类：12 transport数值未找到解、5 IK连续解失败、4 panda_hand撞TargetBeaker、2 panda_link6撞桌、1 payload撞TargetBeaker；不排除候选还存在其他问题，数值未找到解不证明数学不可达。完整detail保存在acceptance与placement-summary，零倾倒路线获准。 / All24 held-pour candidates fail; their first reported rejections classify as12 transport numerical no-solution,5 continuous-IK failures,4 hand/beaker collisions,2 link6/table collisions and1 payload/beaker collision. Additional issues remain possible, and numerical no-solution does not prove mathematical unreachability. Full raw reasons remain in acceptance and summary. (local)
-- [eval] [exp] acquire阶段视频`out/labutopia-elevated-20261119/C-elevated/artifacts/labutopia/phase-video/7e063e88c039442db11750ea220ea68b.mp4`经主会话独立ffprobe确认35.616667秒/2137帧/3840×960/46641276bytes；抽帧目视确认增高部署。视频仅含acquire，无倾倒运动。 / Independent video inspection confirms the stated duration, frame count, resolution, bytes and elevated deployment. The video covers acquisition only, with no pouring motion. (local)
-- [eval] [docs] C相对B恢复成功抓取，24倾倒候选中不再出现原A主导的link2撞桌失败，但仍因连续IK及腕部/载荷碰撞拒绝倾倒，不能归因为仅距离过远。离线端点可达不等于连续路径合格。按用户限制桌面初始位置不动，只采用一个计算布局，未继续逐次试高度或放松阈值。 / C restores acquisition beyond B and removes A's dominant link2/table reason from the observed candidate set, while continuous IK and wrist/payload collisions still prevent pouring. Endpoint reachability does not establish a continuous route or isolate distance as the cause. Initial tabletop positions and thresholds remain fixed with no successive height trials. (local)
-- [eval] [chore] [完成] 新增 `out/labutopia-elevated-20261119/summarize-run.py`，只读acceptance/metadata/phase-feedback/assignment SQLite，输出有证据路径的阶段统计、抓取参数、视频与完整失败候选；缺文件不猜终态，不执行仿真或改部署。 / Add a read-only artifact summarizer for phase metrics, grasp parameters, videos and complete candidate failures, marking missing evidence without guessing terminal state or changing deployment. (local)
-- [eval] [chore] [新增 / Added] `out/labutopia-elevated-20261119/summarize-run.py` L1-L224：按已落盘acceptance与feedback分别抽取task/phase状态，SQLite只读摘要acquire/pour参数，完整保留failure detail与逐候选原文；无lift时峰值null，无acceptance时task状态null。 / Summarize persisted task/phase evidence, read-only assignment routes, complete failures and candidate reasons, retaining unknown peaks/status when corresponding evidence is absent. (local)
-```diff
-+ summarize(workspace) -> tasks, phase_receipts, phase_feedback, assignments
-+ failure_evidence, pour_route_failures[raw_detail, candidates], videos
-+ missing_evidence; no_saved_phase_feedback means execution_not_inferred
-```
-- [eval] [chore] 抽取器历史A/B临时输出验证：A1791样本/108lift/24候选（22link2撞桌）及attach峰9.6809016469mm完全一致；B1248样本/0lift/失败detail保留；空目录task_status=null，terminal_task_status_recorded=false；Ruff通过。主会话现已抽取C并保存placement-summary.json，任务状态failed、24逐候选原因保留；缺失phase反馈仍标缺证据，不直接推断执行。 / Historical A/B and empty-workspace checks confirm exact stored counts/details and explicit unknown pending status; Ruff passes. The primary has also extracted C's persisted failed state and all24 candidate reasons, retaining explicit missing evidence without inferring execution from absence. (local)
-
-- [docs] [docs] [完成] 根据已落盘C终态更新增高设计报告、v17.8.0月档及最新五版本：如实记录抓取成功后24条倾倒候选拒绝与任务失败、视频、样本有效性和用户桌面初始位置不动限制；不修改代码/config，不新增仿真。 / Update the deployment report, current version archive and latest five with C's persisted failed outcome, grasp evidence, candidate failures, video and unchanged initial tabletop layout; change no code/config and run no new simulation. (local)
-
-### 文档收尾 / Documentation Finalization
-- [docs] [docs] 更新本版本报告至实际C失败终态；月档仅修改v17.8.0条目并完整同步CHANGELOG最新五版本，历史版本内容保留。全文UTF-8及diff检查按本轮文档修改复核；代码测试沿用已通过194项，本次docs-only不重跑。实现Git hash已记录于下方收据；push结果在实际执行后另记。 / Finalize the report with C's actual failed terminal outcome, update only the current version and synchronize the complete latest five, preserving prior version contents. Validate UTF-8 and diff formatting for these documentation changes, retain the prior194-test evidence without rerunning code tests, record the completed implementation commit below, and await the actual push outcome. (local)
-
-- [env] [fix] [完成] 提交前`git diff --cached --check`发现新USD L97为多余EOF空行；此前普通`git diff --check`未覆盖该untracked文件，不能声称旧检查已验证它。仅删除末尾多余空行（rstrip()+换行），USD范围由L1-L97修正为L1-L96，并同步月档与索引。 / Pre-commit staged checking finds an extra EOF blank line at new USD L97; earlier ordinary diff checks did not cover this untracked file. Remove only the extra final blank line and correct the recorded range toL1-L96 in the archive and index. (local)
-- [eval] [chore] 精确stage上述USD、月档与CHANGELOG后，`git diff --cached --check`通过；USD现为96行，仅移除最后空白行，其他staged文件未修改。 / Staged whitespace validation passes after adding exactly the USD, archive and index; the96-line USD differs only by removal of its final blank line, and other staged files are untouched. (local)
-
-- [docs] [chore] [完成] 补充已完成的v17.8.0实现提交收据，同步月档与索引，并将设计报告Git待补文字替换为月档收据链接；仅记录已发生提交，尚未发生的push结果不预写。 / Record the completed implementation commit, synchronize archive/index and replace the report's pending-commit text with a receipt link; record no unperformed push outcome. (local)
-
-### v17.8.0 Git 实现提交收据 / Git Implementation Receipt
-- Implementation commit / 实现提交：`f8a0c4a9`（完整 / full：`f8a0c4a9a7a2f3ae7e18a7d584bac235264e885c`）。
-- Branch / 分支：`feature/planning-loop`。
-- 时间 / Time：2026-11-19T20:38:04+08:00（Asia/Shanghai）。
-- [docs] [chore] 上述hash标识已完成的实现提交；下一收据提交只记录该实现hash，不自引用。 / The hash identifies the completed implementation commit; the next receipt commit records this implementation hash without self-reference. (local)
-- [chore] [chore] 本次push尚未执行，当前不记录成功或失败；主会话将在执行后把实际结果保存到`out/labutopia-elevated-20261119/git-push-result.json`，不据历史push失败预判本次结果。 / This push is not yet performed and no outcome is asserted; the primary records the actual result at the stated path after execution, without treating an earlier push failure as this attempt's outcome. (local)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 

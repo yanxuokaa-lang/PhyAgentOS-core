@@ -9,7 +9,7 @@ robot:
   type: ridgebase
   prim_path: /World/Ridgebase
   usd_asset: /home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda
-  base_position: [-1.12, 0.10, 0.01]
+  base_position: [-1.105, 0.04, 0.01]
   base_orientation_wxyz: [1.0, 0.0, 0.0, 0.0]
   initial_joint_positions: [0.0, -0.7853981634, 0.0, -2.3561944902, 0.0, 1.5707963268, 0.7853981634]
   initial_gripper_positions: [0.04, 0.04]
