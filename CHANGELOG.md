@@ -50,10 +50,26 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.6 (2026-11-20 23:50) - codex
+
+### Git回执核对 / Git Receipt Verification [完成 / Completed]
+- [docs] [chore] 核验v17.8.4 Ridgebase实现提交`c7c616621832adc0314f967537b2a42ac5500d14`已推送至`feature/planning-loop`；远端从`9495b724`更新，并由`git ls-remote`核实指针为该提交。 / Verify that the v17.8.4 Ridgebase implementation commit was pushed to the stated branch and that `git ls-remote` confirmed the full remote ref. (c7c61662)
+- [docs] [fix] 更新v17.8.4/v17.8.5 Git回执并移出索引中的v17.8.1完整副本；v17.8.1详细记录仍保留于`changelog/2026-11_part3.md`。 / Correct the v17.8.4/v17.8.5 Git receipts and remove the v17.8.1 full copy from this index while retaining its detailed monthly archive entry. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [fix] [修改 / Modified] `CHANGELOG.md`：加入v17.8.6完整回执，最近五版本改为v17.8.6、v17.8.5、v17.8.4、v17.8.3、v17.8.2；v17.8.1详情已归档至月档。 / Add the full v17.8.6 receipt, set the latest five versions to v17.8.6 through v17.8.2, and leave v17.8.1 details in the monthly archive.
+```diff
++## v17.8.6 (2026-11-20 23:50) - codex
+-## v17.8.1 (2026-11-19 20:54) - codex
+```
+
+### Git提交 / Git Commit
+- 实现提交 / Implementation commit：`c7c616621832adc0314f967537b2a42ac5500d14`；2026-11-20 23:44:49 Asia/Shanghai，`feature/planning-loop`。推送成功，远端从`9495b724`更新至`c7c61662`；2026-11-20 23:50 Asia/Shanghai经`git ls-remote`确认远端指针。 / Commit and push succeeded; the verified remote ref is `c7c616621832adc0314f967537b2a42ac5500d14`. (c7c61662)
+
 ## v17.8.5 (2026-11-20 23:33) - codex
 
 ### 收尾校正 / Closeout Corrections [完成 / Completed]
-- [docs] [chore] 核验最近五版本顺序为v17.8.5、v17.8.4、v17.8.3、v17.8.2、v17.8.1；v17.8.0及更早版本保留在月档归档。 / Verify the latest-five sequence as v17.8.5, v17.8.4, v17.8.3, v17.8.2 and v17.8.1; retain v17.8.0 and older versions in the monthly archive. (local)
+- [docs] [chore] 核验最近五版本顺序为v17.8.6、v17.8.5、v17.8.4、v17.8.3、v17.8.2；v17.8.1及更早版本保留在月档归档。 / Verify the latest-five sequence as v17.8.6, v17.8.5, v17.8.4, v17.8.3 and v17.8.2; retain v17.8.1 and older versions in the monthly archive. (local)
 - [docs] [fix] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L91-L95将v17.8.3复现与结果抽取命令标为历史候选命令，避免与当前v17.8.4 fresh终态混用。 / Mark the v17.8.3 reproduction and extraction commands at L91-L95 as historical candidate commands so they are not confused with the current v17.8.4 fresh outcome. (local)
 - [chore] [eval] 206项回归通过（5.14s，保留既有`asyncio_mode`警告），`git diff --check`通过；本轮不改运动逻辑或运行产物。 / The206-test regression passes in5.14s with the existing`asyncio_mode` warning, and `git diff --check` passes; no motion logic or run artifacts change in this closeout. (local)
 
@@ -64,8 +80,8 @@
 +# 历史v17.8.3候选复现命令；不代表当前v17.8.4结果 / Historical v17.8.3 candidate reproduction; does not represent the current v17.8.4 result:
 ```
 
-### Git提交 / Git Commit [pending]
-- 当前收尾修正待与v17.8.4候选修改一并精确提交并推送；实际hash和远端回执将在提交后补入。 / This closeout correction is pending precise commit and push together with the v17.8.4 candidate changes; the actual hash and remote receipt will be added after commit. (local)
+### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
+- 本收尾记录与v17.8.4实现一并包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功，远端指针已由`git ls-remote`核验。 / This closeout record was included with the v17.8.4 implementation commit; push succeeded and the remote ref was verified. (c7c61662)
 
 ## v17.8.4 (2026-11-20 22:15) - codex
 
@@ -98,8 +114,8 @@
 - [eval] [exp] readiness`a3079b268c5c4b9fab4aebbdb666279d.json`选择125步居中零偏移same-side路线且三项资格均通过；task`task_724bb801fcf742a5`于2026-11-20 22:31:20至22:50:28以return code1失败，pour反馈1653样本全transport，最大倾角0.590846rad，process/hold/transfer均未完成。 / Readiness selects the125-step centered route with all qualification checks passing; the task fails in the stated window with1653 transport-only samples, maximum tilt0.590846rad and no process/hold/transfer completion. (local)
 - [eval] [docs] 证据边界保持为：路线资格通过不等同于实际倾倒成功；当前回执没有失败目标的逐候选执行态IK残差或关节解，因此不继续修改运动逻辑、力配置或位置/高度。 / Preserve the evidence boundary that route qualification is not pour success; receipts lack per-target runtime IK residuals or joint solutions, so motion logic, force configuration and placement/height remain unchanged. (local)
 
-### Git提交 / Git Commit [pending]
-- 当前版本待精确暂存、提交并推送；commit hash将在实际提交后补入。 / This version awaits precise staging, commit and push; the commit hash will be recorded after the actual commit. (local)
+### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
+- 本版本实现与日志包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功并由远端指针核验。 / This version's implementation and log were included in the stated commit; push succeeded and the remote ref was verified. (c7c61662)
 
 ## v17.8.3 (2026-11-20 16:08) - codex
 
@@ -188,222 +204,6 @@
 - Push / 推送：成功，`09b9d32c` → `ca1fee82`（`git ls-remote`已核验）。
 - [chore] [chore] 2026-11-20 15:45:25 Asia/Shanghai 使用`git push --force-with-lease origin feature/planning-loop`成功，远端从`09b9d32c`更新至`ca1fee82`；`git ls-remote`确认远端指针为`ca1fee82575b8ae9eaccf860db6f5bafccf95001`。GitHub仅提示run9、run12、run13、run14视频超过50 MB建议值，未拒绝推送。 / At 2026-11-20 15:45:25 Asia/Shanghai, `git push --force-with-lease origin feature/planning-loop` succeeded, moving the remote from `09b9d32c` to `ca1fee82`; `git ls-remote` confirmed the remote ref at `ca1fee82575b8ae9eaccf860db6f5bafccf95001`. GitHub only warned that run9, run12, run13 and run14 videos exceed its 50 MB recommendation; the push was accepted. (ca1fee82)
 - [chore] [chore] 日志回执提交`2389016288c0b981475dd155e6f37b7a0032aaa4`已通过`git push origin feature/planning-loop`成功推送；随后文案校正提交继续推送到同一分支，当前远端与本地分支同步。 / Log-receipt commit`2389016288c0b981475dd155e6f37b7a0032aaa4` was pushed successfully with`git push origin feature/planning-loop`; a subsequent wording-correction commit was then pushed to the same branch, which is synchronized with the local branch. (23890162)
-
-## v17.8.1 (2026-11-19 20:54) - codex
-
-### 初始诊断计划 / Initial Diagnostic Plan [已完成]
-- [env] [fix] 仅研究Isaac Adapter倾倒几何与必要回归测试，保留公共Tool/AgentLoop接口、Runtime生命周期及全部碰撞/对准/接触阈值；机器人部署和桌面物品初始位置不改。 / Investigate only Isaac Adapter pour geometry and necessary regressions, preserving public Tool/AgentLoop contracts, Runtime lifecycle and every collision/alignment/contact threshold; retain robot deployment and initial tabletop positions. (local)
-- [eval] [exp] 先新增`out/labutopia-pour-clearance-20261119/replay-clearance.py`，用生产Backend/WorkerSession fresh初始化、历史C末态及目标/点云做无动作完整路线诊断；先复现5条手/载荷碰杯候选，再测现有.048m对准预算内少量横移端点，不发apply/set命令、不扫高度。 / First add a production-backed fresh-initialization diagnostic using historical C end state and features/clouds; replay five hand/payload-beaker candidates and test a small set of lateral offsets inside the existing.048m alignment budget with full-route qualification, no apply/set commands or height scan. (local)
-- [eval] [docs] 历史C仅为诊断输入，不代表新revision执行授权；fresh障碍与历史末态不同（烧杯约1mm差），查询结果只作机制诊断，不宣称新执行合格。生产改法由主会话根据证据裁决，初始诊断阶段不修改生产源码或提交；后续生产修改见下方主会话批准计划。 / Historical C is diagnostic input, not execution authority for a fresh revision; fresh obstacles differ from historical end state by about1mm at the beaker. Results diagnose mechanisms without granting execution qualification; the primary selects any later production change from evidence, without source edits or commits during the initial diagnostic stage; see the subsequently approved implementation below. (local)
-
-### 生产修复实施计划 / Production Implementation Plan [实现完成；fresh D失败]
-- [env] [fix] 经主会话批准，在`phase_motion.py`保留居中候选搜索/排序，全部拒绝后才尝试现有三维对准预算内三方向横移；每条调用完整qualify，首条fallback通过即停止，失败保留逐候选偏移与原始detail。倾倒最后upright exit返回首upright ingress，保留tilted上抬到原high点（横移候选在此回收横向偏移）；route持久化world横移向量和退路策略。 / Following primary approval, preserve centered search/ranking and only then try three lateral directions inside the existing three-dimensional alignment budget, qualifying every full route and stopping at the first passing fallback. Retain candidate offsets/details, return the final upright exit to the first upright ingress after rising tilted to the original high point (recovering lateral offset for shifted candidates), and persist world offset/retreat strategy. (local)
-- [eval] [chore] 扩充`tests/test_phase_motion.py`验证真实waypoint、预算/只移process、target不变、center优先/fallback搜索与exit失败拒绝，重跑原194项命令；新增双语报告记录26条混合历史诊断及唯一成功对照，fresh正式结果pending。 / Extend real waypoint, budget/process-only translation, unchanged-target, centered-first/fallback and exit-rejection regressions; rerun the original194-test command and add a bilingual report describing the26 mixed-history diagnostics and sole passing comparison, with fresh formal outcome pending. (local)
-- [docs] [docs] 通用层保持任务语义和公共契约；横移/退路由Isaac Adapter拥有，替换Provider不改AgentLoop。WorkerSession拥有scene revision，Runtime拥有取消/结算/恢复；只有fresh revision准备及runtime反馈能证明动作，历史混合诊断无执行授权效力。 / Generic task semantics/contracts stay unchanged; Isaac Adapter owns lateral/retreat mechanisms and Provider replacement leaves AgentLoop unchanged. WorkerSession owns scene revisions and Runtime owns cancellation/settlement/recovery; only fresh-revision preparation plus runtime feedback proves motion, and mixed historical diagnostics grant no execution authority. (local)
-
-### 文件变更详情 / File Changes [实现完成]
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L752：pour最终upright exit返回首upright ingress位置及orientation，保留tilted上抬到原high点（横移候选在此回收横向偏移）。 / Return final upright pour exit to the first upright ingress pose while retaining the tilted rise to the original high point (recovering lateral offset for shifted candidates). (local)
-```diff
-- feature(high + other * config["process_clearance_m"], orientation, stage="exit")
-+ feature(high + approach_direction * config["process_clearance_m"], orientation, stage="exit")
-```
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1646-L1705：保留居中候选顺序及排序，仅全失败后在现有三维预算内搜索3方向横移，逐条完整qualify，首条通过停止；route持久化world offset/退路，失败detail保留所有候选及offset。公共配置/契约、目标frame与安全阈值不改。 / Preserve centered order/ranking, add three budgeted lateral directions only after total centered failure, qualify complete routes and stop on first passing fallback; persist offset/retreat and retain detailed rejected candidates without changing public contracts/configuration, target frames or safety thresholds. (local)
-```diff
-- # centered clearance/yaw/azimuth qualification only
-+ def qualify_pour(points, clearance, yaw, azimuth, offset):
-+     candidate = self.qualify(points, source, tcp_from_object, operation, np.asarray(original_return))
-+     candidate.update(pour_lip_offset_m=offset.tolist(),
-+                      pour_retreat_strategy="same_side_ingress")
-+ # all centered candidates retain their existing selection ranking
-+ if not candidates:
-+     radius_squared = clearance_limit ** 2 - clearance ** 2
-+     # skip nonpositive budget or degenerate projected bottle origin
-+     for direction in (bottle_side, tangent, -tangent):
-+         offset = direction * math.sqrt(radius_squared)
-+         # copy waypoint matrices; translate process TCP only
-+         # qualify transport/process/exit; stop at first passing fallback
-+ # all failures retain clearance/yaw/azimuth/offset and original detail
-```
-- [eval] [chore] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L270-L441：8项回归；真实waypoint与Cartesian测试臂上的生产prepare/qualify检验同侧退出、三维预算、只移process、center优先/旧排序、fallback停止，以及exit碰撞与IK连续性分别拒绝60候选。另覆盖无预算/退化投影跳过。 / Eight regressions exercise real waypoints and production prepare/qualify with a reversible Cartesian test arm, centered preference/ranking, bounded process-only offsets, first-passing fallback and60 complete-route exit rejections per collision/IK case, plus degenerate skips. These tests establish contract/algorithm behavior, not real-arm motion. (local)
-```diff
-+ test_pour_upright_exit_retraces_ingress_after_vertical_tilted_lift
-+ test_pour_centered_candidates_keep_priority_and_existing_ranking
-+ test_pour_lateral_fallback_stays_inside_3d_budget_and_only_translates_process
-+ test_pour_every_candidate_still_rejects_exit_failure_and_keeps_offsets
-+ test_pour_skips_lateral_when_projection_or_budget_is_zero
-```
-- [eval] [exp] [新增 / Added] `out/labutopia-pour-clearance-20261119/replay-clearance.py` L1-L179：生产Backend/WorkerSession初始化后只读历史C held状态及同revision1特征；完整路线诊断，不发apply/set命令。首次artifact root层级错误在bind读取点云时终止，修正为新reset输出目录+历史`artifacts/labutopia`只读点云后成功运行。 / Production-backed no-motion historical held-state and same-revision feature diagnostic; initial artifact-root error stops before qualification, then corrected fresh-output/history-cloud separation succeeds. (local)
-```diff
-+ source_lip = _task_conditioned_pour_feature(source_rim_rev1, destination_rim_rev1)
-+ tip_offset = inverse(final_observed_object_pose) @ source_lip_world
-+ model.qualify(full_waypoints, ...)  # no manipulation commands
-+ # save every outcome, collision/IK detail, unchanged joints and simulation time
-```
-- [docs] [docs] [新增 / Added] `docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L1-L52：双语机制、26诊断对照及局限、Adapter/Runtime所有权、完整测试命令与D pending状态。 / Bilingual mechanism, diagnostic comparisons/limitations, ownership, reproducible test command and pending fresh-D outcome. (local)
-
-### 验证与证据 / Validation and Evidence
-- [eval] [chore] 原194项命令：`PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py -q` → **202 passed**（原194+新增8），5.22s，既有asyncio_mode警告1项。 / The original command passes202 tests, comprising194 existing and eight new regressions, with one existing warning. (local)
-- [eval] [chore] 首轮200 passed/2 failed：新增skip测试错误把failure code匹配到message，修正为检查`exc.code`后重跑202全过；不把首轮记作整体通过。 / Initial200-pass/two-failure run exposes a new-test assertion error; checking the explicit error-code field yields the fully passing rerun. (local)
-- [eval] [chore] `git diff --check`及诊断脚本py_compile通过；Ruff只保留3个旧问题：phase_motion.py L1015 I001、test_phase_motion.py L2810/L2896 E731（由旧L2637/L2723顺移），不声称整体lint通过。 / Diff/compile checks pass; whole-file lint retains the three pre-existing findings and is not claimed passing. (local)
-- [eval] [exp] 历史held+fresh障碍完整诊断26条：1通过、25拒绝（payload4/route11/numericalIK6/continuity4），162.5s，实际reset关节与仿真时间全部不变；world offset[-.00467108245,+.02611859469,0]m、clearance.04/yaw0/az+π/2、lip/rim距离.048m，同侧退出完整127步通过（71transport/15process/41exit）。同横移原exit失败delta.624982>.5rad；无横移.04候选process payload/beaker碰撞。 / The stated26-route diagnostic has a single127-step pass with the measured offset and unchanged live reset state; original retreat rejects continuity and the unshifted control collides. Evidence: `out/labutopia-pour-clearance-20261119/replay-clearance.json`. (local)
-- [eval] [docs] 历史held与fresh障碍约1mm烧杯差异使最近.048控制候选从旧C exit失败变为新process碰撞；两个.04控制TCP约1e-10m重现。诊断不是revision一致准备，不授予fresh执行资格、不证明机器人实际倾倒；只能支持机制选择。 / The approximately1mm obstacle difference changes the closest.048 control's failure phase despite near-exact.04 control TCP reproduction; mixed-history diagnostics support mechanism choice without proving fresh preparation or actual pouring. (local)
-- [env] [chore] 主会话review当前实现无Blocker/Major后启动D，`out/labutopia-pour-clearance-20261119/D-fresh`；主会话owns仿真，生产源码保持不再修改。station相对C仅workspace变化、motion逐字节相同、USD仅旧EOF空行差异（rstrip相同）；部署/初始桌面布局未改。 / Primary review finds no Blocker/Major and launches fresh D; source remains fixed during the run. Station, motion and USD comparisons establish retained deployment/initial layout with only workspace and EOF formatting differences. (local)
-
-### Fresh正式结果 / Formal Fresh Outcome [failed]
-- [eval] [exp] D目录`out/labutopia-pour-clearance-20261119/D-fresh`，task`task_60462336366b41f8`已failed，2026-11-19T21:12:24.641851+08:00至21:32:46.593420+08:00，returncode1。28/28probe available，acquire succeeded2139样本/113lift，lift attach峰9.314366924mm；末样grasp_valid=false/contact_load_valid=true。 / D records the stated failed terminal task, timestamps and return code after available probes and successful acquisition; retain exact sample counts, attachment peak and final mixed validity. Evidence: `D-fresh/placement-summary.json`. (local)
-- [eval] [exp] fresh ready`5e739d478ae84170bae9ba88ccf8b99a.json`在revision`labutopia-tabletop-rod-rack-v1:a6f7f35ca07c4a2ca05755a06c73c99c:1`选中居中`.048/yaw0/az+π/2`、offset[0,0,0]、same_side_ingress，125步（71transport/14process/40exit）完整资格通过；不能把混合诊断唯一横移候选写成本次selected。 / Fresh readiness admits the centered zero-offset125-step same-side route, distinct from the mixed diagnostic's sole lateral pass. (local)
-- [eval] [exp] pour反馈`73990b0b189f4330a31a143903605cde.json`终态failed，1651样本均transport，`inverse_kinematics_failed: measured pour-pose correction is unreachable`；process0、qualified tilt hold0s、最大tilt.5951736459333297rad，未place。contact load/manifold均1651有效，grasp_valid229；末attach位置10.352944586mm/旋转.3821746528rad。 / Pour fails during transport before process/hold/placement with the stated correction-IK failure and attachment evidence; preparation success is not motion completion. (local)
-- [eval] [exp] pour视频`phase-video/487f1976e3e94be5bfb786cf47b6b022.mp4`经主会话ffprobe为27.5s/1650帧/3840×960；反馈1651含额外终态重复record，不等同1651动作帧。 / The primary verifies the stated complete video metadata and extra terminal feedback record. No pour or transfer success is asserted. (local)
-
-### Git 提交 / Git Commit [pending]
-- [chore] [chore] 本子任务按主会话要求不提交；实现和文档待主会话fresh验收后提交/推送，当前无本版本commit hash。 / Per primary instruction, this coding subtask does not commit; the primary owns post-fresh acceptance, commit and push, and no current-version commit hash is asserted. (local)
-
-- [docs] [fix] [完成] 按主review仅修正本v17.8.1月档/索引/报告中的退出几何措辞：横移候选从process回原high时同时回收横移，不写严格竖直上抬；源码/测试不改，formal pending保留。 / Correct only the current-version archive/index/report retreat wording: a lateral candidate recovers its lateral offset while rising from process to the original high point, rather than following a strictly vertical segment; preserve source/tests and pending formal status. (local)
-- [docs] [fix] [修改 / Modified] 本月档L225/L230与对应CHANGELOG条目、`docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L30：`tilted竖直上抬 / tilted vertical lift` → `tilted上抬到原high点（横移候选在此回收横向偏移） / tilted rise to the original high point, recovering lateral offset for shifted candidates`。仅措辞修正，源码/测试保持不变，fresh结果仍pending；文档UTF-8、索引同步及diff检查完成，不重跑代码测试。 / Correct geometry wording only at the stated lines; retain source/tests and pending fresh status. UTF-8, archive/index consistency and whitespace checks pass; no code-test rerun is needed. (local)
-
-### D失败后无运动诊断计划 / Post-D No-Motion Diagnostic Plan [完成]
-- [eval] [exp] D真实终态failed：居中零横移same-side路线125步fresh资格通过，但pour在transport因measured pour-pose correction IK失败停止，process/hold均未进入，不称倾倒成功。新增`out/labutopia-pour-clearance-20261119/diagnose-pour-correction.py`，生产Backend fresh只读初始化，按真实FK/limits及D ready/反馈重建point边界，比较原完整姿态IK与tip+axis IK，记录误差、delta、limits及重建精度；不发apply/set，不改生产/阈值，不新增完整仿真，改法由主会话裁决。 / D fails during transport after a125-step centered zero-offset same-side route passes fresh qualification; no process/hold or pour success is claimed. Add a production-backed no-motion diagnostic to reconstruct point boundaries from D readiness/feedback and real FK/limits, compare full-pose and tip/axis IK, and record residuals, deltas, limits and reconstruction accuracy. Issue no apply/set, change no production code or thresholds, and leave production decisions to the primary. (local)
-
-- [docs] [docs] [完成] 根据D实际失败终态更新报告/月档/index，明确实际selected为居中零横移125步同侧退路、运行期transport correction IK失败而非process倾倒完成；保留回归与混合诊断证据边界。 / Update the report/archive/index with D's actual failed outcome, centered zero-offset readiness selection and transport correction-IK rejection, preserving the boundary between regressions, mixed diagnostics and runtime evidence. (local)
-
-### D correction诊断结果 / D Correction Diagnostic Results
-- [eval] [exp] [新增 / Added] `out/labutopia-pour-clearance-20261119/diagnose-pour-correction.py` L1-L199：生产Backend fresh FK/limits、D readyness/反馈只读输入，逐point原full correction与smooth长度重建；对失败点±2名义目标固定失败边界relation，比较当前/名义/上一名义seed的full local、primary Lula及tip+axis。不发apply/set、不做碰撞授权、不改生产或阈值。 / Add a production-backed no-motion saved-boundary reconstruction and bounded solver comparison, preserving full-pose semantics and unchanged production/thresholds without collision or execution admission. (local)
-```diff
-+ relation = inverse(FK(saved_boundary_q)) @ saved_observed_body
-+ target_body = FK(nominal_point_q) @ route_tcp_from_object
-+ full_target_tcp = target_body @ inverse(relation)
-+ full_goal = local_inverse_kinematics(FK, full_target_tcp, current_q, limits, tolerance)
-+ # segment frames consume saved samples; terminal duplicate excluded
-+ # compare full local three seeds, primary Lula current, tip/axis diagnostic
-```
-- [eval] [exp] `diagnose-pour-correction.json`记录point index61（第62点transport）原full local首次拒绝；前61点1650 smooth命令帧恰好对应1650非重复sample，末额外record1，unused0；initial relation差0、所有边界saved TCP/FK位置误差0，故为exact_saved_boundary_accounting（保存边界匹配，不是物理重放）。fresh reset关节与simulation time不变，motion_commands0。 / Exact saved-boundary accounting locates rejection at zero-based point61 after all1650 commanded samples, distinguishing the extra terminal record and preserving unchanged reset state with zero commands. (local)
-- [eval] [exp] 失败点current full local位置.795374mm但旋转.0238165rad超.02而invalid；名义seed full valid（位置5.04e-10m/旋转1.41e-8rad/current delta.110876rad），上一名义seed full valid（1.57e-12m/4.23e-11rad/delta.0846107），primary Lula current valid（.0982303mm/.000962118rad/delta.0803714）。均limits内、delta低于原.5；三个有效full解最小限位余量.741763/.736337/.723502rad。 / The current local seed rejects rotation while alternate planned seeds and primary Lula preserve full-pose tolerance, continuity and limits, with the stated measured residuals and margins. (local)
-- [eval] [docs] tip+axis当前seed虽valid且tip残差2.47e-12m，但完整旋转.0408325rad超原.02；不能放松full语义。结果优先支持local数值分支失败，不证明full目标不可达；替代解未做完整collision路线，不能视为动作资格。失败点±2仅同失败边界relation目标对比，不杜撰未来状态。 / Tip/axis success exceeds the original full-rotation tolerance and cannot relax full-pose semantics. Results support a numerical-branch issue, not proven unreachability; alternatives lack complete collision qualification and neighboring comparisons share the failure-boundary relation. (local)
-- [eval] [chore] 新诊断exit0、58.42s，py_compile通过；本阶段只新增诊断与文档，原production202项证据保留不重跑。报告新增诊断表与full语义裁决，月档/index同步，UTF-8及diff检查按本次修改执行。 / The diagnostic exits0 in58.42s and compiles; production tests remain the prior202-pass evidence, with no source changes requiring a rerun. Add the bounded diagnostic comparison to the report and synchronize/archive-check documentation. (local)
-
-### D诊断后的生产修复计划 / Production Plan Following D Diagnosis [实现完成；follow-up待验证]
-- [env] [fix] 经主会话裁决，仅当pour当前seed full-pose local IK无效时，使用当前point原planned joints对完全相同target TCP重试同一local solver；fallback有效且相对start最大joint delta不超原阈值才采用，超限返回ik_discontinuity，无解保留原inverse错误。不加Lula/tip-axis、不改frame/阈值/姿态语义/逐命令碰撞。 / Retry the identical pour TCP full-pose target once with the current point's planned joints only after current-seed local IK fails; accept only a valid solution inside the existing continuity bound, reject branch jumps explicitly and retain the original no-solution error otherwise. Preserve frames, thresholds, full-pose semantics and command-level collision checks without adding Lula or tip/axis solving. (local)
-- [env] [chore] 具体失败场景：换seed可能找到远关节分支，preparation只约束原抓持关系，不能约束runtime实测抓持修正后的新解；因此在fallback动作边界复用既有maximum_waypoint_joint_delta_rad拒绝远跳，不新增配置或gate。 / A changed seed can find a distant joint branch after measured-attachment correction, beyond what original preparation constrains; reuse the existing maximum joint-delta bound at this fallback boundary without introducing configuration or a new gate. (local)
-- [eval] [chore] 加入执行回归：同target nominal-seed fallback完整姿态成功、两seed失败/远跳均零动作、fallback路径碰撞在apply前停止；跑原202项命令后停改源码，主会话review并启动fresh E，正式结果待验证。 / Add execution regressions for identical-target full-pose fallback success, no-motion exhaustion/branch rejection and collision rejection before apply; rerun the existing202-test command, then freeze source for primary review and fresh E. (local)
-
-### Full-pose重试实现与验证 / Full-Pose Retry Implementation and Validation
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2555-L2564：pour原local IK invalid时，对同一target用当前point原planned q重试；有效远跳复用原maximum delta拒绝，无解保留原inverse错误。完整姿态/阈值/frame/逐命令碰撞不改，未加入Lula/tip-axis。 / Retry the same full-pose target with planned joints only after current-seed failure, reject valid distant branches using the existing bound and preserve the original no-solution error without broader solvers or changed semantics. (local)
-```diff
-  goal, valid = local_inverse_kinematics(self.tcp, target, start, self.limits, tolerance)
-+ if not valid:
-+     goal, valid = local_inverse_kinematics(self.tcp, target, np.asarray(point["joints"]),
-+                                           self.limits, tolerance)
-+     delta = joint_delta(start, goal)
-+     maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
-+     if valid and delta > maximum_delta:
-+         raise PhaseMotionError("ik_discontinuity", "stage/delta/configured maximum detail")
-  if not valid:
-      raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
-```
-- [eval] [chore] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3140-L3249：4执行回归及复用fixture，真实full local solver fallback核对target不变、planned seed、body完整姿态及tip/axis误差；全失败与远跳均零动作，fallback路径碰撞在首次apply前拒绝。 / Four execution regressions and a shared fixture verify identical-target planned-seed full solving and final body/tip/axis residuals, zero-motion exhaustion/branch rejection and collision rejection before apply. (local)
-- [eval] [chore] 原测试命令最新 **206 passed**（此前202+新增4），5.68s，既有asyncio_mode warning1；git diff --check通过，Ruff仍仅旧L1015 I001及测试L2810/L2896 E731。源码/测试自本次通过后停止修改，交主会话review与fresh E；不以unit/诊断代替runtime。 / The same command passes206 tests in5.68s with the existing warning and lint findings; whitespace validation passes. Freeze source/tests for primary review/fresh E without substituting unit or diagnostic evidence for runtime results. (local)
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L1-L110：D真实failed、居中零横移125步fresh资格与transport失败、无动作精确1650帧边界诊断、bounded full-pose retry及follow-up pending；完整同步本版本月档/index。 / Document D's failed runtime, actual centered readiness route, exact saved-boundary diagnostic, bounded full-pose retry and pending follow-up, synchronizing the full current-version archive/index. (local)
-
-- [eval] [exp] 主会话review本次10行full fallback+4执行回归无Blocker/Major后启动fresh E：`out/labutopia-pour-clearance-20261119/E-fresh`，HEAD`91b910840e56a15e0a73d4dea72ad2ca5a54deaa`+保存的implementation.diff标识当前代码；E正式终态pending，主会话owns执行，源码/测试继续固定。D仍failed，报告顶部明确D failed/E pending。 / Primary review admits the ten-line correction/four regressions and launches E with recorded HEAD plus implementation.diff; E remains pending, the primary owns execution and source/tests stay fixed while D remains failed. (local)
-
-### E失败后手指指令连续性修复计划 / Post-E Finger Command Continuity Plan [实现完成；F待验证]
-- [eval] [exp] 先保存E完整summarizer，记录E依旧transport失败/process0/hold0，不能将full-pose数值fallback描述为已解决真实倾倒。对比D/E反馈确认acquire末实际已施加finger target与实测开度不同，pour初始化却复制实测开度，替换原压紧指令。 / First summarize E's persisted failed transport outcome without process/hold, preserving that numerical fallback has not solved pouring. Compare saved commanded and measured finger values across acquire/pour boundaries. (local)
-- [env] [fix] 仅非acquire初始化从现有SDK controller.get_applied_action().joint_positions按finger索引读取上一dense指令并保留；缺action/positions、索引不可取或finger非有限则在已有held动作边界以明确PreconditionError零motion拒绝，不以测量开度替代未知servo指令。具体风险是丢失previous commanded压紧值，测量位置不能重建servo目标；不新增shadow状态/overshoot/follow/力/阈值。acquire与release仍.04。 / Preserve the controller's previous dense applied finger command for non-acquire phases. Missing/unindexable/nonfinite targets reject with an explicit precondition error before motion rather than substituting measurements, because measured openings cannot reconstruct servo targets. Add no shadow state, force, overshoot, follow or thresholds; retain acquire/release opening. (local)
-- [eval] [chore] 更新execution fixture模拟真实controller已施加目标，新增acquire→pour指令/测量不同的继承、release开爪、缺失/非有限零动作回归；跑原206命令后停改源码，交主会话review/fresh F，因果修复仍待实测。 / Model actual controller-applied targets in the execution fixture and test cross-phase command continuity, release opening and no-motion invalid inputs; rerun the206-test command and freeze for primary review/fresh F without claiming causal resolution. (local)
-
-### E终态 / E Terminal Outcome [failed]
-- [eval] [exp] `E-fresh/placement-summary.json`保存task`task_46b67f1aaa20470c` failed，2026-11-19T21:43:16.559192+08:00至22:05:21.927886+08:00/returncode1。acquire`ab87d968d4e54cbeb14b520b4b2ec604.json` succeeded2139；pour`aa03d16ad38040c29238017b432b9bf0.json`2062样本均transport，仍measured pour-pose correction inverse错误，process0/hold0，最大tilt.8227368211517622rad，末attach10.141432925mm/.5132515595rad。 / E persists the stated failed task, acquisition success and transport-only correction-IK failure without process/hold; numerical fallback is not claimed to solve pouring. (local)
-- [eval] [exp] 相对D1651样本/tiltmax.59517，E推进至2062/.82274但仍失败；主会话ffprobe pour视频`e456e5e8e26d45e4b0a7000eeab5c252.mp4`为34.35s/2061帧/3840×960/45003107bytes。 / E advances beyond D but remains failed; the primary verifies the complete stated video metadata. (local)
-- [env] [fix] D/E反馈共同证实acquire末finger_target[.01592840626835823,.015569766983389854]与实测[.019920673221349716,.015569900162518024]不同，而旧pour首target采用后者，左指目标向外3.992267mm。此证据直接定位servo目标交接bug，不证明它是失败充分原因或F可成功。 / Both runs establish measured-opening substitution at the held-phase command handoff, without claiming proven causal resolution. (local)
-
-### 已施加手指指令继承 / Applied Finger Command Handoff [实现完成]
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2454-L2467：非acquire读取controller上一dense applied action finger目标；缺失/索引不可取/非有限以held_finger_target_unavailable PreconditionError在play/apply前拒绝，acquire/release .04保留。SDK本地`articulation_controller.py` L231-L248已确认dense无indices；不引入shadow状态/额外力或阈值。 / Retain applied finger targets across held phases and reject missing/unindexable/nonfinite targets before motion, preserving acquire/release opening and existing control ownership. (local)
-```diff
-- finger_target = np.full(2, .04) if operation == "acquire" else measured_joint_positions[finger_indices]
-+ if operation == "acquire":
-+     finger_target = np.full(2, .04)
-+ else:
-+     applied = self.robot.get_articulation_controller().get_applied_action()
-+     finger_target = np.asarray(applied.joint_positions, dtype=float)[finger_indices].copy()
-+     # missing/index errors and nonfinite finger targets raise PreconditionError
-```
-- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2190-L2199：controller double独立保留最近applied dense target，apply时保存copy，不把测量位置当命令。 [新增 / Added] L3252-L3305：6项执行回归验证真实acquire→pour指令/实测不同仍保持首及carry目标、release开爪、missing action/positions/短数组/NaN/Inf零motion且callback清理。 / Model the latest applied command and test actual cross-phase preservation, release opening and no-motion invalid-target rejection. (local)
-- [eval] [chore] 原命令最新 **212 passed**（206+6），5.58s，既有asyncio_mode warning1；git diff --check通过，Ruff只旧source L1015 I001及测试现L2816/L2902 E731。实现和测试通过后停改，主会话review/F待执行，不宣称因果已解决。 / The same command passes212 tests with the existing warning/lint findings; freeze source/tests for primary review and pending F without claiming runtime causal success. (local)
-- [docs] [docs] [修改 / Modified] 报告追加E实际失败、D/E差异及指令交接证据、SDK所有权与212项测试、F pending，并同步本版本月档/index。 / Record E's failure, D/E differences, command-handoff evidence, SDK ownership,212 regressions and pending F in the synchronized report/archive/index. (local)
-
-- [eval] [exp] 主会话review后已启动fresh F：`out/labutopia-pour-clearance-20261119/F-fresh`，正式task/阶段/终态及因果修复结论pending；主会话owns仿真与验收，运行期间源码/测试固定。 / Primary review launches F in the stated workspace; task/phase/terminal evidence and causal resolution remain pending. The primary owns execution/acceptance and source/tests stay fixed. (local)
-
-- [docs] [fix] [完成] 先记录F-fresh初次上游LLM流中断且tasks为空、未进入仿真/无phase反馈，文档不写motion失败；同步相同代码配置F-retry-fresh已启动pending，源码/测试继续固定。 / Record the initial F-fresh upstream LLM stream interruption with empty tasks and no simulation/phase feedback, not a motion failure; document the identical-code/configuration F-retry-fresh as pending while keeping source/tests fixed. (local)
-
-- [eval] [exp] F-fresh首次于2026-11-19 22:10:33至22:11:10（Asia/Shanghai）退出returncode1，host.log为`LLM upstream response stream interrupted`，tasks=[]、无phase反馈/新动作，未进入仿真；这是上游失败而非motion失败。主会话以同源代码/配置启动`out/labutopia-pour-clearance-20261119/F-retry-fresh`，actual结果pending；源码/测试固定。 / Initial F stops upstream before simulation with empty tasks and no phase feedback/new motion; it is not a motion failure. The primary retries identical source/configuration in the stated workspace, with actual outcome pending and source/tests frozen. (local)
-
-- [docs] [docs] [完成] 补入主会话对三处修复及新增18项回归的review结论，以及F retry/E七个输入文件strip并归一workspace后、profile归一后完全一致的对照证据；正式motion结果仍pending，仅更新当前版本报告/月档/索引。 / Record the primary review of three fixes and18 new regressions, plus normalized equality of seven F-retry/E input files and the profile; retain pending runtime outcome and change only the current report/archive/index. (local)
-
-- [eval] [docs] F运行前的代码review对三处修复及新增18项回归未见Blocker/Major（后续F失败已推翻手指patch验收，最终撤回见下文）：变更仅Isaac Adapter，source/target语义与阈值保留，full fallback保持原target/连续性/逐命令碰撞；现有controller持有手指指令，无shadow状态。F retry/E七个输入strip并归一workspace后完全相同，profile归一后相等，实际motion结果仍pending。 / Pre-runtime code review finds no Blocker/Major across three fixes and18 new regressions (F later overturns finger-patch acceptance; it is reverted below), retaining Adapter ownership, target semantics, thresholds, full-target continuity/collision checks and controller-owned finger commands. Seven normalized input files and normalized profiles match between F retry and E; runtime evidence remains pending. (local)
-
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L112与本月档L365-L369、对应CHANGELOG本版本完整条目：新增上述review及输入对照结果，未改源码/测试或正式pending判定；UTF-8、当前版本索引完全一致及diff whitespace检查通过。 / Add the stated review/input-comparison evidence at these lines and synchronize the complete current index entry; source/tests and pending runtime status remain unchanged. UTF-8, exact entry consistency and whitespace validation pass. (local)
-
-### F失败后无动作对照计划 / Post-F No-Motion Comparison Plan [计划]
-- [eval] [exp] 主会话只读比较E/F相同时间段的joints、手指目标/实测、接触几何及已有视频，判断保留原手指指令后为何更早失去双边接触；不得把指令继承正确等同夹持修复成功。暂不改生产源码、阈值或配置，不启动新增完整仿真；下一步生产改法由主会话依据证据裁决。 / The primary will compare saved E/F joints, commanded/measured fingers, contact geometry and videos over matching time windows without motion, investigating earlier bilateral-contact loss after command preservation. Correct command inheritance does not establish successful grasp correction. Keep production source, thresholds and configuration fixed, start no additional full simulation and leave the next production decision to the primary. (local)
-- [docs] [docs] [完成] 补齐F-retry真实failed task、fresh readiness、transport阶段physical_grasp_lost、指令继承及完整视频数据；保留首F上游失败与D/E运行失败历史，将报告/月档/index同步，文档验证后等待主会话对照诊断。 / Record the actual failed F-retry task, fresh readiness, transport-stage physical_grasp_lost, correct command inheritance and complete video metadata; preserve initial F upstream failure and D/E runtime failures, synchronize the report/archive/index and await the primary comparison. (local)
-
-### F-retry真实终态 / F-Retry Actual Outcome [failed]
-- [eval] [exp] task`task_26d6248c2657456e`，2026-11-19T22:11:23.962067+08:00至22:28:53.830262+08:00，failed/returncode1。acquire`a643a6c9cb8b4765b24304c6fca59065.json` succeeded2139/113lift，末target与measurement逐项同E；末attach9.314366924mm/.01352641545rad，grasp_valid=false/contact_load=true，不能写全程夹稳。 / F-retry records the stated failed task and times after successful acquisition; final commands/measurements match E, while the stated attachment errors and validity flags remain explicit. (local)
-- [eval] [exp] readiness`fb3f00aef189438ca9a918eca0f725a8.json`、revision后缀`bd21cd9e8fb64cf38dd07e23d421372e:1`通过居中.048/yaw0/azimuth+π/2/zerooffset125step same-side路线。pour首target已正确继承acquire[.01592840626835823,.015569766983389854]m，交接改法生效但未解决真实夹持。 / Fresh readiness admits the stated centered zero-offset125-step route; the first pour command correctly inherits acquire's applied target, without establishing successful grasp. (local)
-- [eval] [exp] pour`7a5700228fe34c4e807959b1f682b4e2.json` failed，physical_grasp_lost/bilateral contact lost during attached motion；411样本全transport、process0/hold0、max tilt.07209758523rad，attach位置/旋转峰.02303421763m/.1794298536rad。主会话ffprobe视频`85585f0c9c1f4c96ac8edfc8c9d56b13.mp4`6.833333s/410frames/3840×960/8855228bytes，额外终态record1。 / Pour fails with the stated bilateral-contact loss, transport-only samples and attachment/tilt evidence; the primary verifies the complete410-frame video and extra terminal feedback record. (local)
-- [eval] [docs] 正式结果边界：指令交接正确不代表夹持或倾倒成功。F比E更早失去接触，后续仅主会话执行上述无动作同时间段比较；生产源码、阈值、配置继续固定，下一步生产改法由主会话裁决。 / Correct command inheritance is not successful grasp or pouring. F loses contact earlier than E; only the primary's planned no-motion comparison follows, with source/thresholds/configuration fixed until its production decision. (local)
-
-- [docs] [docs] [修改 / Modified] 报告L3及L94-L122、本月档L371-L381和对应CHANGELOG当前版本完整条目：`F pending` → `F failed`，新增终态/视频/指令继承及无动作比较计划，保留D/E和首F上游失败事实；UTF-8、索引完全一致、git diff --check通过。 / Update the stated report/archive lines and complete current index entry with actual F failure, video, command inheritance and the no-motion comparison plan, preserving earlier outcomes; UTF-8, exact index consistency and whitespace checks pass. (local)
-
-### F夹持几何无动作诊断实施计划 / F Grip-Geometry No-Motion Diagnostic Plan [完成]
-- [eval] [exp] 新增`out/labutopia-pour-clearance-20261119/diagnose-grip-geometry.py`，复用既有SimulationApp、F-retry profile、LabUtopiaBackend与WorkerSessionContext reset初始化；读取R05唯一RigidBody，调用生产cooked_body_boxes取得每个body-frame convex并按collider_profile_artifact方式转world保存。保存DOF、hand/finger Drive/Physx/mimic/tendon属性、world transforms、finger_geometry及oracle approach；前后验证reset time/joints不变，不发apply/set/step或物体变更，app.close清理。 / Add the specified production-backed read-only reset diagnostic, preserving every cooked R05 convex in body/world frames, DOF/drive/PhysX/mimic/tendon metadata, transforms, finger geometry and oracle approach. Verify unchanged reset time/joints, issue no action/set/step or object change and close the app. (local)
-- [eval] [docs] 用既有labutopia conda Python运行并保存JSON/log，输出仅初始化与结果路径；范围为不同revision的无动作诊断，不授予历史F执行资格，不修改生产/tests/config，不启动完整仿真，主会话分析JSON并裁决生产下一步。 / Run with the existing labutopia environment and persist JSON/log with bounded console output; this different-revision no-motion diagnostic grants no historical-F execution authority, changes no production/tests/config and leaves analysis/production decisions to the primary. (local)
-
-- [eval] [exp] [完成] 按主会话补充规格，同一几何诊断JSON只读保存F readiness fb3f00aef189438ca9a918eca0f725a8的125个原step joints及各自model.tcp(joints)、model.limits、dt/config；用于离线核对nominal目标旋转，不重演/求解或发运动命令。 / Extend the same diagnostic JSON with read-only FK matrices for all125 original F-readiness step joints, plus model limits, dt and config, enabling offline nominal-rotation comparison without replay, solving or motion commands. (local)
-
-### F运行证据后的收敛撤回计划 / Scope-Convergence Revert Plan After F Runtime Evidence [完成]
-- [env] [fix] 按主会话裁决撤回F手指目标继承patch及仅服务该patch的6项测试/fixture修改，保留路线/同侧退出和full-pose单次IK重试；源码与E保存implementation.diff重建结果逐字核对，以E真实failed运行作为最终源码证据。F推翻该手指patch实际验收，先前无Major仅为运行前review。 / Revert the F finger-command patch and its six dedicated tests/fixture changes while retaining route/retreat and single full-pose IK retry; compare source byte-for-byte against E reconstructed from its saved implementation.diff and use E's failed runtime as final-source evidence. F overturns acceptance of the finger patch; the earlier review was pre-runtime only. (local)
-- [eval] [docs] 记录无动作诊断、20N/1200N实际force caps及其session/asset opinions、无mimic/tendon证据和完整convex；不单凭cap不对称认定根因。原始大JSON保留，一次解析另存轻量convex/drive/FK摘要和near-axis范围；不改force/config，不新增完整仿真。同步报告/月档/index，显眼结论为路线资格修复通过、实际倾倒失败，首段标F尝试reverted；运行回归后交主会话提交/推送。 / Record the no-motion geometry/drive evidence without claiming asymmetric caps alone establish cause; preserve the raw JSON and extract a compact convex/drive/FK summary with explicit near-axis ranges. Change no force/config and start no full simulation. Synchronize documentation, state route qualification passes but actual pouring fails, mark F reverted and leave commit/push to the primary after regressions. (local)
-
-### 几何诊断完成与F撤回 / Geometry Diagnostic Completion and F Revert [完成]
-- [eval] [exp] [新增 / Added] `out/labutopia-pour-clearance-20261119/diagnose-grip-geometry.py` L1-L213：production fresh reset、R05 cooked完整convex的USD world转换、DOF与hand/joint全部属性和逐层opinions、robot PhysX/mimic/tendon属性/关系、finger geometry、oracle approach及125原step只读FK/limits/dt/config；前后time/joints验证和app.close。 / Add the specified fresh read-only geometry/drive/FK diagnostic with unchanged reset-state verification and app cleanup. (local)
-```diff
-+ boxes, evidence = cooked_body_boxes(stage, body, model.config['collision_margin_m'])
-+ body_world = np.asarray(UsdGeom.Xformable(body).ComputeLocalToWorldTransform(0)).T
-+ world = (body_world[:3, :3] @ vertices.T).T + body_world[:3, 3]
-+ tcp_matrix = model.tcp(np.asarray(point['joints'], dtype=float))
-+ # Save authored property-stack opinions and composed default/time-zero readback.
-+ # Verify unchanged reset joints/time; issue no action, set, step or IK solve.
-```
-- [eval] [exp] 诊断exit0、202.2089667378459s，py_compile通过，time始末.0020833334419876337s、joints完全不变/motion_commands0，保存125FK。首次缺既有EULA变量的启动在Kit前退出，补齐环境后本次完成。完整raw JSON保留，轻量summary4,393,907bytes保留全部32convex/907 world vertices及drive/FK；原1.195GB来自5,081,094body-frame slabs。显式near-axis诊断范围r≤.1/span[-.02,.20]m下32保留/0排除，rmax34.375804mm、span[-.000890,116.202456]mm，无foreign convex；不同fresh revision不授予执行资格。 / The completed no-motion diagnostic records the stated unchanged reset, all125 FK matrices and complete convex evidence; preserve raw geometry and use the compact summary, with no foreign convex under the explicit diagnostic range and no execution authority across revisions. (local)
-- [eval] [exp] 两指stiffness1e7/damping1e5；joint1实际maxForce20N来自session layer覆盖asset1200N，joint2 asset1200N，DOF maxEffort吻合；robot子树未见mimic/tendon schema/属性/关系。不单凭cap差异宣称滑脱根因，不改force/config，作为后续夹持问题线索。 / Both drives share stiffness/damping but session composition sets finger1 to20N while finger2 retains asset1200N, matching runtime effort limits. No authored mimic/tendon evidence is found; this alone does not establish slip causality or justify force/config changes. (local)
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2454-L2456：撤回F get_applied_action/held_finger_target_unavailable，恢复E measured opening初始化；路线L752/L1646-L1705及full-pose重试现L2544-L2553保留。 / Revert only the failed F command-inheritance/precondition patch and restore E initialization, retaining route/retreat and full-pose retry. (local)
-```diff
-- applied = self.robot.get_articulation_controller().get_applied_action()
-- finger_target = np.asarray(applied.joint_positions)[finger_indices].copy()
-- # Reject missing/unindexable/nonfinite previous targets before play/apply.
-+ finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
-+     self.robot.get_joint_positions())[finger_indices].copy()
-```
-- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2187-L2193恢复原fixture仅记录apply命令；删除F专用6项回归（撤回前L3252-L3305），保留geometry L270-L441与full-pose fixture/4项回归现L3134-L3243。source及tests均逐字等于E implementation.diff基于原blob重建结果，最终motion证据适用E。 / Restore the original command-recording fixture and remove only the six F regressions, retaining geometry and full-pose regressions; final source/tests exactly match E reconstructed from its saved diff/base blobs. (local)
-```diff
-- applied_positions = positions.copy()
-- robot.get_applied_action = lambda: SimpleNamespace(joint_positions=applied_positions.copy())
-- # Six command-inheritance/precondition regression cases.
-+ robot.apply_action = lambda action: commands.append(action.joint_positions.copy())
-```
-- [eval] [chore] 主会话final tests同命令 **206 passed**、5.65s、既有asyncio warning1项，git diff --check通过；final review接受本轮路线/退出及full-pose重试，搜索预算/完整qualify/full target/原连续性/逐命令碰撞均保留。F运行证据推翻其手指patch验收，该patch已撤回；此前三处无Major为运行前review，不能作为最终全接受。 / The primary's final regressions pass206 tests with one existing warning and clean whitespace checks; final review accepts route/retreat and full-pose retry within unchanged qualification, target, continuity and collision semantics. F overturns acceptance of its finger patch, now reverted; pre-runtime review is not final acceptance of all experiments. (local)
-- [eval] [docs] 最终结论：路线资格修复通过，实际倾倒失败。E源码与最终相同，E2062样本全transport、process0/hold0、仍correction IK失败；F作为reverted尝试保留。force/config/初始布局不改，不继续完整仿真；源码/测试停止修改，Git主提交/推送由主会话执行，当前本版本commit pending。 / Final route qualification passes but actual pouring fails; E is the applicable identical-source failed runtime and F remains a reverted experiment. Preserve force/config/initial layout, stop further full simulation and source/test changes, and leave commit/push to the primary. (local)
-
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_POUR_CLEARANCE_20261119.md` L3/L94-L140、本月档L383-L423与CHANGELOG完整当前条目：首段标明路线资格通过/实际倾倒失败/F reverted，补诊断及最终206项验收范围，限定此前review证据；文档UTF-8、完整索引一致性与diff检查通过，后续仅待主commit receipt。 / Synchronize the stated report/archive/index lines with the final failed-runtime conclusion, reverted F experiment, diagnostic and206-test acceptance scope, preserving evidence limits; UTF-8, exact entry consistency and whitespace checks pass, awaiting only the primary commit receipt. (local)
-
-- [docs] [chore] [完成] 仅追加主实现commit 5aa50f07、当前分支及北京时间receipt，并同步CHANGELOG本版本完整条目；主commit已完成、push待主会话执行，不新增版本或修改report/source/tests，不自行commit/push。 / Append only the primary implementation commit5aa50f07, branch and current Beijing-time receipt, synchronizing this complete index entry; implementation commit is complete and push remains with the primary, with no new version, report/source/test edits or independent commit/push. (local)
-
-### 主实现 Git Receipt / Primary Implementation Git Receipt
-- Commit: `5aa50f07`
-- Branch: `feature/planning-loop`
-- 时间 / Time: `2026-11-19 22:50:27 Asia/Shanghai (UTC+8)`
-- [chore] [chore] 主实现commit已完成；push待主会话执行。本receipt仅记录实现提交，不追记receipt自身提交。 / Primary implementation commit is complete; push remains pending with the primary. This receipt records the implementation commit without recursively recording its own commit. (5aa50f07)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 
