@@ -50,6 +50,58 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.3 (2026-11-20 16:08) - codex
+
+### 机座位置与高度调整 / Base Placement and Height Adjustment [完成；fresh运行失败 / Completed; fresh runtime failed]
+- [env] [tune] 将 Ridgebase 底盘 `y` 从 `0.18m` 调整到 `0.10m`，保持 `x=-1.12m` 与桌面布局不变；将臂基由约 `0.72m` 增高到约 `0.82m`，安装柱由 `0.43m` 增至 `0.53m`。依据离线端点敏感性扫描选择该单一候选；扫描不等同完整路线资格或实测倾倒成功。 / Move the Ridgebase chassis `y` from `0.18m` to `0.10m` while retaining `x=-1.12m` and the tabletop layout; raise the arm root from about `0.72m` to `0.82m` by increasing the mount column from `0.43m` to `0.53m`. Select this single candidate from the offline endpoint sensitivity scan; the scan is not complete route qualification or runtime pour success. (local)
+- [eval] [exp] 修改后针对性回归206项通过；fresh无动作初始化与home碰撞检查通过，抓取成功，但完整持瓶倾倒路线资格失败，实际倾倒未执行。保留失败证据和决策边界，不修改运动阈值、目标物品或公共契约。 / Focused regression passes206 tests; fresh no-motion initialization and home collision check pass, acquisition succeeds, but complete held-pour route qualification fails and pouring does not execute. Preserve failure evidence and decision boundaries without changing motion thresholds, task objects or public contracts. (local)
+
+### 实际影响文件 / Actual Files
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml`：修改底盘 `base_position.y`。
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda`：同步12个臂/末端刚体的 `z`、安装关节高度和碰撞柱尺寸。
+- `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py`：更新部署高度、碰撞柱边界和底盘坐标断言。
+- `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md`：记录当前候选的fresh读回、路线资格拒绝分类、视频元数据和执行边界；本轮未修改 placement 报告。
+
+### 本轮决策 / Current Decision
+- fresh初始化、home碰撞检查和抓取通过；60/60条持瓶倾倒候选均被拒绝，故保留该部署为“初态与抓取通过、完整倾倒路线资格失败”的实验候选。
+- 停止继续调整底盘位置、机座高度或现有运动阈值；若后续继续，先依据候选级transport/process拒绝详情定位路线问题，再提出新的部署决策，不把本轮证据描述为倾倒成功。
+
+### 文件变更详情 / File Changes
+- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L12：底盘 `base_position.y` 从0.18改为0.10，x/z不变。 / Change the chassis `base_position.y` from0.18 to0.10, retaining x/z. (local)
+```diff
+-  base_position: [-1.12, 0.18, 0.01]
++  base_position: [-1.12, 0.10, 0.01]
+```
+- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda` L3,L13-L94：12个臂/手/手指/末端刚体z增量由0.43m改为0.53m，安装关节/柱尺寸/COM/惯量同步更新，保留米制、Z-up、原外部资产引用和碰撞API。 / Raise the12 arm/hand/finger/end-effector bodies by0.53m and update the mounting joint, column size, COM and inertia while retaining meters/Z-up, the external asset reference and collision API. (local)
+```diff
+-  "Adapter deployment: 0.43m arm elevation, grounded chassis, collision-enabled mount column."
++  "Adapter deployment: 0.53m arm elevation, grounded chassis, collision-enabled mount column."
+-  point3f physics:centerOfMass = (0.3, 0, 0.215)
+-  point3f physics:diagonalInertia = (0.09965, 0.09965, 0.0144)
++  point3f physics:centerOfMass = (0.3, 0, 0.265)
++  float3 physics:diagonalInertia = (0.14765, 0.14765, 0.0144)
+-  point3f physics:localPos0 = (0.3, 0, 0.43)
++  point3f physics:localPos0 = (0.3, 0, 0.53)
+-  float3 xformOp:scale = (0.12, 0.12, 0.43)
++  float3 xformOp:scale = (0.12, 0.12, 0.53)
+```
+- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py` L36,L62,L65-L66,L72：同步验证0.53m刚体位移、柱z上界0.81、COM/inertia及底盘y=0.10；motion阈值和mount collision contract保持不变。 / Update assertions for0.53m body displacement,0.81 column bound, COM/inertia and chassis y=0.10 while retaining motion thresholds and the mount-collision contract. (local)
+```diff
+- expected[3, 2] = .43
++ expected[3, 2] = .53
+- assert station["robot"]["base_position"] == [-1.12, .18, .01]
++ assert station["robot"]["base_position"] == [-1.12, .10, .01]
+```
+- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L1-L158：区分历史C的0.43m失败证据与v17.8.3当前候选，补充fresh无动作实测坐标、home检查、60条路线拒绝分类、视频元数据及未执行pour/place边界。 / Distinguish historical C0.43m failure evidence from the v17.8.3 candidate, and document fresh no-motion coordinates, home check, all60 route-rejection categories, video metadata and the no-pour/no-place boundary. (local)
+
+### 验证 / Validation
+- [eval] [chore] 执行原回归命令：**206 passed**，5.60s，保留1项既有 `asyncio_mode` 配置警告。 / The focused production regression command passes **206 tests** in5.60s with one pre-existing `asyncio_mode` configuration warning. (local)
+- [eval] [exp] fresh证据：`no-motion.json`中实测底盘`[-1.1200000048,0.1000000015,0.0099999998]m`、臂基`[-0.8199764490,0.1000000164,0.8199999928]m`，home collision passed且motion_commands=0；完整运行任务`task_1ec4c496cb464524`失败，60条候选首拒绝为transport无解25、transport连续性/关节跳变15、process碰撞20。 / Fresh evidence: `no-motion.json` measures the chassis at `[-1.1200000048,0.1000000015,0.0099999998]m` and arm root at `[-0.8199764490,0.1000000164,0.8199999928]m`, with home collision passed and zero motion commands; task `task_1ec4c496cb464524` fails, with first rejection counts of25 transport no-solution,15 transport continuity/joint-delta, and20 process collisions. (local)
+
+### Fresh结果 / Fresh Outcome [完成 / Completed]
+- [docs] [docs] 报告记录fresh home碰撞检查通过、抓取成功、60条held倾倒候选全部拒绝及分类、任务failed且未进入pour/place；视频仅作为抓取/持瓶证据，不作为倾倒成功证据。 / The report records the passed fresh home collision check, successful acquisition, all60 held-pour candidates rejected by category, task failure before pour/place, and the video as acquisition/holding evidence only, not pour-success evidence. (local)
+- [docs] [docs] 月档与索引均记录报告L1-L158、配置/测试精确行号、关键Diff和本轮停止调参决策；CHANGELOG最近五版本已同步。本次不修改运行产物，不暂存`.task/`或`out/`。 / The archive and index record report linesL1-L158, exact configuration/test lines, key diffs and the current stop-tuning decision; the latest-five index is synchronized. Run artifacts are unchanged and `.task/`/`out/` are not staged. (local)
+
 ## v17.8.2 (2026-11-20 15:31) - codex
 
 ### 推送历史修复 / Push History Repair [完成 / Completed]
@@ -500,14 +552,3 @@
 - Branch / 分支：`feature/planning-loop`。
 - 时间 / Time：2026-11-19 19:24:39 Asia/Shanghai。
 - [docs] [chore] 上述hash标识本版本实现提交；后续收据记录提交不自引用。 / The hash identifies this version's implementation commit; the subsequent receipt commit does not self-reference. (local)
-
-## v17.6.29 (2026-11-19) - claude
-
-### 完成范围 / Scope
-- run24e 死因闭环(跨 revision 过程特征管道):acquire 使场景前进后,绑定会自动刷新而 planner 选定的瓶口/烧杯口特征引用冻在旧 revision——pour 的 held 准备在 simulator-truth 链上永远拿不到当前特征(records 的 features=None,只有候选列表),run24e 成为全链历史第一次走到 pour prepare_held 即死。修复三件:① RuntimeSubtaskDriver 的 revision 刷新块对带过程特征的 pour/stir 子任务**重查重选**——同 planner 同构地跑 manipulation.process_features(propose)→按角色确定性选(pour:源 pour_lip rim+目的 rim 各一;stir:endpoint_a/b+目的 rim,首个可用者胜,同抓取候选"第一个可用即胜"原则)→manipulation.prepare_process_features(validate_selection)资格化→更新 spec 引用;拿不到当前特征即诚实 fail-closed(refresh_perception_before_motion 族)。② held 工具族输入 schema 新增**可选** process_feature_refs/process_feature_candidate_set_ref(不进 required;place/legacy 无特征照旧),刷新后的引用随 prepare_held 请求下行,经 prepared_arguments 回声流入 object.pour 执行;published contracts 同步再生(prepare_held/pour/stir;object.place 合同保持 legacy 形状不动)。③ paos_client.prepare_held 把合并请求的 process_type 透传给 refresh_process,任务条件化的倾倒方向(pour_direction)在刷新后与初始准备同语义存活。 / run24e's death closed (cross-revision process-feature plumbing): after the acquire advances the scene, the binding refreshes itself but the planner-selected rim references stay frozen at the old revision — pour held preparation on the simulator-truth chain can never see current features (record features=None, only candidate lists), and run24e was the first run in chain history to reach pour prepare_held and die there. Three fixes: ① the RuntimeSubtaskDriver revision-refresh block now **re-queries and re-selects** process features for pour/stir subtasks that carry them — the same Query/Preparation pair the planner used: manipulation.process_features (propose), deterministic role selection (pour: one source pour_lip rim plus one destination rim; stir: endpoint_a/b plus the destination rim; first available wins, the same principle as grasp candidates), manipulation.prepare_process_features (validate_selection), then the spec refs update; absent current features fail closed honestly (refresh_perception_before_motion family). ② the held tool family's input schema gains **optional** process_feature_refs/process_feature_candidate_set_ref (not required; place/legacy flows unchanged), so the refreshed refs ride the prepare_held request and, echoed through prepared_arguments, flow into object.pour execution; published contracts regenerated to match (prepare_held/pour/stir; the object.place contract keeps its legacy shape untouched). ③ paos_client.prepare_held passes the merged request's process_type through to refresh_process so the task-conditioned pour direction survives the refresh with the same semantics as the initial preparation.
-
-### File Changes
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`(刷新块 +_refresh_process_features/_select_process_features;prepare_held 参数注入 spec 特征引用)。`held_manipulation.py`(可选特征属性,不进 required)。`contracts/{manipulation.prepare_held,object.pour,tool.stir}.tool.yaml` 再生。`examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`(refresh_process 透传 process_type)。测试:`test_subtask_executor.py` +3(revision 前进→prepare_held 收到 :N 引用而非 :0;特征不可用→诚实 refresh_perception_before_motion 且不动 pour;held schema 接受可选特征);`test_phase_pipeline.py` 夹具注册特征 Query/Preparation(生产 pour/stir 必带特征);`runtime_with_subtask_endpoint` 同步。 / subtask_executor.py (refresh block + _refresh_process_features/_select_process_features; prepare_held arguments inject the spec's feature refs); held_manipulation.py (optional feature properties, excluded from required); contracts/{manipulation.prepare_held,object.pour,tool.stir}.tool.yaml regenerated; paos_client.py (refresh_process receives process_type). Tests: +3 in test_subtask_executor.py (revision advance → prepare_held receives :N refs, never :0; features unavailable → honest refresh_perception_before_motion without touching pour; the held schema accepts optional features); test_phase_pipeline.py fixture registers the feature Query/Preparation (production pour/stir always carry features); runtime_with_subtask_endpoint likewise.
-
-### 架构与验证 / Architecture and Validation
-- 规范门 598 passed / 2 预存(scene_physics);全技能套件(async 开启)663/666,失败 13 项与 HEAD 基线逐一相同(环境性,worktree 对照验证)。判据 run24f(同 profile 同配置,工作区 out/labutopia-oracle-run24f):acquire 成功后 pour 准备应首次拿到 :1 特征并执行倾倒(对准由其自身尖端/轴门裁决),随后放置/回归;若倾倒物理判负,如实体审。 / Canonical gate 598 passed / 2 pre-existing; full skill suite (async enabled) 663/666 with the 13 failures identical to the HEAD baseline (environmental, verified by worktree comparison). Criteria for run24f (same profile and config, workspace out/labutopia-oracle-run24f): after the acquire succeeds, pour preparation should receive :1 features for the first time and execute the pour (alignment adjudicated by its own tip/axis gates), then placement and return; if the pour physics fails its gates, that fact stands.

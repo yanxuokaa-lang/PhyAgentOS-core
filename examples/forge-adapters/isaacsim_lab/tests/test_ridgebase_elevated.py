@@ -33,7 +33,7 @@ def test_elevated_robot_preserves_chassis_and_all_arm_joint_anchors():
         delta = np.array(new) - np.array(old)
         expected = np.zeros((4, 4))
         if name in names:
-            expected[3, 2] = .43
+            expected[3, 2] = .53
         assert delta == pytest.approx(expected, abs=1e-12)
         assert tuple(new_prim.GetAttribute("xformOp:scale").Get()) == (1., 1., 1.)
     joints = [p for p in elevated.Traverse() if p.IsA(UsdPhysics.Joint)]
@@ -59,17 +59,17 @@ def test_column_has_collision_and_matches_mount_mass_properties():
     assert UsdPhysics.CollisionAPI(column).GetCollisionEnabledAttr().Get()
     bounds = UsdGeom.BBoxCache(0., ["default"]).ComputeWorldBound(column).ComputeAlignedRange()
     assert np.array(bounds.GetMin()) == pytest.approx([.24, -.06, .28], abs=1e-6)
-    assert np.array(bounds.GetMax()) == pytest.approx([.36, .06, .71], abs=1e-6)
+    assert np.array(bounds.GetMax()) == pytest.approx([.36, .06, .81], abs=1e-6)
     mass = UsdPhysics.MassAPI(mount)
     assert mass.GetMassAttr().Get() == pytest.approx(6.)
-    assert tuple(mass.GetCenterOfMassAttr().Get()) == pytest.approx([.3, 0., .215])
-    assert tuple(mass.GetDiagonalInertiaAttr().Get()) == pytest.approx([.09965, .09965, .0144])
+    assert tuple(mass.GetCenterOfMassAttr().Get()) == pytest.approx([.3, 0., .265])
+    assert tuple(mass.GetDiagonalInertiaAttr().Get()) == pytest.approx([.14765, .14765, .0144])
 
 
 def test_elevated_profile_retains_motion_thresholds():
     yaml = pytest.importorskip("yaml")
     station = yaml.safe_load((CONFIGS / "labutopia-ridgebase-station.yaml").read_text())
-    assert station["robot"]["base_position"] == [-1.12, .18, .01]
+    assert station["robot"]["base_position"] == [-1.12, .10, .01]
     profile = LabUtopiaProfile.from_json(CONFIGS / "labutopia-ridgebase.json")
     assert str(profile.robot_usd_path) == station["robot"]["usd_asset"]
     assert profile.robot_usd_path.name == "labutopia-ridgebase-elevated.usda"

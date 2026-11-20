@@ -1,33 +1,39 @@
 # Ridgebase Franka 增高部署 / Elevated Deployment
 
-记录 / Recorded: 2026-11-19，Asia/Shanghai。版本 / Version: v17.8.0。
+记录 / Recorded: 2026-11-20，Asia/Shanghai。版本 / Version: v17.8.3（当前候选布局；fresh初始化与运行证据已补齐，C轮仍为历史v17.8.0布局）。
 
-既有A轮移除桌面旧臂后，24条倾倒路线仍全部失败，22条明确报告活动臂link2撞桌；B轮靠近后在lift前因瓶体旋转超限失败。当前采用一个预先计算的机器人布局：底盘落地、臂基增高0.43m，并调整底盘位置；遵照用户限制，桌面物品的初始位置与操作区域保持原坐标。
+既有A轮移除桌面旧臂后，24条倾倒路线仍全部失败，22条明确报告活动臂link2撞桌；B轮靠近后在lift前因瓶体旋转超限失败。历史C轮使用0.43m增高布局并最终未完成倾倒。本版本只记录由离线端点敏感性扫描选出的单一候选：底盘落地、臂基增高到约0.82m、底盘y移至0.10m；桌面物品的初始位置与操作区域保持原坐标。
 
-After legacy-arm removal, A still rejects all24 pour candidates, including22 explicit live-arm link2/table collisions. B fails before lift on bottle rotation. This deployment uses one analytically selected layout with a grounded chassis, a0.43m arm elevation and an adjusted base position, preserving initial tabletop-item positions and operation-area coordinates as required by the user.
+After legacy-arm removal, A still rejects all24 pour candidates, including22 explicit live-arm link2/table collisions. B fails before lift on bottle rotation. Historical C used the0.43m elevated layout and still failed to pour. This version records one candidate selected by offline endpoint sensitivity: grounded chassis, arm root near0.82m, and chassis y=0.10m, while preserving tabletop item positions and operation-area coordinates.
 
-C轮已失败终态：抓取返回成功并持瓶，但持瓶倾倒准备的24个候选全部拒绝，未执行pour或place。该单一布局使抓取越过B轮的lift前失败，C候选中不再出现A轮主导的link2撞桌原因；现有连续IK及腕部/载荷碰撞仍阻止倾倒，不能归因为仅距离过远。
+C轮（历史0.43m布局）已失败终态：抓取返回成功并持瓶，但持瓶倾倒准备的24个候选全部拒绝，未执行pour或place。该单一布局使抓取越过B轮的lift前失败，C候选中不再出现A轮主导的link2撞桌原因；现有连续IK及腕部/载荷碰撞仍阻止倾倒，不能归因为仅距离过远。v17.8.3候选的fresh无动作检查通过，但持瓶倾倒路线资格未通过，未进入实际pour或place。
 
-C terminates failed after a successful acquire and a held-pour preparation that rejects all24 candidates. Pour and place do not execute. Acquisition progresses beyond B's pre-lift failure, and C no longer reports A's dominant link2/table failure. Continuous IK and wrist/payload collisions still prevent pouring; the evidence does not isolate excessive distance as the sole cause.
+C (historical0.43m layout) terminates failed after a successful acquire and a held-pour preparation that rejects all24 candidates. Pour and place do not execute. Acquisition progresses beyond B's pre-lift failure, and C no longer reports A's dominant link2/table failure. Continuous IK and wrist/payload collisions still prevent pouring; the evidence does not isolate excessive distance as the sole cause. For v17.8.3, the fresh no-motion check passes, but held-pour route qualification rejects every candidate before pour or place.
+
+## v17.8.3当前候选 / Current v17.8.3 Candidate
+
+候选来自只读离线端点敏感性扫描：`arm_root=[-0.82,0.10,0.82]m` 是扫描中唯一使保存的实测姿态修正目标进入IK的部署点。该证据只支持部署方向选择，不证明连续路线、夹持接触或实际倾倒成功；fresh无动作检查已通过，但持瓶路线资格失败，按原决策边界停止继续调参并保留失败原因。
+
+The candidate comes from a read-only offline endpoint sensitivity scan: `arm_root=[-0.82,0.10,0.82]m` is the only scanned deployment point that admits the saved measured pose-correction target to IK. This supports placement selection only; it does not establish a continuous route, grasp contact or runtime pouring. The fresh no-motion check passes, but held-pour route qualification fails; the existing decision boundary therefore stops further tuning and retains the failure evidence.
 
 ## 单一布局 / Fixed Layout
 
-| 项目 / Item | 原装 / Original | 增高 / Elevated |
+| 项目 / Item | 历史C布局 / Historical C | v17.8.3当前候选 / Current candidate |
 |---|---|---|
-| 底盘世界坐标 / Chassis world position | A[-1.201,.36,.01]; B[-1.05,.18,.01]m | [-1.12,.18,.01]m |
-| 名义臂基世界坐标 / Nominal arm-root world position | A[-.901,.36,.29]; B[-.75,.18,.29]m | [-.82,.18,.72]m |
+| 底盘世界坐标 / Chassis world position | [-1.12,.18,.01]m | [-1.12,.10,.01]m |
+| 名义臂基世界坐标 / Nominal arm-root world position | [-.82,.18,.72]m | [-.82,.10,.82]m |
 | 手臂尺寸 / Arm scale | 1 | 1 |
-| 安装柱 / Elevation column | 无 / None | 0.12×0.12×0.43m |
-| 柱质量、COM / Mount mass, local COM | 近零质量 / Near-zero mass | 6kg; [.3,0,.215]m |
-| 柱主惯量 / Mount diagonal inertia | 原资产 / Source | [.09965,.09965,.0144]kg·m² |
+| 安装柱 / Elevation column | 0.12×0.12×0.43m | 0.12×0.12×0.53m |
+| 柱质量、COM / Mount mass, local COM | 6kg; [.3,0,.215]m | 6kg; [.3,0,.265]m |
+| 柱主惯量 / Mount diagonal inertia | [.09965,.09965,.0144]kg·m² | [.14765,.14765,.0144]kg·m² |
 
-桌面AABB z=[.6973860684,.7123860691]m；名义臂基高出桌面7.614mm。柱名义世界AABB为x[-.88,-.76]、y[.12,.24]、z[.29,.72]m，与桌子xmin=-.7350872574m相隔24.913mm。机器人到R05抓取点距离约.585145m，到烧杯rim约.767435m。这些是静态几何设计值，实际初始化读回单独记录。
+当前候选的桌面AABB仍为z=[.6973860684,.7123860691]m；名义臂基高出桌面107.614mm。柱名义世界AABB为x[-.88,-.76]、y[.04,.16]、z[.29,.82]m，与桌子xmin=-.7350872574m相隔24.913mm。R05与烧杯的当前目标距离不沿用历史C数值，须由fresh初始化和路线证据重新记录。
 
-The tabletop spans z=[.6973860684,.7123860691]m, leaving the nominal arm root7.614mm above its top. The column's nominal world bounds give24.913mm horizontal clearance from the table edge. Root-to-target distances are approximately.585145m for R05 grasp and.767435m for the beaker rim. Actual reset readback is recorded separately from these static design values.
+For the current candidate, the tabletop remains at z=[.6973860684,.7123860691]m, leaving the nominal arm root107.614mm above its top. The column's nominal world bounds are x[-.88,-.76], y[.04,.16], z[.29,.82]m, with24.913mm horizontal clearance from the table edge. Current R05 and beaker target distances are not reused from historical C and must be recorded from fresh initialization and route evidence.
 
-`labutopia-ridgebase-elevated.usda`引用原`ridgeback_franka.usd`的`panda_mobile`，不改外部原资产。全部12个臂/手/手指/endeffector刚体平移z+.43m，安装节点原位，安装关节localPos0改为[.3,0,.43]；其余关节局部框架及底盘变换保留。stage明确以米为单位、Z朝上。
+`labutopia-ridgebase-elevated.usda`引用原`ridgeback_franka.usd`的`panda_mobile`，不改外部原资产。当前候选将全部12个臂/手/手指/endeffector刚体平移z+.53m，安装节点原位，安装关节localPos0改为[.3,0,.53]；其余关节局部框架及底盘变换保留。stage明确以米为单位、Z朝上。
 
-The wrapper references the original robot without editing it, raises all12 arm/hand/finger/end-effector bodies by.43m, retains the mounting body's pose and updates the mounting joint's localPos0. Other joint frames and chassis transforms remain intact; stage units are meters with Z up.
+The wrapper references the original robot without editing it, raises all12 arm/hand/finger/end-effector bodies by.53m, retains the mounting body's pose and updates the mounting joint's localPos0. Other joint frames and chassis transforms remain intact; stage units are meters with Z up.
 
 ## 离线计算 / Offline Calculation
 
@@ -37,9 +43,9 @@ The wrapper references the original robot without editing it, raises all12 arm/h
 - 八个抓取对称分支，五个抓取与6cm抬升端点数值可达。24个倾倒候选中四个全部端点数值可达，两个的各端点均找到桌/柱余量≥现有3mm的分支：yaw=-π/2、azimuth=0、lip clearance=.04/.048m。所选端点分支最小桌/柱余量57.6135mm，最小关节限位余量.1807476rad。 / Five of eight grasp variants reach both grasp and6cm-lift endpoints numerically. Four of24 pour candidates reach every endpoint; two have endpoint branches with at least the existing3mm table/column margin, at yaw=-π/2, azimuth0 and clearance.04/.048m. Minimum selected-branch clearance is57.6135mm and joint-limit margin.1807476rad.
 - 主会话起初要求的第二clearance=.078m超出现行profile的.05-.002=.048m限制，分析已纠正并重算；运行时阈值未变。 / The caller's initially requested.078m clearance exceeds the existing.048m allowance; the analysis specification was corrected and recomputed without changing runtime thresholds.
 
-只计算独立端点，未证明连续路径、自碰撞、载荷、其他桌面物体或夹取接触合格；使用历史feature与实测attachment仅作部署敏感性输入。数值不收敛也不等于几何不可达。C轮已fresh reset并重新观测/绑定/准备，完整路线资格检查拒绝了全部倾倒候选；离线端点可达不等于连续路径合格。
+只计算独立端点，未证明连续路径、自碰撞、载荷、其他桌面物体或夹取接触合格；使用历史feature与实测attachment仅作部署敏感性输入。数值不收敛也不等于几何不可达。v17.8.3已fresh reset并重新观测/绑定/准备，完整持瓶路线资格检查拒绝了全部60个倾倒候选；离线端点可达不等于连续路径合格。
 
-Independent endpoint IK omits path interpolation, self collision, payload, other tabletop items and grasp contact. Historical feature and attachment inputs support placement sensitivity only; numerical nonconvergence does not prove impossibility. C uses a fresh reset, observation, binding and preparation; complete route qualification rejects every pour candidate. Reachable independent endpoints do not establish a qualified continuous path.
+Independent endpoint IK omits path interpolation, self collision, payload, other tabletop items and grasp contact. Historical feature and attachment inputs support placement sensitivity only; numerical nonconvergence does not prove impossibility. The v17.8.3 run uses a fresh reset, observation, binding and preparation; complete held-pour qualification rejects all60 candidates. Reachable independent endpoints do not establish a qualified continuous path.
 
 ## 所有权与碰撞 / Ownership and Collision
 
@@ -73,23 +79,51 @@ OMNI_KIT_ACCEPT_EULA=YES /home/yanxu/miniconda3/envs/labutopia/bin/python \
   --workspace out/labutopia-elevated-20261119/C-elevated
 ```
 
-持久测试194 passed：真实`_collisions`用stub PhysX覆盖link2、finger、payload撞柱拒绝及link0连接豁免；USD组合验证全部刚体平移、关节锚、底盘、柱碰撞/质量/惯量/单位，配置验证除mount路径外完全相等。未安装pxr或原外部资产时仅跳过USD集成测试，纯配置测试仍执行。桌面布局逐字比较记录于`deployment-diff-evidence.json`。
+当前代码与配置回归测试206 passed：真实`_collisions`用stub PhysX覆盖link2、finger、payload撞柱拒绝及link0连接豁免；USD组合验证全部刚体平移、关节锚、底盘、柱碰撞/质量/惯量/单位，配置验证除mount路径外完全相等。未安装pxr或原外部资产时仅跳过USD集成测试，纯配置测试仍执行。桌面布局逐字比较记录于`deployment-diff-evidence.json`。
 
-All194 persistent tests pass, exercising actual collision logic and no-motion USD composition. USD integrations skip when pxr/source assets are unavailable; pure configuration checks still run. Exact unchanged tabletop/layout evidence is saved separately in `deployment-diff-evidence.json`.
+The current code and configuration regression command passes206 tests, exercising actual collision logic and no-motion USD composition. USD integrations skip when pxr/source assets are unavailable; pure configuration checks still run. Exact unchanged tabletop/layout evidence is saved separately in `deployment-diff-evidence.json`.
 
 Launcher创建新workspace并保存profile、各配置及USD覆盖层、指令、Git差异、commit/branch、命令、起止时间和returncode。完整任务参数沿用原R05→BEAKER倾倒并放回；实际求解/接触仿真没有显式seed，不声称确定性。数据集/训练checkpoint不适用。外部资产源及已有快照在metadata记录。仿真停止仍使用原fail-closed路径；此任务没有真实硬件执行。
 
 The launcher preserves fresh workspace inputs, Git/config provenance, command and terminal metadata. The task retains R05-to-beaker pouring and return, with no explicit seed for planning/contact simulation and no determinism claim. Dataset/checkpoint fields are inapplicable. Existing fail-closed simulation stop behavior applies; no physical hardware executes.
 
-## 实际初始化及运行状态 / Actual Initialization and Run Status
+## 历史C轮初始化及运行状态 / Historical C Initialization and Run Status
 
-`no-motion.json`记录fresh revision `labutopia-tabletop-rod-rack-v1:2faca503a5de4b20bc3e3a4ea8b08e03:0`，actual armroot=[-.8199764490,.1800000221,.7199999690]m；柱世界AABB=[[-.8799765223,.1200000209,.2899999881],[-.7599765188,.2400000244,.7199999952]]m。柱碰撞启用；旧臂inactive、活动旧臂碰撞体为空、home_collision_check=passed、读回期间关节不变、manipulation commands=0。安装关节两侧世界锚点相差6.6643e-8m；不把手指prismatic开口或原世界固定关节框架差异报告成零。
+以下`no-motion.json`是历史C轮0.43m布局的fresh读回：revision `labutopia-tabletop-rod-rack-v1:2faca503a5de4b20bc3e3a4ea8b08e03:0`，actual armroot=[-.8199764490,.1800000221,.7199999690]m；柱世界AABB=[[-.8799765223,.1200000209,.2899999881],[-.7599765188,.2400000244,.7199999952]]m。柱碰撞启用；旧臂inactive、活动旧臂碰撞体为空、home_collision_check=passed、读回期间关节不变、manipulation commands=0。v17.8.3候选的fresh读回见下方独立证据。
 
-Fresh production initialization confirms the stated actual arm root and column bounds, enabled column collision, no active legacy arm/colliders, a passed home collision check and unchanged joints during readback, with zero manipulation commands. The mounting joint's world-anchor separation is6.6643e-8m. Finger opening and existing world-joint frame differences are not reported as zero.
+The following no-motion evidence is a fresh readback of the historical C0.43m layout: it confirms the stated arm root and column bounds, enabled column collision, no active legacy arm/colliders, a passed home collision check and unchanged joints during readback, with zero manipulation commands. The v17.8.3 candidate has a separate fresh readback below. Finger opening and existing world-joint frame differences are not reported as zero.
 
-主会话核对外部原robot USD、tabletop scene USDA、tabletop_station.yaml与A/B既有external-scene-snapshot逐字节相等；当前station的layout之后全部文本与HEAD逐字一致，motion JSON移除mount_collision_paths后与oracle逐值相等。主会话review已修复临时文件测试依赖与USD单位问题，当前无其余Major。首次no-motion因script路径未加入repo root而在Backend导入前停止，修正后retry完成；首轮日志保留，不记作通过。首次pytest缺workflow PYTHONPATH、另一个测试未处理world joint无body0；修正后全套194通过。
+主会话核对外部原robot USD、tabletop scene USDA、tabletop_station.yaml与A/B既有external-scene-snapshot逐字节相等；当前station的layout之后全部文本与HEAD逐字一致，motion JSON移除mount_collision_paths后与oracle逐值相等。主会话review已修复临时文件测试依赖与USD单位问题，当前无其余Major。上述历史C的首次no-motion因script路径未加入repo root而在Backend导入前停止，修正后retry完成；首轮日志保留，不记作通过。当前v17.8.3代码/配置回归为206 passed，fresh候选的初始检查和持瓶资格结果见下方。
 
-The primary confirms bytewise equality of external robot, scene and station assets against the earlier A/B snapshot, exact unchanged station layout text and complete equality of motion values after excluding mount_collision_paths. Review resolved the temporary-file test dependency and USD unit issues, with no other outstanding Major finding. Initial import-path/test-harness failures are retained and corrected; only the successful retry and194-test run count as passing evidence.
+The primary confirms bytewise equality of external robot, scene and station assets against the earlier A/B snapshot, exact unchanged station layout text and complete equality of motion values after excluding mount_collision_paths. Review resolved the temporary-file test dependency and USD unit issues, with no other outstanding Major finding. Initial import-path/test-harness failures are retained and corrected; the current code/configuration regression rerun passes206 tests, while the fresh initialization and held-pour qualification outcomes are recorded below.
+
+## Fresh v17.8.3初始化与路线资格 / Fresh v17.8.3 Initialization and Route Qualification
+
+无动作证据 `out/labutopia-elevated-20261120/no-motion.json`：生产 Backend fresh 初始化 `status=initialized`，`home_collision_check=passed`，`old_franka_active=false`，`active_legacy_colliders=[]`，`joints_unchanged_during_checks=true`，`motion_commands=0`。实测底盘世界坐标为 `[-1.1200000048,0.1000000015,0.0099999998]m`，臂基为 `[-0.8199764490,0.1000000164,0.8199999928]m`；安装柱世界AABB为 `[[-0.8799765223,0.0400000152,0.2900000358],[-0.7599765188,0.1600000187,0.8200000072]]m`，柱碰撞启用。该证据证明部署初态和home检查通过，不证明完整倾倒路线。
+
+Fresh no-motion evidence in `out/labutopia-elevated-20261120/no-motion.json` shows production Backend initialization with `status=initialized`, `home_collision_check=passed`, `old_franka_active=false`, no active legacy colliders, unchanged joints during checks, and zero manipulation commands. The measured chassis is `[-1.1200000048,0.1000000015,0.0099999998]m`, the arm root is `[-0.8199764490,0.1000000164,0.8199999928]m`, and the enabled column bounds are `[[-0.8799765223,0.0400000152,0.2900000358],[-0.7599765188,0.1600000187,0.8200000072]]m`. This proves deployment initialization and the home check, not a complete pour route.
+
+运行证据来自 `out/labutopia-elevated-20261120/v17.8.3-full-run/`：任务 `task_1ec4c496cb464524` 于2026-11-20 17:23:02至17:54:30（Asia/Shanghai）以return code1失败。`object.acquire`成功并进入`possession_state=holding`；随后`manipulation.prepare_held=unavailable`，错误为`pour_route_unavailable`。60条候选全部拒绝；下表只统计每条候选的首个报告原因，完整detail仍保存在`acceptance.json`与`placement-summary.json`。
+
+The runtime evidence is under `out/labutopia-elevated-20261120/v17.8.3-full-run/`: task `task_1ec4c496cb464524` fails from 17:23:02 to 17:54:30 Asia/Shanghai with return code1. `object.acquire` succeeds and reaches `possession_state=holding`; `manipulation.prepare_held` then returns unavailable with `pour_route_unavailable`. All60 candidates are rejected. The table counts each candidate's first reported reason; complete details remain in `acceptance.json` and `placement-summary.json`.
+
+| 各候选首个报告拒绝原因 / First reported rejection per candidate | 数量 / Count |
+|---|---:|
+| transport阶段无解 / No solution in transport | 25 |
+| transport阶段IK连续性/关节跳变超限 / Transport IK continuity or joint-delta rejection | 15 |
+| process阶段 `panda_hand` 碰撞 TargetBeaker / Process `panda_hand`–TargetBeaker collision | 9 |
+| process阶段 `panda_link6` 碰撞桌面 / Process `panda_link6`–table collision | 5 |
+| process阶段 payload 碰撞 TargetBeaker / Process payload–TargetBeaker collision | 5 |
+| process阶段 finger 碰撞 TargetBeaker / Process finger–TargetBeaker collision | 1 |
+| 总计 / Total | 60 |
+
+没有`pour`或`place`阶段反馈；任务在held路线准备阶段终止，因此本轮没有进入实际倾倒，不能把视频中的抓取/持瓶片段解释为倾倒成功。视频为 `out/labutopia-elevated-20261120/v17.8.3-full-run/artifacts/labutopia/phase-video/7dd524eaa9f14e91ab4dc5080d16dbf2.mp4`，`ffprobe`为32.066667秒、1924帧、3840×960、41629502 bytes。
+
+No `pour` or `place` phase feedback exists. The task stops during held-route preparation, so this run does not enter actual pouring and the acquisition/holding footage is not evidence of pour success. The video is `out/labutopia-elevated-20261120/v17.8.3-full-run/artifacts/labutopia/phase-video/7dd524eaa9f14e91ab4dc5080d16dbf2.mp4`; `ffprobe` reports 32.066667 seconds, 1924 frames, 3840×960 and41629502 bytes.
+
+本轮决策：fresh部署初态与home碰撞检查通过，抓取成功，但完整持瓶倾倒路线资格失败，实际倾倒未执行。按既有决策边界停止继续调整高度、位置或阈值；不把离线端点可达、无动作检查或抓取成功升级为倾倒成功证据。
+
+Decision: fresh deployment initialization and the home collision check pass, acquisition succeeds, but complete held-pour route qualification fails and actual pouring is not executed. Under the existing decision boundary, stop further height, placement or threshold tuning; endpoint reachability, no-motion checks and acquisition success do not establish pouring success.
 
 ## C轮完整终态 / C Terminal Outcome
 
