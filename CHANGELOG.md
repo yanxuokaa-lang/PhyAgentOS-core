@@ -67,8 +67,8 @@
 ### Git提交 / Git Commit
 - Rewritten commit / 重写提交：`14c8418bc162f8ef8c445fbcdfda8d8609566f02`（替代`67e77c0b461af6141bc8ab7e5771d577ad8e6171`）。
 - Branch / 分支：`feature/planning-loop`。
-- Push / 推送：待回执。
-- [chore] [chore] 历史修复已完成，等待日志回执提交及实际推送结果。 / History repair is complete; the log receipt commit and actual push result are pending. (local)
+- Push / 推送：成功，`09b9d32c` → `ca1fee82`（`git ls-remote`已核验）。
+- [chore] [chore] 2026-11-20 15:45:25 Asia/Shanghai 使用`git push --force-with-lease origin feature/planning-loop`成功，远端从`09b9d32c`更新至`ca1fee82`；`git ls-remote`确认远端指针为`ca1fee82575b8ae9eaccf860db6f5bafccf95001`。GitHub仅提示run9、run12、run13、run14视频超过50 MB建议值，未拒绝推送。 / At 2026-11-20 15:45:25 Asia/Shanghai, `git push --force-with-lease origin feature/planning-loop` succeeded, moving the remote from `09b9d32c` to `ca1fee82`; `git ls-remote` confirmed the remote ref at `ca1fee82575b8ae9eaccf860db6f5bafccf95001`. GitHub only warned that run9, run12, run13 and run14 videos exceed its 50 MB recommendation; the push was accepted. (ca1fee82)
 
 ## v17.8.1 (2026-11-19 20:54) - codex
 
