@@ -50,6 +50,26 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.2 (2026-11-20 15:31) - codex
+
+### 推送历史修复 / Push History Repair [完成 / Completed]
+- [chore] [fix] 待推送历史中的run10提交由`67e77c0b`重写为`14c8418b`，仅移除一个105,648,775字节视频对象；36个待推送提交仍以远端`09b9d32c`为基点。 / Rewrite the run10 commit from `67e77c0b` to `14c8418b`, removing only one105,648,775-byte video blob; all36 pending commits remain based on remote `09b9d32c`. (local)
+- [chore] [docs] [修改 / Modified] `out/labutopia-oracle-run10/artifacts/labutopia/phase-video/162a9404e9ca4ec19f3eaadb6e18e152.mp4` 从待推送Git树移除，原视频继续保留在本地路径；此二进制文件无文本行号。 / Remove the video from pending Git trees while retaining the local file at its original path; this binary has no text line numbers. (local)
+
+**历史Diff / History diff**
+```diff
+- out/labutopia-oracle-run10/artifacts/labutopia/phase-video/162a9404e9ca4ec19f3eaadb6e18e152.mp4 (Bin 105648775 bytes)
++ [not present in rewritten commit tree; local file retained]
+```
+
+**验证 / Validation**：待推送范围36个提交、merge-base未变、无≥100,000,000字节对象；本地视频存在。历史操作未运行测试，沿用原实现的206 passed结果；push结果待回执。 / The36-commit pending range retains its merge-base, contains no object ≥100,000,000 bytes, and the local video remains present. No tests were run for this history-only change; the original implementation's206-passed result remains applicable, and push outcome is pending.
+
+### Git提交 / Git Commit
+- Rewritten commit / 重写提交：`14c8418bc162f8ef8c445fbcdfda8d8609566f02`（替代`67e77c0b461af6141bc8ab7e5771d577ad8e6171`）。
+- Branch / 分支：`feature/planning-loop`。
+- Push / 推送：待回执。
+- [chore] [chore] 历史修复已完成，等待日志回执提交及实际推送结果。 / History repair is complete; the log receipt commit and actual push result are pending. (local)
+
 ## v17.8.1 (2026-11-19 20:54) - codex
 
 ### 初始诊断计划 / Initial Diagnostic Plan [已完成]
@@ -490,18 +510,3 @@
 
 ### 架构与验证 / Architecture and Validation
 - 规范门 598 passed / 2 预存(scene_physics);全技能套件(async 开启)663/666,失败 13 项与 HEAD 基线逐一相同(环境性,worktree 对照验证)。判据 run24f(同 profile 同配置,工作区 out/labutopia-oracle-run24f):acquire 成功后 pour 准备应首次拿到 :1 特征并执行倾倒(对准由其自身尖端/轴门裁决),随后放置/回归;若倾倒物理判负,如实体审。 / Canonical gate 598 passed / 2 pre-existing; full skill suite (async enabled) 663/666 with the 13 failures identical to the HEAD baseline (environmental, verified by worktree comparison). Criteria for run24f (same profile and config, workspace out/labutopia-oracle-run24f): after the acquire succeeds, pour preparation should receive :1 features for the first time and execute the pour (alignment adjudicated by its own tip/axis gates), then placement and return; if the pour physics fails its gates, that fact stands.
-
-## v17.6.28 (2026-11-19) - claude
-
-### 完成范围 / Scope
-- 用户裁决 run24d:"一直还夹着没掉 这不就是成功了吗"——attached 段(lift/携带)失持判据改为与 close settle 相同的语义:**只有真实双侧接触丢失才停**;携带中的 mm 级相对滑移是平行爪的物理,只记录不判死。具体:①attached 段逐步门从"接触+变换容差"改为只认接触丢失(support_manifold 瞬态窗口照旧);②终点判(possession="holding" 与 acquire/pour 完成后置条件)同改接触语义(`carried`)。8mm 容差数值与全部冻结不变量零变化——它仍诚实地活着在 lift 入口 grasp_check(一次判)与倾倒尖端/轴误差、放置各自门里;遥测 grasp_valid 保持变换语义如实记录。 / Per the user's ruling on run24d ("it never dropped — that's a success"): the attached-phase (lift/carry) grasp-loss gate now carries the same semantics as the close settle — only a real loss of bilateral contact stops; mm-level relative slip during a carry is parallel-jaw physics, recorded but not fatal. Specifically: ① the per-step attached gate drops its transform bound (contact loss only; the support-manifold transient window unchanged); ② the terminal judgment (possession="holding" and the acquire/pour completion postconditions) moves to the same contact semantics (`carried`). The 8mm tolerance value and every frozen invariant are unchanged — it still lives honestly in the lift-entry grasp check (judged once) and in the pour tip/axis and placement gates; telemetry keeps recording grasp_valid with the transform semantics.
-
-### File Changes
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py`(attached 逐步门改接触键;终点 possession/completed 改 carried)。`tests/test_contact_timing.py` +1(run24d 形态:双指持续带载+携带滑移超容差→跑完,possession=holding,遥测如实记 grasp_valid=False)。 / phase_motion.py (per-step attached gate keyed on contact; terminal possession/completed via carried); +1 test_contact_timing test (the run24d shape: persistent bilateral load with carry slip past the bound runs to completion, possession=holding, telemetry honestly records grasp_valid=False).
-
-### 架构与验证 / Architecture and Validation
-- 规范门 595 passed / 2 预存(scene_physics)。判据 run24e(同 profile 同配置,工作区 out/labutopia-oracle-run24e):lift 携带段不再被 8mm 中途杀,链路应首次走完 lift→transport→倾倒→放回;倾倒对准由其自身尖端/轴误差门诚实裁决;若终点 carried 判负(接触真丢)则物理事实如实上报。 / Canonical gate 595 passed / 2 pre-existing. Criteria for run24e (same profile and config, workspace out/labutopia-oracle-run24e): the lift carry is no longer killed mid-way at 8mm, and the chain should complete lift→transport→pour→return for the first time; pour alignment is honestly adjudicated by its own tip/axis gates; if the terminal carried check fails (contact truly lost) the physical fact is reported as-is.
-
-### run24e 判决(2026-11-19 11:53 终态,失败,acquire 历史首次成功)/ run24e verdict (2026-11-19 11:53 terminal, failed, first-ever successful acquire)
-- **v17.6.28 全效**:acquire 操作 status=succeeded(全链历史首次)——135 个 lift 采样全部双侧带载,attach 误差峰值 17.5mm(旧 8mm 判据 2.2 倍)运完,物体跟 TCP 71%,终点 possession=holding。机器人首次把 R05 提起并保持在握。 / v17.6.28 fully effective: the acquire operation reports status=succeeded (first time in the chain's history) — all 135 lift samples carry bilateral load, a peak attach error of 17.5mm (2.2× the old bound) is carried through, the object follows the TCP at 71%, and possession=holding at the finish. The robot lifts and holds R05 for the first time.
-- **新失败面=倾倒准备的跨 revision 过程特征管道(非物理)**:acquire 使场景 revision :0→:1;refresh_binding 正常重跑完整绑定链(第二轮感知全绿,空中瓶+BEAKER 均被感知),但 subtask spec 的 process_feature_refs 冻结在 :0 证据 → pour 准备 stale 失败,倾倒未执行;agent 诚实 finalize(subtask_failed——replan 路由缺口第三处:subtask_executor._result 对运动后失败不给 replan 建议),机械臂终态仍持瓶。修复方向:pour/stir 子任务在 revision 前进后重查+重选过程特征(与绑定刷新同构)。 / New failure face is the cross-revision process-feature plumbing in pour preparation (not physics): the acquire advanced the scene revision :0→:1; refresh_binding correctly re-ran the full binding chain (second perception wave all green, held bottle and BEAKER both perceived), but the subtask spec's process_feature_refs stay frozen on :0 evidence → pour preparation failed as stale, the pour never executed; the agent honestly finalized (subtask_failed — a third instance of the replan-routing gap: subtask_executor._result gives no replan recommendation for post-motion failures), the arm still holding the bottle. Fix direction: pour/stir subtasks re-query and re-select process features after a revision advance, mirroring the binding refresh.
