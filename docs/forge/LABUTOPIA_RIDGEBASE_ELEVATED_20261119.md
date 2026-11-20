@@ -149,9 +149,9 @@ Metadata records the stated start/finish times and return code1. The task fails 
 
 Pour and place do not execute, and possession remains holding. The video covers acquisition only; failed pour qualification produces no pouring motion. The stated video is independently checked with ffprobe at35.616667 seconds,2137 frames,3840×960 and46641276bytes; extracted-frame inspection confirms the elevated deployment.
 
-`summarize-run.py`已由主会话用于本轮C，`placement-summary.json`记录已落盘任务/receipt/反馈状态、完整失败detail、24候选、抓取参数与视频路径。缺某phase反馈只标缺证据，脚本本身不据缺失猜执行；本报告的未执行结论结合完整任务receipts与反馈。当前实现提交见[月档v17.8.3 Git实现提交收据](../../changelog/2026-11_part3.md)；push尚待执行，未预写结果。
+`summarize-run.py`已由主会话用于本轮C，`placement-summary.json`记录已落盘任务/receipt/反馈状态、完整失败detail、24候选、抓取参数与视频路径。缺某phase反馈只标缺证据，脚本本身不据缺失猜执行；本报告的未执行结论结合完整任务receipts与反馈。当前实现提交见[月档v17.8.3 Git实现提交收据](../../changelog/2026-11_part3.md)；本分支push已成功并由远端指针核验。
 
-The primary has used the summarizer on C's persisted artifacts. The summary preserves task/receipt/feedback status, full failures,24 candidates, grasp parameters and video paths. Missing phase feedback remains explicitly missing evidence; this report's execution conclusion additionally uses complete task receipts. The current implementation commit is recorded in the [v17.8.3 archive receipt](../../changelog/2026-11_part3.md); the push remains unperformed and no result is asserted.
+The primary has used the summarizer on C's persisted artifacts. The summary preserves task/receipt/feedback status, full failures,24 candidates, grasp parameters and video paths. Missing phase feedback remains explicitly missing evidence; this report's execution conclusion additionally uses complete task receipts. The current implementation commit is recorded in the [v17.8.3 archive receipt](../../changelog/2026-11_part3.md); the branch push succeeded and the remote ref was verified.
 
 C相对B恢复成功抓取，且24个倾倒候选不再出现A的link2撞桌主导失败；倾倒仍因连续IK及腕部/载荷碰撞被拒。离线独立端点分析没有覆盖这些连续路径约束。遵照用户限制，本轮只采用上述一个计算布局，桌面初始位置不动，安全阈值保留；不再逐次试高度或放宽阈值。当前结论是部署与抓取证据改善、倾倒任务失败，不能承诺靠近或增高即可倾倒。
 
