@@ -72,8 +72,9 @@
 - [eval] [chore] 诊断脚本py_compile与fresh Isaac无动作运行通过；结果为exact_saved_boundary_accounting、失败点61、1652/1652动作样本消费、motion_commands=0、reset joints/time unchanged。 / Diagnostic py_compile and fresh Isaac no-motion run pass; result is exact_saved_boundary_accounting, failure point61, all1652/1652 command samples consumed, motion_commands=0 and unchanged reset joints/time. (local)
 - [eval] [chore] Ridgebase运动源码、配置和部署资产均无差异；git diff --check通过，UTF-8双语文档可正常读取。 / Ridgebase motion source, configuration and deployment assets are unchanged; git diff --check passes and bilingual UTF-8 documents read correctly. (local)
 
-### Git提交 / Git Commit [pending]
-- 诊断报告与索引提交：aead469a854dcdc29feab4bd12577f2669c17c39；2026-11-21 13:03:01 Asia/Shanghai；feature/planning-loop。 / Diagnostic report and index commit aead469a854dcdc29feab4bd12577f2669c17c39 at the stated time on feature/planning-loop. Push receipt follows remote verification.
+### Git提交与推送 / Git Commit and Push [完成 / Completed]
+- 实现提交aead469a854dcdc29feab4bd12577f2669c17c39与回执提交b06cdc7d9693d00321e70ffb06dbbb0de76835d7均位于feature/planning-loop。 / Implementation commit aead469a854dcdc29feab4bd12577f2669c17c39 and receipt commit b06cdc7d9693d00321e70ffb06dbbb0de76835d7 are on feature/planning-loop.
+- git push origin feature/planning-loop成功；git ls-remote于2026-11-21 13:09:32 Asia/Shanghai核验远端指针为b06cdc7d9693d00321e70ffb06dbbb0de76835d7。 / Push succeeded; git ls-remote verified the remote ref at the stated time.
 
 ## v17.8.6 (2026-11-20 23:50) - codex
 
