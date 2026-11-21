@@ -50,6 +50,25 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.8 (2026-11-21 13:40) - codex
+
+### 持瓶关系漂移复核 / Held-object Relation Drift Review [完成 / Completed]
+- [eval] [exp] acquire阶段status=succeeded，但lift的77/117条记录grasp_valid=false；双侧接触仍有效，末帧抓取锚点误差9.131mm。pour阶段先以新测关系建立基线，随后在任务倾角仅0.011209rad时样本150旋转误差已越过0.08rad阈值；样本1651为0.409201rad。 / Acquisition reports succeeded although grasp_valid is false for77/117 lift records; bilateral contacts persist and terminal grasp-anchor error is9.131mm. Pour establishes a fresh relation baseline, then exceeds the0.08rad rotation threshold at sample150 while task tilt is only0.011209rad; sample1651 reaches0.409201rad. (local)
+- [eval] [exp] 失败边界抓取锚点误差仅1.121mm，瓶体原点偏移18.659mm，表示主要是围绕近似稳定抓取区域的相对转动；指节开度基本保持，接触脉冲/接触面标记不能证明摩擦裕量或夹持力矩。现有反馈不能区分滑移、接触几何、物理模型或位姿映射原因。 / At the failure boundary, grasp-anchor error is1.121mm while bottle-origin offset is18.659mm, indicating relative rotation around a substantially steadier grasp region. Finger opening remains nearly fixed; contact impulses/manifold flags do not establish friction margin or grasp torque. Existing feedback cannot distinguish slip, contact geometry, physics-model or pose-mapping causes. (local)
+- [决策边界 / Decision boundary] 保持布局与阈值。可继续对失败边界Lula候选进行完整无动作路线连续性和碰撞资格检查；该检查不证明动态持瓶稳定，不授权执行。 / Retain layout and thresholds. The failure-boundary Lula candidate may proceed to complete no-motion route-continuity and collision qualification; this does not establish dynamic grasp stability or authorize execution. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [docs] [修改 / Modified] docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md L59-L83：补充采集lift与倾倒transport逐样本关系漂移、指节与接触脉冲对照、源码判定语义和复现命令；更新下一步边界。 / Add acquisition-lift and pour-transport relation drift, finger/contact impulse comparisons, source semantics and reproduction command; update the next-step boundary.
+- 关键Diff / Key diff：此前推荐先诊断漂移或直接验证Lula；现改为漂移已确认、根因未分离，后续可完整无动作资格化失败点Lula路线，仍不能证明动态持瓶稳定。 / Before: choose between grip-drift diagnosis and immediate Lula qualification. After: drift is confirmed but its root cause is unresolved; a full no-motion Lula route check may follow and still cannot establish dynamic grasp stability.
+- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L649-L667：完成v17.8.8计划，记录双阶段统计、证据边界、验证与提交回执。 / Complete the v17.8.8 plan with both-phase statistics, evidence limits, validation and commit receipt.
+- [docs] [docs] [修改 / Modified] CHANGELOG.md L53-L70：新增v17.8.8并滚动最近五版本为v17.8.8至v17.8.4；v17.8.3完整记录保留在本月档。 / Add v17.8.8 and roll latest five to v17.8.8 through v17.8.4; retain the full v17.8.3 entry in the monthly archive.
+
+### 验证 / Validation
+- [eval] [chore] python3 -m py_compile out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py && python3 out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py 通过；1653条pour、2114条acquire只读统计，首次越界样本150，两种接触标记全true。 / The read-only analyzer command passes across1653 pour and2114 acquisition records; first threshold breach is sample150 and both contact flags remain true throughout.
+- [eval] [chore] git diff --check与双语UTF-8回读通过。未启动仿真、未发运动命令；生产代码、配置、布局和阈值未修改。 / git diff --check and bilingual UTF-8 readback pass. No simulation was started and no motion command was issued; production code, configuration, placement and thresholds remain unchanged. (local)
+
+### Git提交与推送回执 / Git Commit and Push Receipt [待记录]
+
 ## v17.8.7 (2026-11-21 12:34) - codex
 
 ### v17.8.4 transport无动作诊断 / v17.8.4 Transport No-Motion Diagnosis [完成 / Completed]
@@ -144,73 +163,6 @@
 
 ### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
 - 本版本实现与日志包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功并由远端指针核验。 / This version's implementation and log were included in the stated commit; push succeeded and the remote ref was verified. (c7c61662)
-
-## v17.8.3 (2026-11-20 16:08) - codex
-
-### 机座位置与高度调整 / Base Placement and Height Adjustment [完成；fresh运行失败 / Completed; fresh runtime failed]
-- [env] [tune] 将 Ridgebase 底盘 `y` 从 `0.18m` 调整到 `0.10m`，保持 `x=-1.12m` 与桌面布局不变；将臂基由约 `0.72m` 增高到约 `0.82m`，安装柱由 `0.43m` 增至 `0.53m`。依据离线端点敏感性扫描选择该单一候选；扫描不等同完整路线资格或实测倾倒成功。 / Move the Ridgebase chassis `y` from `0.18m` to `0.10m` while retaining `x=-1.12m` and the tabletop layout; raise the arm root from about `0.72m` to `0.82m` by increasing the mount column from `0.43m` to `0.53m`. Select this single candidate from the offline endpoint sensitivity scan; the scan is not complete route qualification or runtime pour success. (local)
-- [eval] [exp] 修改后针对性回归206项通过；fresh无动作初始化与home碰撞检查通过，抓取成功，但完整持瓶倾倒路线资格失败，实际倾倒未执行。保留失败证据和决策边界，不修改运动阈值、目标物品或公共契约。 / Focused regression passes206 tests; fresh no-motion initialization and home collision check pass, acquisition succeeds, but complete held-pour route qualification fails and pouring does not execute. Preserve failure evidence and decision boundaries without changing motion thresholds, task objects or public contracts. (local)
-
-### 实际影响文件 / Actual Files
-- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml`：修改底盘 `base_position.y`。
-- `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda`：同步12个臂/末端刚体的 `z`、安装关节高度和碰撞柱尺寸。
-- `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py`：更新部署高度、碰撞柱边界和底盘坐标断言。
-- `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md`：记录当前候选的fresh读回、路线资格拒绝分类、视频元数据和执行边界；本轮未修改 placement 报告。
-
-### 本轮决策 / Current Decision
-- fresh初始化、home碰撞检查和抓取通过；60/60条持瓶倾倒候选均被拒绝，故保留该部署为“初态与抓取通过、完整倾倒路线资格失败”的实验候选。
-- 停止继续调整底盘位置、机座高度或现有运动阈值；若后续继续，先依据候选级transport/process拒绝详情定位路线问题，再提出新的部署决策，不把本轮证据描述为倾倒成功。
-
-### 文件变更详情 / File Changes
-- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L12：底盘 `base_position.y` 从0.18改为0.10，x/z不变。 / Change the chassis `base_position.y` from0.18 to0.10, retaining x/z. (local)
-```diff
--  base_position: [-1.12, 0.18, 0.01]
-+  base_position: [-1.12, 0.10, 0.01]
-```
-- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda` L3,L13-L94：12个臂/手/手指/末端刚体z增量由0.43m改为0.53m，安装关节/柱尺寸/COM/惯量同步更新，保留米制、Z-up、原外部资产引用和碰撞API。 / Raise the12 arm/hand/finger/end-effector bodies by0.53m and update the mounting joint, column size, COM and inertia while retaining meters/Z-up, the external asset reference and collision API. (local)
-```diff
--  "Adapter deployment: 0.43m arm elevation, grounded chassis, collision-enabled mount column."
-+  "Adapter deployment: 0.53m arm elevation, grounded chassis, collision-enabled mount column."
--  point3f physics:centerOfMass = (0.3, 0, 0.215)
--  point3f physics:diagonalInertia = (0.09965, 0.09965, 0.0144)
-+  point3f physics:centerOfMass = (0.3, 0, 0.265)
-+  float3 physics:diagonalInertia = (0.14765, 0.14765, 0.0144)
--  point3f physics:localPos0 = (0.3, 0, 0.43)
-+  point3f physics:localPos0 = (0.3, 0, 0.53)
--  float3 xformOp:scale = (0.12, 0.12, 0.43)
-+  float3 xformOp:scale = (0.12, 0.12, 0.53)
-```
-- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py` L36,L62,L65-L66,L72：同步验证0.53m刚体位移、柱z上界0.81、COM/inertia及底盘y=0.10；motion阈值和mount collision contract保持不变。 / Update assertions for0.53m body displacement,0.81 column bound, COM/inertia and chassis y=0.10 while retaining motion thresholds and the mount-collision contract. (local)
-```diff
-- expected[3, 2] = .43
-+ expected[3, 2] = .53
-- assert station["robot"]["base_position"] == [-1.12, .18, .01]
-+ assert station["robot"]["base_position"] == [-1.12, .10, .01]
-```
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L1-L158：区分历史C的0.43m失败证据与v17.8.3当前候选，补充fresh无动作实测坐标、home检查、60条路线拒绝分类、视频元数据及未执行pour/place边界。 / Distinguish historical C0.43m failure evidence from the v17.8.3 candidate, and document fresh no-motion coordinates, home check, all60 route-rejection categories, video metadata and the no-pour/no-place boundary. (local)
-
-### 验证 / Validation
-- [eval] [chore] 执行原回归命令：**206 passed**，5.60s，保留1项既有 `asyncio_mode` 配置警告。 / The focused production regression command passes **206 tests** in5.60s with one pre-existing `asyncio_mode` configuration warning. (local)
-- [eval] [exp] fresh证据：`no-motion.json`中实测底盘`[-1.1200000048,0.1000000015,0.0099999998]m`、臂基`[-0.8199764490,0.1000000164,0.8199999928]m`，home collision passed且motion_commands=0；完整运行任务`task_1ec4c496cb464524`失败，60条候选首拒绝为transport无解25、transport连续性/关节跳变15、process碰撞20。 / Fresh evidence: `no-motion.json` measures the chassis at `[-1.1200000048,0.1000000015,0.0099999998]m` and arm root at `[-0.8199764490,0.1000000164,0.8199999928]m`, with home collision passed and zero motion commands; task `task_1ec4c496cb464524` fails, with first rejection counts of25 transport no-solution,15 transport continuity/joint-delta, and20 process collisions. (local)
-
-### Fresh结果 / Fresh Outcome [完成 / Completed]
-- [docs] [docs] 报告记录fresh home碰撞检查通过、抓取成功、60条held倾倒候选全部拒绝及分类、任务failed且未进入pour/place；视频仅作为抓取/持瓶证据，不作为倾倒成功证据。 / The report records the passed fresh home collision check, successful acquisition, all60 held-pour candidates rejected by category, task failure before pour/place, and the video as acquisition/holding evidence only, not pour-success evidence. (local)
-- [docs] [docs] 月档与索引均记录报告L1-L158、配置/测试精确行号、关键Diff和本轮停止调参决策；CHANGELOG最近五版本已同步。本次不修改运行产物，不暂存`.task/`或`out/`。 / The archive and index record report linesL1-L158, exact configuration/test lines, key diffs and the current stop-tuning decision; the latest-five index is synchronized. Run artifacts are unchanged and `.task/`/`out/` are not staged. (local)
-
-### Git回执更新 / Git Receipt Update [完成 / Completed]
-- [docs] [chore] 报告L152/L154已将实现回执链接由历史v17.8.0改为当前v17.8.3；本条同时记录当前commit、分支、时间和待执行push状态。 / Report linesL152/L154 now link the implementation receipt to current v17.8.3 instead of historical v17.8.0; this entry records the current commit, branch, time and pending push status. (local)
-
-### Git提交 / Git Commit
-- Implementation commit / 实现提交：`82786e453bd43d37e5583f40e5491cfb2e1a81ca`。
-- Branch / 分支：`feature/planning-loop`。
-- 时间 / Time：2026-11-20 21:11:26 Asia/Shanghai (UTC+8)。
-- [chore] [chore] 主实现提交已完成；push尚未执行，当前不记录成功或失败结果。 / The primary implementation commit is complete; push has not run and no success or failure is asserted yet. (82786e45)
-
-### 推送回执 / Push Receipt [完成 / Completed]
-- [docs] [chore] 报告L152/L154已将push pending措辞更新为成功并由远端核验；当前实现提交、回执提交和本次push结果均已记录。 / Report linesL152/L154 now state the verified successful push; the implementation commit, receipt commit and push result are recorded. (local)
-- Push / 推送：`git push origin feature/planning-loop`成功，远端从`b362bd85`更新至`f1df61b9`。
-- Remote ref / 远端指针：`f1df61b9571c6f32d31e39edd8325522672fbd2e`（`git ls-remote`核验）。
-- [chore] [chore] 推送验证时间：2026-11-20 21:17:43 Asia/Shanghai；未把本地未跟踪`.task/`或`out/`产物加入提交。 / Push verification time: 2026-11-20 21:17:43 Asia/Shanghai; local untracked `.task` and `out` artifacts were not staged. (f1df61b9)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 
