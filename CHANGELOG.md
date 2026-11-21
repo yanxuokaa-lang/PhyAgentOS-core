@@ -50,6 +50,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.7 (2026-11-21 12:34) - codex
+
+### v17.8.4 transport无动作诊断 / v17.8.4 Transport No-Motion Diagnosis [完成 / Completed]
+- [eval] [exp] 1653条transport记录含1条重复终态；1652条动作样本精确对应125个路径点，零基waypoint61/样本1651复现首次姿态修正IK失败。位置残差0.578mm通过现行2mm值，角残差0.022648rad超过现行0.02rad。 / The1653 transport records include one duplicated terminal record; all1652 command samples exactly map to125 route points, reconstructing the first measured-pose correction IK failure at zero-based waypoint61/sample1651. Position residual0.578mm meets the existing2mm value, while angular residual0.022648rad exceeds0.02rad. (local)
+- [eval] [exp] transport grasp_valid从样本150（37.718752s）起持续false至末尾；attachment旋转误差从0.080425rad升至0.409201rad，末端物体原点偏移18.659mm，但1653条样本contact_load_valid与contact_manifold_valid均为true。现有Lula在失败目标可求得数值合格且限位内候选，但未做路径碰撞/连续性资格验证。 / Transport grasp_valid remains false from sample150 (37.718752s) through the end; attachment rotation error grows from0.080425rad to0.409201rad, with18.659mm final object-origin offset, while contact_load_valid and contact_manifold_valid remain true across all1653 samples. Existing Lula finds a numerically qualified, in-limit candidate at the failure target, but route collision/continuity qualification remains undone. (local)
+- [决策边界 / Decision boundary] 保留现有底盘位置、高度、物品布局和阈值。建议先只读诊断持瓶关系漂移，再决定是否验证Lula候选；没有把候选或路线资格等同真实执行成功，也未授权动作。 / Retain chassis position, height, tabletop layout and thresholds. Recommend a read-only held-object relation-drift diagnosis before deciding whether to qualify the Lula candidate; neither the candidate nor route qualification is treated as execution success, and no motion is authorized. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [docs] [修改 / Modified] docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md L37-L63：新增transport对齐、IK残差与Lula候选、先发生的持瓶旋转误差漂移、复现命令和决策分支。 / Add transport accounting, IK residuals and Lula candidate, earlier held-object rotation drift, reproduction command and decision branch.
+```diff
++ failure waypoint 61: local IK rotation residual 0.022648rad > 0.02rad.
++ Earlier sample 150: grasp_valid becomes false; contact/load flags remain true through sample 1652.
++ Lula endpoint candidate fits pose/joint limits, but full path and collision checks are unverified.
++ No motion commands; placement and thresholds unchanged; recommend read-only grip-drift diagnosis first.
+```
+- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L612-L641：完成v17.8.7计划，补充失败边界、夹持漂移证据、验证和未决生产选择。 / Complete the v17.8.7 plan with failure boundary, grip-drift evidence, validation and pending production choice.
+- [docs] [fix] CHANGELOG.md L53起：最近五版本更新为v17.8.7、v17.8.6、v17.8.5、v17.8.4、v17.8.3；更早版本详情留在月档。 / Update latest five to v17.8.7 through v17.8.3; retain earlier details in the monthly archive.
+
+### 验证 / Validation
+- [eval] [chore] 诊断脚本py_compile与fresh Isaac无动作运行通过；结果为exact_saved_boundary_accounting、失败点61、1652/1652动作样本消费、motion_commands=0、reset joints/time unchanged。 / Diagnostic py_compile and fresh Isaac no-motion run pass; result is exact_saved_boundary_accounting, failure point61, all1652/1652 command samples consumed, motion_commands=0 and unchanged reset joints/time. (local)
+- [eval] [chore] Ridgebase运动源码、配置和部署资产均无差异；git diff --check通过，UTF-8双语文档可正常读取。 / Ridgebase motion source, configuration and deployment assets are unchanged; git diff --check passes and bilingual UTF-8 documents read correctly. (local)
+
+### Git提交 / Git Commit [pending]
+- 诊断报告/日志实现提交、分支与推送回执将在提交后补记；不包含未跟踪运行产物。 / Record the diagnostic report/log implementation commit, branch and push receipt after commit; untracked run artifacts are excluded. (local)
+
 ## v17.8.6 (2026-11-20 23:50) - codex
 
 ### Git回执核对 / Git Receipt Verification [完成 / Completed]
@@ -184,27 +209,6 @@
 - Push / 推送：`git push origin feature/planning-loop`成功，远端从`b362bd85`更新至`f1df61b9`。
 - Remote ref / 远端指针：`f1df61b9571c6f32d31e39edd8325522672fbd2e`（`git ls-remote`核验）。
 - [chore] [chore] 推送验证时间：2026-11-20 21:17:43 Asia/Shanghai；未把本地未跟踪`.task/`或`out/`产物加入提交。 / Push verification time: 2026-11-20 21:17:43 Asia/Shanghai; local untracked `.task` and `out` artifacts were not staged. (f1df61b9)
-
-## v17.8.2 (2026-11-20 15:31) - codex
-
-### 推送历史修复 / Push History Repair [完成 / Completed]
-- [chore] [fix] 待推送历史中的run10提交由`67e77c0b`重写为`14c8418b`，仅移除一个105,648,775字节视频对象；36个待推送提交仍以远端`09b9d32c`为基点。 / Rewrite the run10 commit from `67e77c0b` to `14c8418b`, removing only one105,648,775-byte video blob; all36 pending commits remain based on remote `09b9d32c`. (local)
-- [chore] [docs] [修改 / Modified] `out/labutopia-oracle-run10/artifacts/labutopia/phase-video/162a9404e9ca4ec19f3eaadb6e18e152.mp4` 从待推送Git树移除，原视频继续保留在本地路径；此二进制文件无文本行号。 / Remove the video from pending Git trees while retaining the local file at its original path; this binary has no text line numbers. (local)
-
-**历史Diff / History diff**
-```diff
-- out/labutopia-oracle-run10/artifacts/labutopia/phase-video/162a9404e9ca4ec19f3eaadb6e18e152.mp4 (Bin 105648775 bytes)
-+ [not present in rewritten commit tree; local file retained]
-```
-
-**验证 / Validation**：重写前待推送范围为36个提交，merge-base未变，范围内无≥100,000,000字节对象；本地视频存在且不在HEAD树中。历史操作未运行测试，沿用原实现的206 passed结果；历史修复推送与日志回执推送均已成功。 / Before rewriting, the pending range contained36 commits with the same merge-base and no object ≥100,000,000 bytes; the local video remains present and is absent from the HEAD tree. No tests were run for this history-only change; the original implementation's206-passed result remains applicable, and both the history-repair push and log-receipt push succeeded.
-
-### Git提交 / Git Commit
-- Rewritten commit / 重写提交：`14c8418bc162f8ef8c445fbcdfda8d8609566f02`（替代`67e77c0b461af6141bc8ab7e5771d577ad8e6171`）。
-- Branch / 分支：`feature/planning-loop`。
-- Push / 推送：成功，`09b9d32c` → `ca1fee82`（`git ls-remote`已核验）。
-- [chore] [chore] 2026-11-20 15:45:25 Asia/Shanghai 使用`git push --force-with-lease origin feature/planning-loop`成功，远端从`09b9d32c`更新至`ca1fee82`；`git ls-remote`确认远端指针为`ca1fee82575b8ae9eaccf860db6f5bafccf95001`。GitHub仅提示run9、run12、run13、run14视频超过50 MB建议值，未拒绝推送。 / At 2026-11-20 15:45:25 Asia/Shanghai, `git push --force-with-lease origin feature/planning-loop` succeeded, moving the remote from `09b9d32c` to `ca1fee82`; `git ls-remote` confirmed the remote ref at `ca1fee82575b8ae9eaccf860db6f5bafccf95001`. GitHub only warned that run9, run12, run13 and run14 videos exceed its 50 MB recommendation; the push was accepted. (ca1fee82)
-- [chore] [chore] 日志回执提交`2389016288c0b981475dd155e6f37b7a0032aaa4`已通过`git push origin feature/planning-loop`成功推送；随后文案校正提交继续推送到同一分支，当前远端与本地分支同步。 / Log-receipt commit`2389016288c0b981475dd155e6f37b7a0032aaa4` was pushed successfully with`git push origin feature/planning-loop`; a subsequent wording-correction commit was then pushed to the same branch, which is synchronized with the local branch. (23890162)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 

@@ -34,6 +34,34 @@ The full run under `out/labutopia-elevated-20261120/v17.8.4-full-run/` for task 
 
 The evidence videos are the acquisition clip `out/labutopia-elevated-20261120/v17.8.4-full-run/artifacts/labutopia/phase-video/ef00745a6da842439479cbbb47fcea78.mp4` (35.2s) and the failed-pour clip `out/labutopia-elevated-20261120/v17.8.4-full-run/artifacts/labutopia/phase-video/aff063945771426c8ac8d9b5f8f620ed.mp4` (27.533s). The final conclusion is: **route qualification passed; actual pouring failed**. The saved receipts do not contain per-candidate execution-time IK residuals or failed-target joint solutions, so the next diagnostic point is the transport-stage measured-pose correction, IK residual/seed continuity and failure boundary; stop scanning chassis placement or mount height.
 
+## v17.8.4 transport姿态修正无动作诊断 / v17.8.4 Transport Pose-Correction No-Motion Diagnosis
+
+诊断脚本 out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/diagnose-transport-correction.py 读取fresh readiness、历史1653条transport反馈和保存profile，在独立Isaac初始化中按执行步数重建实测姿态修正目标。结果为 diagnose-transport-correction.json，启动/退出日志为同目录 diagnose-transport-correction.log。反馈包含一个重复终态记录：1652条动作样本被125个路径点精确消费，剩余0；失败重建于路径点索引61（从0计），对应反馈样本1651。重建边界的TCP FK与已保存反馈完全一致，初始 tcp_from_object 误差为0。运行期间 motion_commands=0、reset关节未变、仿真时间未变；未执行碰撞检查或动作资格化。
+
+The diagnostic reads fresh readiness, all1653 saved transport feedback records and the saved profile, then reconstructs measured-pose correction targets by execution-step accounting in a separate Isaac initialization. Results are in diagnose-transport-correction.json, with startup/shutdown output in the adjacent diagnose-transport-correction.log. One terminal record is duplicated: 1652 command samples are exactly consumed by125 route points with zero remainder. Reconstructed failure is at zero-based route point61 and feedback sample1651; saved and fresh TCP FK match exactly at that boundary, and initial tcp_from_object error is0. The diagnostic issued zero motion commands, left reset joints and simulation time unchanged, and performed no collision or execution qualification.
+
+复现命令（输出写入独立诊断目录）：OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime /home/yanxu/miniconda3/envs/labutopia/bin/python out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/diagnose-transport-correction.py > out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/diagnose-transport-correction.log 2>&1
+
+Reproduction command (writes output to the separate diagnostic directory): OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime /home/yanxu/miniconda3/envs/labutopia/bin/python out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/diagnose-transport-correction.py > out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/diagnose-transport-correction.log 2>&1
+
+失败点的目标位置残差为0.000578m，低于现行0.002m容差；完整姿态角误差为0.022648rad，高于现行0.02rad。planned-point seed也失败，其邻近局部IK对照残差为0.001275m与0.051834rad；两种局部IK结果均未显示关节限位越界，current seed解的最小限位余量为0.701991rad。profile原有最大waypoint关节变化为0.5rad。
+
+At the failing target, position residual is0.000578m, within the existing0.002m tolerance, while full-pose angular residual is0.022648rad, above the existing0.02rad tolerance. The planned-point seed also fails; its local IK comparison residual is0.001275m and0.051834rad. Neither local IK result indicates a joint-limit violation; the current-seed solution retains0.701991rad minimum limit margin. The profile's existing maximum waypoint joint delta is0.5rad.
+
+同一transport反馈中，grasp_valid首次在样本150、37.718752s变为false；当时attachment位置误差0.192mm、旋转误差0.080425rad（超过0.08rad容差），contact_load_valid与contact_manifold_valid仍为true。此后1503/1503条样本持续grasp_valid=false，没有恢复；失败边界样本1651的attachment位置误差为1.121mm、旋转误差0.409201rad、物体原点偏移18.659mm，而接触负载与接触面标记仍为true。因而局部IK失败不是唯一未解决现象；执行中的持瓶姿态在进入该边界前已长期未满足grasp_valid，但当前证据不能判定物理打滑、目标关系变化或模拟接触模型哪一项是原因。
+
+In the same transport feedback, grasp_valid first becomes false at sample150/time37.718752s. Attachment position error is0.192mm and rotation error is0.080425rad, above the0.08rad tolerance, while contact_load_valid and contact_manifold_valid remain true. All following1503/1503 samples remain grasp_valid=false with no recovery. At failure-boundary sample1651, attachment position error is1.121mm, rotation error is0.409201rad and object-origin offset is18.659mm, while both contact/load indicators still read true. Therefore local IK failure is not the only unresolved observation: the held pose has long failed grasp_valid before reaching this boundary. Current evidence does not distinguish physical slip, changing target relation or simulator contact-model effects.
+
+以相同失败边界目标和当前关节为seed，现有Lula full-pose solver返回一组限位内候选：位置误差0.000158m、角误差0.001542rad、关节变化0.080606rad、最小限位余量0.674910rad，均满足对应现行数值限制。邻近目标的对照也出现局部求解器失败而Lula求解器成功。此结果支持“当前局部IK求解未收敛到合格姿态”的诊断，不证明全路径可达：新解尚未验证连续插值、桌面/支柱/烧杯/瓶体碰撞、实时夹持稳定性或执行后反馈。
+
+For the same failure-boundary target and current joint seed, the existing Lula full-pose solver returns an in-limit candidate with0.000158m position error,0.001542rad angular error,0.080606rad joint change and0.674910rad minimum joint-limit margin; each is within its corresponding existing numeric limit. Neighbor comparisons also show cases where local IK fails while Lula succeeds. This supports a diagnosis that the current local IK solve fails to converge to a qualified pose. It does not prove full-route reachability: the candidate has not been checked for continuous interpolation, table/mount/beaker/bottle collisions, live grasp stability or post-execution feedback.
+
+### 下一步决策 / Next Decision
+
+建议保留当前机座坐标、高度、桌面初始布局及所有容差，不再据此失败继续调布局。下一步优先只读追查：为何transport样本150起attachment旋转误差超限，尽管接触与负载标记仍有效却持续到失败边界；Lula候选解暂留为备选证据。请裁决先做持瓶关系漂移诊断（推荐），还是直接进行Lula候选的完整无动作路线/碰撞资格验证。任一路径都须保留现有连续性、限位、工作区和碰撞规则；本次诊断不授权机器人执行。
+
+Recommended: retain the current chassis coordinates, mount height, tabletop initial layout and all tolerances; this failure does not support another placement adjustment. First investigate, read-only, why attachment rotation exceeds tolerance from transport sample150 while contact/load flags remain valid and stays invalid through the failure boundary; keep the Lula candidate as secondary evidence. Decide whether to diagnose held-object relation drift first (recommended) or immediately qualify the Lula candidate across the complete no-motion route and collision checks. Either path retains existing continuity, joint-limit, workspace and collision rules. This diagnostic does not authorize robot execution.
+
 ## 单一布局 / Fixed Layout
 
 | 项目 / Item | 历史C布局 / Historical C | v17.8.3候选 / Candidate | v17.8.4候选 / Candidate |
