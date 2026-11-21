@@ -61,7 +61,7 @@
 - [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L79-L102：新增点云/坐标绑定、payload collision拒绝、检查中止范围、无动作读回和下一决策。 / Add cloud/frame binding, payload-collision rejection, stop boundary, no-motion readbacks and next decision.
 - 关键Diff / Key diff：原计划“检查64点路线后缀” → 实际“waypoint71首个process插值触发payload_collision，后续点未检查”。 / Key change: planned 64-point suffix check → actual `payload_collision` at interpolation toward waypoint71; later points remain unchecked.
 - [docs] [chore] `out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.py` L83-L114：验证point-cloud、calibration与geometry sidecar的scene/frame/entity引用，将R05点云复制至隔离artifact store，并用生产坐标变换与route关系绑定观测载荷几何；脚本和JSON保留本地，不纳入Git。 / Validate point-cloud, calibration and geometry-sidecar identities, copy R05 to an isolated artifact store, and bind observed payload geometry using the production transform and route relation; keep the script and JSON local and outside Git. (local)
-- [docs] [chore] `changelog/2026-11_part3.md` L673-L706：记录本版本计划、结果、报告/脚本行号、验证及提交/推送回执。 / Record this version's plan, result, report/script line references, validation and commit/push receipts.
+- [docs] [chore] `changelog/2026-11_part3.md` L673-L703：记录本版本计划、结果、报告/脚本行号、验证及提交/推送回执。 / Record this version's plan, result, report/script line references, validation and commit/push receipts.
 ```diff
 - route suffix qualification pending
 + payload_collision at process waypoint71; remaining suffix unchecked
