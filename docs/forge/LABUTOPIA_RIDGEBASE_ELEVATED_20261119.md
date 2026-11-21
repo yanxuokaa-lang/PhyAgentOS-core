@@ -76,11 +76,30 @@ Conclusion is limited to the recorded simulation state: the bottle rotates/moves
 
 Reproduction command (reads saved JSON only; does not start Isaac): python3 -m py_compile out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py && python3 out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py; per-sample results are written to analyze-held-object-relation-drift.json in the same directory.
 
+### Lula失败边界路线后缀资格复核 / Lula Failure-Boundary Route-Suffix Qualification
+
+独立Isaac诊断从保存的sample1651实测关节、TCP姿态和固定TCP-object关系开始，检查零基waypoint61至124共64个后缀点。R05点云、sidecar和标定均对应readiness/route保存的scene revision `labutopia-tabletop-rod-rack-v1:da14ce1a64164cdda77fddb7cb74f728:1`；诊断场景为同一profile的独立初始化，revision为`labutopia-tabletop-rod-rack-v1:ff6157a897f0438bb0eb10491cb67fbd:0`。脚本在本地隔离artifact store中绑定原始点云，使用生产`world_from_camera`和保存的`observed_model_pose`/`body_from_observed`关系。1214个有限点经现有`observed_point_boxes`生成9个载荷碰撞盒；该生产函数只包络观测表面，不重建隐藏网格。
+
+The independent Isaac diagnostic starts from the saved sample 1651 joints, TCP pose and fixed TCP/object relation. It prepares a 64-waypoint suffix from zero-based waypoint 61 through 124. The R05 point cloud, sidecar and calibration share the readiness/route scene revision `labutopia-tabletop-rod-rack-v1:da14ce1a64164cdda77fddb7cb74f728:1`; the diagnostic initializes a separate scene from the same profile at revision `labutopia-tabletop-rod-rack-v1:ff6157a897f0438bb0eb10491cb67fbd:0`. It binds the source cloud in a local isolated artifact store using production `world_from_camera` and the saved `observed_model_pose`/`body_from_observed` relation. The existing `observed_point_boxes` function converts 1,214 finite points into 9 payload collision boxes that bound observed surfaces without reconstructing hidden mesh.
+
+资格检查在进入首个`process`目标（零基waypoint71）的插值过程中以`payload_collision`拒绝：载荷盒与`/World/OperationArea/TargetBeaker/Model/mesh`重叠。报告的碰撞盒中心为`[-0.1328163,-0.0076964,0.8335190]m`，半尺寸为`[0.0353995,0.0353997,0.0073625]m`（包含现行3mm margin）。截至拒绝共进行9992次overlap查询，local-IK fallback为0；64个后缀点没有全部完成，`qualified_waypoint_count`未产生。因此，现有证据是生产观测表面载荷盒与烧杯碰撞查询重叠，不能单独判定完整路线已检查完毕或真实瓶体与烧杯已发生物理穿透。
+
+Qualification rejects during interpolation toward the first `process` target, zero-based waypoint 71, with `payload_collision`: a payload box overlaps `/World/OperationArea/TargetBeaker/Model/mesh`. The reported box center is `[-0.1328163,-0.0076964,0.8335190]m`, with half-extents `[0.0353995,0.0353997,0.0073625]m`, including the existing 3 mm margin. The run performs 9,992 overlap queries and makes 0 local-IK fallback calls before rejection. The 64-waypoint suffix was not fully checked and `qualified_waypoint_count` remains unset. The evidence records an overlap between the production observed-surface payload boxes and the beaker collision query; it does not establish a completed route check or physical bottle/beaker interpenetration.
+
+诊断期间`simulation_steps=0`、`motion_commands=0`，初始化关节与仿真时间保持不变；底盘/安装布局、生产源码和全部阈值未改。复现命令：
+
+During diagnosis, `simulation_steps=0` and `motion_commands=0`; initialized joints and simulation time remain unchanged. Chassis/mount placement, production source and all thresholds remain unchanged. Reproduce with:
+
+```bash
+python3 -m py_compile out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.py
+OMNI_KIT_ACCEPT_EULA=YES PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime /home/yanxu/miniconda3/envs/labutopia/bin/python out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.py > out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.log 2>&1
+```
+
 ### 下一步决策 / Next Decision
 
-建议保留当前机座坐标、高度、桌面初始布局及全部阈值。持瓶关系漂移已由历史状态复核确认，但其接触力学根因仍不可区分。若继续排查运动失败，下一步可用失败边界的实测TCP-object关系对Lula候选执行完整无动作路线、连续性、限位、工作区与碰撞资格检查；该结果只回答规划资格，不证明动态夹持稳定。保持当前布局和阈值；不得据单点IK候选执行机械臂动作。
+保留当前机座坐标、高度、桌面布局和全部阈值。当前资格模型在首个process目标处拒绝载荷/烧杯碰撞。下一步建议只读复核该目标姿态、烧杯碰撞几何与9个观测表面载荷盒的对应关系，再判断是否需要调整process路线或更新有证据支持的几何输入；在问题澄清且重新通过fresh资格检查前，不执行机械臂动作。持瓶关系漂移仍是独立未决问题，本次路线检查不证明动态夹持稳定。
 
-Retain the current chassis position, mount height, tabletop layout and all thresholds. Historical-state review confirms held-object relation drift, but does not identify its contact-mechanics root cause. To continue investigating the motion failure, the next step can qualify the Lula candidate across the complete no-motion route using the measured TCP/object relation at the failure boundary, including continuity, joint limits, workspace and collision checks. That result answers planning qualification only; it does not establish dynamic grasp stability. Keep the current layout and thresholds, and do not execute arm motion based on a single-point IK candidate.
+Retain the current chassis position, mount height, tabletop layout and all thresholds. The current qualification model rejects interpolation toward the first process target for payload/beaker collision. The next step is a read-only review of that target pose, the beaker collision geometry and the 9 observed-surface payload boxes, followed by an evidence-based decision on process-route geometry or geometry inputs. Keep arm motion disabled until the collision question is resolved and a fresh qualification passes. Held-object relation drift remains a separate unresolved issue; this route check does not establish dynamic grasp stability.
 
 ## 单一布局 / Fixed Layout
 

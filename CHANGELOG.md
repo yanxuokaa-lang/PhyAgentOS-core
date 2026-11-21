@@ -50,6 +50,27 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.9 (2026-11-21 14:19) - codex
+
+### 失败边界Lula路线后缀无动作资格复核 / No-Motion Lula Route-Suffix Qualification at the Failure Boundary [完成 / Completed]
+- [eval] [exp] 使用sample 1651的实测TCP/object关系检查zero-based waypoint 61至124共64点后缀。与readiness的scene revision/calibration匹配的R05点云有1,214个有限点，生产变换生成9个观测表面载荷盒；首个process目标waypoint 71的插值因载荷盒与烧杯mesh重叠而拒绝。 / Qualify the 64-waypoint suffix from zero-based waypoint 61 through 124 using the measured TCP/object relation at sample 1651. The R05 cloud matching readiness scene revision/calibration has 1,214 finite points and yields 9 observed-surface payload boxes with the production transform; interpolation toward the first process target, waypoint 71, is rejected on overlap with the beaker mesh. (local)
+- [eval] [exp] 拒绝前完成9,992次overlap查询，local-IK fallback为0；64点后缀未全部检查，不能据此断言整段路线失败或发生物理穿透。`simulation_steps`和`motion_commands`均为0，reset关节/时间不变。 / The run completes 9,992 overlap queries with 0 local-IK fallbacks before rejection. The 64-point suffix is incomplete, so this does not establish whole-route failure or physical interpenetration. `simulation_steps` and `motion_commands` are 0; reset joints/time are unchanged. (local)
+- [决策边界 / Decision boundary] 保留机座布局与阈值；下一步只读复核首个process姿态、烧杯碰撞几何及观测表面载荷盒。持瓶关系漂移仍未解决，本检查不授权动作。 / Preserve placement and thresholds. Next, review the first process pose, beaker collision geometry and observed-surface payload boxes. Held-object relation drift remains unresolved; this check does not authorize motion. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L79-L102：新增点云/坐标绑定、payload collision拒绝、检查中止范围、无动作读回和下一决策。 / Add cloud/frame binding, payload-collision rejection, stop boundary, no-motion readbacks and next decision.
+- 关键Diff / Key diff：原计划“检查64点路线后缀” → 实际“waypoint71首个process插值触发payload_collision，后续点未检查”。 / Key change: planned 64-point suffix check → actual `payload_collision` at interpolation toward waypoint71; later points remain unchecked.
+- [docs] [chore] `out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.py` L83-L114：验证point-cloud、calibration与geometry sidecar的scene/frame/entity引用，将R05点云复制至隔离artifact store，并用生产坐标变换与route关系绑定观测载荷几何；脚本和JSON保留本地，不纳入Git。 / Validate point-cloud, calibration and geometry-sidecar identities, copy R05 to an isolated artifact store, and bind observed payload geometry using the production transform and route relation; keep the script and JSON local and outside Git. (local)
+- [docs] [chore] `changelog/2026-11_part3.md` L673-L706：记录本版本计划、结果、报告/脚本行号、验证及提交/推送回执。 / Record this version's plan, result, report/script line references, validation and commit/push receipts.
+```diff
+- route suffix qualification pending
++ payload_collision at process waypoint71; remaining suffix unchecked
+```
+
+### 验证 / Validation
+- [eval] [chore] 诊断脚本`py_compile`及已保存JSON字段断言通过；JSON记录`route_suffix_rejected`、`payload_collision`、9,992次查询、0次local-IK fallback、后缀未完成、0步进/0运动命令及reset关节/时间不变。此前的LabUtopia无动作运行已记录于JSON，本次收尾未重启仿真。 / Script byte-compilation and assertions against the saved JSON pass. The JSON records `route_suffix_rejected`, `payload_collision`, 9,992 queries, 0 local-IK fallbacks, an incomplete suffix, 0 simulation steps/commands and unchanged reset joints/time. The earlier no-motion LabUtopia run is recorded there; simulation was not restarted for this closeout. (local)
+- [eval] [chore] 三份文档UTF-8回读、最近五版本核对与`git diff --check`通过；生产源码、配置、布局和阈值未改。 / UTF-8 readback of all three documents, latest-five verification and `git diff --check` pass; production source, configuration, placement and thresholds are unchanged. (local)
+
 ## v17.8.8 (2026-11-21 13:40) - codex
 
 ### 持瓶关系漂移复核 / Held-object Relation Drift Review [完成 / Completed]
@@ -132,40 +153,6 @@
 
 ### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
 - 本收尾记录与v17.8.4实现一并包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功，远端指针已由`git ls-remote`核验。 / This closeout record was included with the v17.8.4 implementation commit; push succeeded and the remote ref was verified. (c7c61662)
-
-## v17.8.4 (2026-11-20 22:15) - codex
-
-### Ridgebase候选布局复核 / Ridgebase Candidate Placement Recheck [完成 / Completed]
-- [env] [tune] 基于`results-v3`选定并实现单一候选：底盘由`[-1.12,0.10,0.01]m`调整为`[-1.105,0.04,0.01]m`，臂安装增量由`0.53m`降至`0.48m`，fresh读回臂基约`[-0.805,0.04,0.77]m`；桌面布局和运动/碰撞阈值不变。 / Select and implement one candidate: move the chassis to`[-1.105,0.04,0.01]m`, lower mount elevation to`0.48m`, obtain the stated fresh arm-root readback, and preserve tabletop layout and motion/collision thresholds. (local)
-- [eval] [exp] fresh无动作初始化与home碰撞检查通过；125步居中零偏移same-side路线的kinematic/collision/workspace资格检查通过，但完整运行在transport因`inverse_kinematics_failed: measured pour-pose correction is unreachable`失败，未进入process或倾倒保持。 / Fresh initialization and home collision pass; the125-step centered zero-offset same-side route qualifies, but runtime fails in transport with the stated correction-IK error before process or pour hold. (local)
-- [决策边界 / Decision boundary] 最终结论为“路线资格检查通过，实际倾倒失败”；停止继续扫描底盘位置或安装高度，下一决策点仅针对transport实测姿态修正的IK残差、seed连续性和失败边界。 / Final conclusion: route qualification passes but actual pouring fails; stop further chassis or mount-height scanning and limit the next decision point to transport correction residuals, seed continuity and the failure boundary. (local)
-
-### 文件变更详情 / File Changes
-- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-station.yaml` L12：`base_position`由`[-1.12,0.10,0.01]`改为`[-1.105,0.04,0.01]`。 / Change the chassis base position to the selected candidate. (local)
-```diff
--  base_position: [-1.12, 0.10, 0.01]
-+  base_position: [-1.105, 0.04, 0.01]
-```
-- [env] [tune] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-ridgebase-elevated.usda` L3,L13-L94：12个臂/手/手指/末端刚体z增量由`0.53m`改为`0.48m`，同步安装关节、柱尺寸、COM与惯量。 / Lower the12 arm/end bodies to`0.48m` and update the mounting joint, column geometry, COM and inertia. (local)
-```diff
--  point3f physics:centerOfMass = (0.3, 0, 0.265)
-+  point3f physics:centerOfMass = (0.3, 0, 0.24)
--  point3f physics:localPos0 = (0.3, 0, 0.53)
-+  point3f physics:localPos0 = (0.3, 0, 0.48)
--  float3 xformOp:scale = (0.12, 0.12, 0.53)
-+  float3 xformOp:scale = (0.12, 0.12, 0.48)
-```
-- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_ridgebase_elevated.py` L36,L62-L72：同步0.48m刚体位移、柱z上界0.76、COM/inertia及底盘坐标断言。 / Update the deployment, column-bound, COM/inertia and chassis assertions for the selected candidate. (local)
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L1-L178：区分v17.8.3历史候选与v17.8.4当前候选，记录fresh读回、125步路线资格、transport失败、视频证据和停止继续扫描的决策边界。 / Distinguish the v17.8.3 historical candidate from the v17.8.4 current candidate and record fresh readback, route qualification, transport failure, videos and the stop-scan decision boundary. (local)
-
-### 验证与证据 / Validation and Evidence
-- [eval] [chore] 原回归命令通过**206 passed**，5.12s，保留1项既有`asyncio_mode`配置警告；`git diff --check`通过。 / The focused regression command passes**206 tests** in5.12s with one pre-existing`asyncio_mode` warning; `git diff --check` passes. (local)
-- [eval] [exp] `out/labutopia-elevated-20261120/v17.8.4-candidate/no-motion.json`读回底盘`[-1.1050000191,0.0399999991,0.0099999998]m`、臂基`[-0.8049764633,0.0400000103,0.7700000405]m`，home collision passed、motion_commands=0、柱碰撞启用、旧Franka未激活。 / The no-motion evidence records the stated chassis and arm-root positions, a passed home check, zero motion commands, enabled column collision and no active legacy Franka. (local)
-- [eval] [exp] readiness`a3079b268c5c4b9fab4aebbdb666279d.json`选择125步居中零偏移same-side路线且三项资格均通过；task`task_724bb801fcf742a5`于2026-11-20 22:31:20至22:50:28以return code1失败，pour反馈1653样本全transport，最大倾角0.590846rad，process/hold/transfer均未完成。 / Readiness selects the125-step centered route with all qualification checks passing; the task fails in the stated window with1653 transport-only samples, maximum tilt0.590846rad and no process/hold/transfer completion. (local)
-- [eval] [docs] 证据边界保持为：路线资格通过不等同于实际倾倒成功；当前回执没有失败目标的逐候选执行态IK残差或关节解，因此不继续修改运动逻辑、力配置或位置/高度。 / Preserve the evidence boundary that route qualification is not pour success; receipts lack per-target runtime IK residuals or joint solutions, so motion logic, force configuration and placement/height remain unchanged. (local)
-
-### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
-- 本版本实现与日志包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功并由远端指针核验。 / This version's implementation and log were included in the stated commit; push succeeded and the remote ref was verified. (c7c61662)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 
