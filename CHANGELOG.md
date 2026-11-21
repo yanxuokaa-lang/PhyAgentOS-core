@@ -60,8 +60,8 @@
 ### 文件变更详情 / File Changes
 - [docs] [docs] [修改 / Modified] docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md L59-L83：补充采集lift与倾倒transport逐样本关系漂移、指节与接触脉冲对照、源码判定语义和复现命令；更新下一步边界。 / Add acquisition-lift and pour-transport relation drift, finger/contact impulse comparisons, source semantics and reproduction command; update the next-step boundary.
 - 关键Diff / Key diff：此前推荐先诊断漂移或直接验证Lula；现改为漂移已确认、根因未分离，后续可完整无动作资格化失败点Lula路线，仍不能证明动态持瓶稳定。 / Before: choose between grip-drift diagnosis and immediate Lula qualification. After: drift is confirmed but its root cause is unresolved; a full no-motion Lula route check may follow and still cannot establish dynamic grasp stability.
-- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L649-L667：完成v17.8.8计划，记录双阶段统计、证据边界、验证与提交回执。 / Complete the v17.8.8 plan with both-phase statistics, evidence limits, validation and commit receipt.
-- [docs] [docs] [修改 / Modified] CHANGELOG.md L53-L70：新增v17.8.8并滚动最近五版本为v17.8.8至v17.8.4；v17.8.3完整记录保留在本月档。 / Add v17.8.8 and roll latest five to v17.8.8 through v17.8.4; retain the full v17.8.3 entry in the monthly archive.
+- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L649-L671：完成v17.8.8计划，记录双阶段统计、证据边界、验证与提交回执。 / Complete the v17.8.8 plan with both-phase statistics, evidence limits, validation and commit receipt.
+- [docs] [docs] [修改 / Modified] CHANGELOG.md L53-L74：新增v17.8.8并滚动最近五版本为v17.8.8至v17.8.4；v17.8.3完整记录保留在本月档。 / Add v17.8.8 and roll latest five to v17.8.8 through v17.8.4; retain the full v17.8.3 entry in the monthly archive.
 
 ### 验证 / Validation
 - [eval] [chore] python3 -m py_compile out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py && python3 out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py 通过；1653条pour、2114条acquire只读统计，首次越界样本150，两种接触标记全true。 / The read-only analyzer command passes across1653 pour and2114 acquisition records; first threshold breach is sample150 and both contact flags remain true throughout.
@@ -70,6 +70,7 @@
 ### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
 - 实现提交 / Implementation commit：a39b9f3957ce9c1e724b46d83a0edef71ab91289；分支feature/planning-loop。 / Implementation commit a39b9f3957ce9c1e724b46d83a0edef71ab91289 on feature/planning-loop.
 - 推送成功：远端由f964a9b8更新至a39b9f39；2026-11-21 14:08:20 Asia/Shanghai经git ls-remote核验完整指针为a39b9f3957ce9c1e724b46d83a0edef71ab91289。 / Push succeeded from f964a9b8 to a39b9f39; git ls-remote verified the full ref at2026-11-21 14:08:20 Asia/Shanghai.
+- 回执提交 / Receipt commit：90007f61d5e522a6971ecb3a84ba907ca41235f2；推送成功，远端由a39b9f39更新至90007f61，2026-11-21 14:11:59 Asia/Shanghai经git ls-remote核验。 / Receipt commit 90007f61d5e522a6971ecb3a84ba907ca41235f2 was pushed successfully; git ls-remote verified the remote at2026-11-21 14:11:59 Asia/Shanghai.
 
 ## v17.8.7 (2026-11-21 12:34) - codex
 
