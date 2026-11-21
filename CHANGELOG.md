@@ -65,8 +65,8 @@
 + Lula endpoint candidate fits pose/joint limits, but full path and collision checks are unverified.
 + No motion commands; placement and thresholds unchanged; recommend read-only grip-drift diagnosis first.
 ```
-- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L612-L641：完成v17.8.7计划，补充失败边界、夹持漂移证据、验证和未决生产选择。 / Complete the v17.8.7 plan with failure boundary, grip-drift evidence, validation and pending production choice.
-- [docs] [fix] CHANGELOG.md L53起：最近五版本更新为v17.8.7、v17.8.6、v17.8.5、v17.8.4、v17.8.3；更早版本详情留在月档。 / Update latest five to v17.8.7 through v17.8.3; retain earlier details in the monthly archive.
+- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L612-L647：完成v17.8.7计划，补充失败边界、夹持漂移证据、验证和未决生产选择。 / Complete the v17.8.7 plan with failure boundary, grip-drift evidence, validation and pending production choice.
+- [docs] [fix] CHANGELOG.md L53-L78：最近五版本更新为v17.8.7、v17.8.6、v17.8.5、v17.8.4、v17.8.3；更早版本详情留在月档。 / Update latest five to v17.8.7 through v17.8.3; retain earlier details in the monthly archive.
 
 ### 验证 / Validation
 - [eval] [chore] 诊断脚本py_compile与fresh Isaac无动作运行通过；结果为exact_saved_boundary_accounting、失败点61、1652/1652动作样本消费、motion_commands=0、reset joints/time unchanged。 / Diagnostic py_compile and fresh Isaac no-motion run pass; result is exact_saved_boundary_accounting, failure point61, all1652/1652 command samples consumed, motion_commands=0 and unchanged reset joints/time. (local)
@@ -75,6 +75,7 @@
 ### Git提交与推送 / Git Commit and Push [完成 / Completed]
 - 实现提交aead469a854dcdc29feab4bd12577f2669c17c39与回执提交b06cdc7d9693d00321e70ffb06dbbb0de76835d7均位于feature/planning-loop。 / Implementation commit aead469a854dcdc29feab4bd12577f2669c17c39 and receipt commit b06cdc7d9693d00321e70ffb06dbbb0de76835d7 are on feature/planning-loop.
 - git push origin feature/planning-loop成功；git ls-remote于2026-11-21 13:09:32 Asia/Shanghai核验远端指针为b06cdc7d9693d00321e70ffb06dbbb0de76835d7。 / Push succeeded; git ls-remote verified the remote ref at the stated time.
+- 最终回执提交a92adcdb7166654ecdc5cdee57d188acd4382289亦已推送；远端由b06cdc7d更新，git ls-remote于2026-11-21 13:13:59 Asia/Shanghai核验。 / Final receipt commit a92adcdb7166654ecdc5cdee57d188acd4382289 was also pushed and verified at the stated time.
 
 ## v17.8.6 (2026-11-20 23:50) - codex
 
