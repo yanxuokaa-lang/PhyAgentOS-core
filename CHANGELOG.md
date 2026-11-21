@@ -69,6 +69,10 @@
 - [eval] [chore] 使用本机pxr静态读取保存的scene root、tabletop sublayer和TargetBeaker mesh；Python离线读取点云/calibration/route并按生产变换重算9盒及OBB投影上界。UTF-8回读与`git diff --check`通过；未启动Isaac、未推进仿真、无动作命令。 / Use local pxr to statically inspect the saved scene root, tabletop sublayer and TargetBeaker mesh; offline Python reads the saved cloud/calibration/route and recomputes9 boxes and the OBB projection bound using production transforms. UTF-8 readback and `git diff --check` pass; Isaac was not started, simulation did not advance, and no motion command was issued. (local)
 - [eval] [chore] 受跟踪源码、运动配置、USD部署资产、布局及阈值均未改；仅更新诊断报告与日志。 / Tracked source, motion configuration, USD deployment assets, placement and thresholds are unchanged; only the diagnostic report and logs are updated. (local)
 
+### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
+- 实现提交 / Implementation commit：`4fd42f64207ea2614940a72a5a2c048336e0b3a9`；2026-11-21 22:58:08 Asia/Shanghai，`feature/planning-loop`。 / Implementation commit `4fd42f64207ea2614940a72a5a2c048336e0b3a9` at 2026-11-21 22:58:08 Asia/Shanghai on `feature/planning-loop`.
+- `git push origin feature/planning-loop`成功；22:58:54由`git ls-remote`核验远端完整指针为`4fd42f64207ea2614940a72a5a2c048336e0b3a9`。 / Push succeeded; `git ls-remote` verified the full remote ref at 22:58:54 Asia/Shanghai.
+
 ## v17.8.9 (2026-11-21 14:19) - codex
 
 ### 失败边界Lula路线后缀无动作资格复核 / No-Motion Lula Route-Suffix Qualification at the Failure Boundary [完成 / Completed]
