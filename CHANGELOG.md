@@ -50,6 +50,25 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.10 (2026-11-21 21:51) - codex
+
+### 静态烧杯几何与载荷盒关系复核 / Static Beaker Geometry and Payload-Box Relationship Review [完成 / Completed]
+- [eval] [exp] 以保存的R05点云/标定和生产坐标变换重算9个观测表面盒，确认waypoint71命中最低层box0；其局部半尺寸范数上界为50.60mm，失败中心至烧杯mesh世界Z上界相距30.73mm，故局部half不能与世界AABB逐轴直接比较。失败时盒旋转未保存，不能精确重放查询。 / Recompute 9 observed-surface boxes from the saved R05 cloud/calibration using production transforms and confirm waypoint71 hits lowest slab box0. Its local half-extent norm is an upper bound of50.60mm versus a30.73mm vertical gap from the failure center to the beaker mesh world-Z bound, so local half-extents cannot be compared directly to the world AABB. The hit-time box rotation is absent, preventing exact query replay. (local)
+- [eval] [exp] 静态USD显示烧杯1698点/3408面、collision enabled、`convexDecomposition`、scale `[0.0004,0.0005,0.0004]`；PhysX日志另有ScaleOrientation warning。根scene无单位/up-axis元数据、tabletop sublayer为1m/Z-up；静态根stage读取的`.01m`/Y-up是fallback，运行时显式构造传入`stage_units_in_meters=1.0`，但运行时up-axis没有落盘读回。不能据此确认cook错误、物理穿透或坐标根因。 / Static USD shows a1,698-point/3,408-face beaker mesh, collision enabled, `convexDecomposition` and scale `[0.0004,0.0005,0.0004]`; the PhysX log also contains a ScaleOrientation warning. The scene root omits units/up-axis while its tabletop sublayer authors1m/Z-up; `.01m`/Y-up from static root-stage opening is a fallback, and runtime construction explicitly passes `stage_units_in_meters=1.0`, but runtime up-axis was not read back. This does not establish a cooking defect, physical penetration or frame root cause. / (local)
+- [决策边界 / Decision boundary] 维持布局、阈值和运动代码；下一步若继续，只读检查命中时实际cook凸分解与OBB姿态。持瓶关系漂移仍为独立未决问题，未执行仿真、物理步进或机械臂动作。 / Retain placement, thresholds and motion code; if continued, read-only inspect the cooked convex decomposition and OBB pose at the hit. Held-object relation drift remains a separate open issue; no simulation, physics step or arm motion was performed. (local)
+
+### 文件变更详情 / File Changes
+- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L100-L120：记录生产观测盒复算、失败box0、烧杯mesh/碰撞近似、OBB投影边界、USD静态单位来源及未决项。 / Record the production-box recomputation, failure box0, beaker mesh/collision approximation, OBB projection bound, static USD metadata source and open questions.
+```diff
+- 下一步：静态复核首个process目标与9个观测载荷盒。
++ 结果：box0的OBB局部半尺寸不能与世界AABB逐轴比较；cook后凸分解及命中姿态仍待只读核对。
+```
+- [docs] [docs] [修改 / Modified] `changelog/2026-11_part3.md` L707-L733：归档静态几何复核、范围受限的OBB投影解释、USD元数据来源、Diff和验证。 / Archive the static geometry review, bounded OBB projection interpretation, USD metadata provenance, diff and validation.
+
+### 验证 / Validation
+- [eval] [chore] 使用本机pxr静态读取保存的scene root、tabletop sublayer和TargetBeaker mesh；Python离线读取点云/calibration/route并按生产变换重算9盒及OBB投影上界。UTF-8回读与`git diff --check`通过；未启动Isaac、未推进仿真、无动作命令。 / Use local pxr to statically inspect the saved scene root, tabletop sublayer and TargetBeaker mesh; offline Python reads the saved cloud/calibration/route and recomputes9 boxes and the OBB projection bound using production transforms. UTF-8 readback and `git diff --check` pass; Isaac was not started, simulation did not advance, and no motion command was issued. (local)
+- [eval] [chore] 受跟踪源码、运动配置、USD部署资产、布局及阈值均未改；仅更新诊断报告与日志。 / Tracked source, motion configuration, USD deployment assets, placement and thresholds are unchanged; only the diagnostic report and logs are updated. (local)
+
 ## v17.8.9 (2026-11-21 14:19) - codex
 
 ### 失败边界Lula路线后缀无动作资格复核 / No-Motion Lula Route-Suffix Qualification at the Failure Boundary [完成 / Completed]
@@ -136,23 +155,6 @@
 ### Git提交 / Git Commit
 - 实现提交 / Implementation commit：`c7c616621832adc0314f967537b2a42ac5500d14`；2026-11-20 23:44:49 Asia/Shanghai，`feature/planning-loop`。推送成功，远端从`9495b724`更新至`c7c61662`；2026-11-20 23:50 Asia/Shanghai经`git ls-remote`确认远端指针。 / Commit and push succeeded; the verified remote ref is `c7c616621832adc0314f967537b2a42ac5500d14`. (c7c61662)
 - 回执提交 / Receipt commit：`756c31db60f409858bbb06815fc9805e3a371886`；2026-11-21 00:12:54 Asia/Shanghai，`feature/planning-loop`。随后推送成功，远端从`c7c61662`更新至`756c31db`；2026-11-21 00:14:27 Asia/Shanghai经`git ls-remote`确认。 / Receipt commit `756c31db60f409858bbb06815fc9805e3a371886` was pushed successfully, advancing the remote from `c7c61662` to `756c31db`; verified at 2026-11-21 00:14:27 Asia/Shanghai. (756c31db)
-
-## v17.8.5 (2026-11-20 23:33) - codex
-
-### 收尾校正 / Closeout Corrections [完成 / Completed]
-- [docs] [chore] 核验最近五版本顺序为v17.8.6、v17.8.5、v17.8.4、v17.8.3、v17.8.2；v17.8.1及更早版本保留在月档归档。 / Verify the latest-five sequence as v17.8.6, v17.8.5, v17.8.4, v17.8.3 and v17.8.2; retain v17.8.1 and older versions in the monthly archive. (local)
-- [docs] [fix] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L91-L95将v17.8.3复现与结果抽取命令标为历史候选命令，避免与当前v17.8.4 fresh终态混用。 / Mark the v17.8.3 reproduction and extraction commands at L91-L95 as historical candidate commands so they are not confused with the current v17.8.4 fresh outcome. (local)
-- [chore] [eval] 206项回归通过（5.14s，保留既有`asyncio_mode`警告），`git diff --check`通过；本轮不改运动逻辑或运行产物。 / The206-test regression passes in5.14s with the existing`asyncio_mode` warning, and `git diff --check` passes; no motion logic or run artifacts change in this closeout. (local)
-
-### 文件变更详情 / File Changes
-- [docs] [fix] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L91-L95：将复现注释从当前C运行改为历史v17.8.3候选复现。 / Change the reproduction comments from current-C wording to historical-v17.8.3-candidate wording.
-```diff
--# 复现使用新目录；本次C已执行完毕 / Reproduce in a fresh directory; C is complete:
-+# 历史v17.8.3候选复现命令；不代表当前v17.8.4结果 / Historical v17.8.3 candidate reproduction; does not represent the current v17.8.4 result:
-```
-
-### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
-- 本收尾记录与v17.8.4实现一并包含于`c7c616621832adc0314f967537b2a42ac5500d14`；推送成功，远端指针已由`git ls-remote`核验。 / This closeout record was included with the v17.8.4 implementation commit; push succeeded and the remote ref was verified. (c7c61662)
 
 ## v17.7.0 (2026-11-19 18:44) - codex
 
