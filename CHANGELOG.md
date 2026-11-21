@@ -73,7 +73,7 @@
 - [eval] [chore] Ridgebase运动源码、配置和部署资产均无差异；git diff --check通过，UTF-8双语文档可正常读取。 / Ridgebase motion source, configuration and deployment assets are unchanged; git diff --check passes and bilingual UTF-8 documents read correctly. (local)
 
 ### Git提交 / Git Commit [pending]
-- 诊断报告/日志实现提交、分支与推送回执将在提交后补记；不包含未跟踪运行产物。 / Record the diagnostic report/log implementation commit, branch and push receipt after commit; untracked run artifacts are excluded. (local)
+- 诊断报告与索引提交：aead469a854dcdc29feab4bd12577f2669c17c39；2026-11-21 13:03:01 Asia/Shanghai；feature/planning-loop。 / Diagnostic report and index commit aead469a854dcdc29feab4bd12577f2669c17c39 at the stated time on feature/planning-loop. Push receipt follows remote verification.
 
 ## v17.8.6 (2026-11-20 23:50) - codex
 
