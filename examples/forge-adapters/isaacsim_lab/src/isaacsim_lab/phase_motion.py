@@ -2249,6 +2249,55 @@ class IsaacPhaseMotion:
             for joints in samples:
                 yield {**tracking["steps"][0], "joints": joints.tolist(), "hold_s": 0., "continuous": True}
 
+    def _pour_corrected_joints(self, start, planned, target_body, relation, tool, stage):
+        target = target_body @ np.linalg.inv(relation)
+        tolerance = self.config["position_tolerance_m"]
+        maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
+        closest_delta = math.inf
+        for seed in (start, planned):
+            goal, valid = local_inverse_kinematics(self.tcp, target, seed, self.limits, tolerance)
+            if valid:
+                delta = joint_delta(start, goal)
+                if delta <= maximum_delta:
+                    return goal
+                closest_delta = min(closest_delta, delta)
+        if tool is not None:
+            for seed in (start, planned):
+                goal, valid = local_tool_inverse_kinematics(
+                    self.tcp, target_body, relation, tool, seed, self.limits, tolerance)
+                if valid:
+                    delta = joint_delta(start, goal)
+                    if delta <= maximum_delta:
+                        return goal
+                    closest_delta = min(closest_delta, delta)
+        if closest_delta < math.inf:
+            raise PhaseMotionError(
+                "ik_discontinuity", f"{stage}: measured pour-pose correction joint delta "
+                f"{closest_delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
+        raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
+
+    def _qualify_pour_exit(self, route, exit_points, start, relation, supported_pose, cause, evidence_refs):
+        nominal_relation = np.asarray(route["tcp_from_object"])
+        adjustment = nominal_relation @ np.linalg.inv(relation)
+        waypoints = [(self.tcp(np.asarray(point["joints"])) @ adjustment, point["hold_s"], "exit")
+                     for point in exit_points]
+        evidence = {"kind": "measured_pour_exit_requalification",
+                    "scene_revision": route["scene_revision"],
+                    "captured_at": datetime.now(timezone.utc).isoformat(),
+                    "source_path": route["source_path"], "start_joints": start.tolist(),
+                    "tcp_from_object": relation.tolist(), "trigger_code": cause.code, "trigger_detail": str(cause)}
+        try:
+            qualified = self.qualify(waypoints, route["source_path"], relation, "pour", supported_pose,
+                                     tool_frame=route["target"]["tool_frame"], initial_joints=start)
+        except PhaseMotionError as exc:
+            evidence_refs.append(self._artifact("readiness", {
+                **evidence, "qualification": "rejected", "failure_code": exc.code, "failure_detail": str(exc),
+                "diagnostics": exc.diagnostics}))
+            raise
+        evidence_refs.append(self._artifact("readiness", {
+            **evidence, "qualification": "passed", "route": qualified}))
+        return qualified["steps"]
+
     def _execute(self, arguments, cancel, record_frame):
         source = arguments["phase_route"]["source_path"]
         contact_window = GripContactWindow(self.world, self.sensors, self.body(source).prim_path, self.dt)
@@ -2527,6 +2576,7 @@ class IsaacPhaseMotion:
             points = (self._stir_execution_points(route, tracking_refs) if track_stir
                       else iter(route.get("execution_steps", route["steps"])))
             place_pose_checked = False
+            pour_exit_requalified = False
             while (point := next(points, None)) is not None:
                 stage = point["stage"]
                 if operation == "place" and stage == "lower" and not place_pose_checked:
@@ -2560,9 +2610,11 @@ class IsaacPhaseMotion:
                                                               start, self.limits, self.config["position_tolerance_m"])
                     if not valid:
                         raise PhaseMotionError("inverse_kinematics_failed", "measured tool-feature correction is unreachable")
-                elif operation == "pour" and stage == "transport" and point["attached"]:
-                    # Keep transport on the qualified joint path. The command
-                    # loop checks the payload with its measured attachment.
+                elif operation == "pour" and point["attached"] and (
+                    stage == "transport" or (stage == "exit" and pour_exit_requalified)
+                ):
+                    # The command loop checks the qualified path with the
+                    # measured attachment.
                     delta = joint_delta(start, goal)
                     maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                     if delta > maximum_delta:
@@ -2570,34 +2622,25 @@ class IsaacPhaseMotion:
                             "ik_discontinuity", f"{stage}: qualified pour waypoint joint delta "
                             f"{delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
                 elif operation == "pour":
-                    relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
-                    planned = goal
-                    target_body = self.tcp(planned) @ grasp_relation
-                    target = target_body @ np.linalg.inv(relation)
-                    maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
-                    goal, valid = local_inverse_kinematics(
-                        self.tcp, target, start, self.limits, self.config["position_tolerance_m"])
-                    if not valid:
-                        goal, valid = local_inverse_kinematics(
-                            self.tcp, target, planned, self.limits, self.config["position_tolerance_m"])
-                        if not valid:
-                            if point["attached"] and stage in {"process", "exit"}:
-                                # The bottle can rotate around its axis while
-                                # still meeting the measured pouring target.
-                                tool = route["target"]["tool_frame"]
-                                for seed in (start, planned):
-                                    goal, valid = local_tool_inverse_kinematics(
-                                        self.tcp, target_body, relation, tool, seed, self.limits,
-                                        self.config["position_tolerance_m"])
-                                    if valid:
-                                        break
-                            if not valid:
-                                raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
-                        delta = joint_delta(start, goal)
-                        if delta > maximum_delta:
+                    relation = np.linalg.inv(self.tcp(start)) @ self.observed_pose(source)
+                    target_body = self.tcp(goal) @ grasp_relation
+                    tool = route["target"]["tool_frame"] if point["attached"] and stage in {"process", "exit"} else None
+                    try:
+                        goal = self._pour_corrected_joints(start, goal, target_body, relation, tool, stage)
+                    except PhaseMotionError as exc:
+                        if stage != "exit" or not point["attached"] or pour_exit_requalified:
+                            raise
+                        if not contacts():
                             raise PhaseMotionError(
-                                "ik_discontinuity", f"{stage}: measured pour-pose fallback joint delta "
-                                f"{delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
+                                "physical_grasp_lost",
+                                f"fresh bilateral contact required after {exc.code} for exit requalification") from exc
+                        groups = groupby(chain((point,), points), key=lambda item: item["stage"])
+                        _, remaining_exit = next(groups)
+                        qualified = self._qualify_pour_exit(route, remaining_exit, start, relation,
+                                                            supported_pose, exc, tracking_refs)
+                        points = chain(qualified, chain.from_iterable(group for _, group in groups))
+                        pour_exit_requalified = True
+                        continue
                 hold_frames = math.ceil(point["hold_s"] / self.dt)
                 segment = ([goal] if point.get("continuous") else smooth_joint_segment(
                     start, goal, self.dt, self.config["joint_velocity_rad_s"], self.config["joint_acceleration_rad_s2"]))

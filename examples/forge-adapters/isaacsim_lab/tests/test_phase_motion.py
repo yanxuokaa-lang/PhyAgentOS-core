@@ -3375,7 +3375,7 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
     result = model.execute(arguments, Event())
 
     assert np.asarray(full_seeds) == pytest.approx(np.array([np.zeros(7), planned]))
-    expected_seeds = [np.zeros(7), planned] if first_seed_fails else [np.zeros(7)]
+    expected_seeds = [np.zeros(7), planned] if first_seed_fails or branch_jump else [np.zeros(7)]
     assert np.asarray(tool_seeds) == pytest.approx(np.asarray(expected_seeds))
     if branch_jump:
         assert result["failure_code"] == "ik_discontinuity"
@@ -3387,6 +3387,99 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
         assert commands
 
 
+@pytest.mark.parametrize("outcome", ["passes", "qualification_collision", "live_collision", "grasp_lost"])
+def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome):
+    from isaacsim_lab.phase_motion import local_tool_inverse_kinematics
+
+    model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    route = arguments["phase_route"]
+    transport = dict(route["steps"][0], stage="transport")
+    route["steps"] = [transport,
+                      dict(transport, stage="exit", joints=[.05, 0., .02, 0., .1, 0., 0.], hold_s=.03),
+                      dict(transport, stage="exit", joints=[.08, 0., .04, 0., .05, 0., 0.])]
+    original_steps = deepcopy(route["steps"])
+    relation = np.linalg.inv(model.tcp()) @ model.observed_pose(route["source_path"])
+    nominal = np.asarray(route["tcp_from_object"])
+    first_joints = np.asarray(transport["joints"])
+    far = first_joints + np.array([.6, 0., 0., 0., 0., 0., 0.])
+    attempts, qualification_points = [], []
+    loaded_frame = model.sensors[0].get_current_frame
+
+    def contact_frame():
+        if outcome == "grasp_lost" and attempts:
+            return {"time": model.world.current_time, "contacts": []}
+        return loaded_frame()
+
+    model.sensors[0].get_current_frame = contact_frame
+
+    def distant_full_pose(_forward, _target, seed, *_):
+        attempts.append(seed.copy())
+        return far.copy(), True
+
+    def tool_solver(*args):
+        if not qualification_points:
+            attempts.append(args[4].copy())
+            return far.copy(), True
+        return local_tool_inverse_kinematics(*args)
+
+    model.hand_from_tcp = np.eye(4)
+    model.solver = SimpleNamespace(compute_inverse_kinematics=lambda _link, position, orientation, **_kwargs: (
+        np.r_[position - [.1, 0., 1.], Rotation.from_quat(np.roll(orientation, -1)).as_rotvec(), 0.], True))
+    original_qualify = model.qualify
+    qualifying = False
+
+    def qualify(waypoints, source, measured, operation, supported_pose, **kwargs):
+        nonlocal qualifying
+        assert kwargs["initial_joints"] == pytest.approx(first_joints)
+        assert measured == pytest.approx(relation)
+        qualification_points.extend(waypoints)
+        qualifying = True
+        try:
+            return original_qualify(waypoints, source, measured, operation, supported_pose, **kwargs)
+        finally:
+            qualifying = False
+
+    def collide(joints, _source, _allow_contact, attached, measured, *_args, **_kwargs):
+        assert attached
+        assert measured == pytest.approx(relation)
+        if ((qualifying and outcome == "qualification_collision")
+                or (not qualifying and qualification_points and outcome == "live_collision")):
+            raise PhaseMotionError("payload_collision", "exit hits receiver")
+
+    model.qualify = qualify
+    model._collisions = collide
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", distant_full_pose)
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics", tool_solver)
+    result = model.execute(arguments, Event())
+
+    assert route["steps"] == original_steps
+    assert np.asarray(attempts[:4]) == pytest.approx(
+        np.asarray([first_joints.tolist(), original_steps[1]["joints"]] * 2))
+    if outcome == "grasp_lost":
+        assert not qualification_points
+        assert result["failure_code"] == "physical_grasp_lost"
+        assert all(command[0] <= first_joints[0] for command in commands)
+        assert {sample["stage"] for sample in artifacts[-1][1]["samples"]} == {"transport"}
+        return
+    assert len(qualification_points) == 2
+    for (target, hold, stage), point in zip(qualification_points, original_steps[1:], strict=True):
+        assert target @ relation == pytest.approx(model.tcp(point["joints"]) @ nominal)
+        assert (hold, stage) == (point["hold_s"], "exit")
+    readiness, = [artifact for kind, artifact in artifacts if kind == "readiness"]
+    assert readiness["trigger_code"] == "ik_discontinuity"
+    if outcome == "passes":
+        assert readiness["qualification"] == "passed"
+        assert result["operation_completed"] is True
+        assert result["measurements"]["final_tool_tip_error_m"] <= .002
+        assert result["measurements"]["final_tool_axis_error_rad"] <= .02
+    else:
+        assert readiness["qualification"] == ("rejected" if outcome == "qualification_collision" else "passed")
+        assert result["failure_code"] == "payload_collision"
+        assert result["possession_state"] == "holding"
+        assert all(command[0] <= first_joints[0] for command in commands)
+        assert {sample["stage"] for sample in artifacts[-1][1]["samples"]} == {"transport"}
+
+
 def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift(monkeypatch):
     from pick_place_workflow.cycle_protocol import evaluate_process_feedback
     from isaacsim_lab.phase_motion import local_inverse_kinematics
@@ -3396,7 +3489,9 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
     route = arguments["phase_route"]
     transport = dict(route["steps"][0], stage="transport")
     process = dict(transport, stage="process", hold_s=.2, joints=[.05, 0., 0., 0., 1., 0., 0.])
-    route["steps"] = [transport, process]
+    route["steps"] = [transport, *(
+        dict(process, hold_s=0., joints=[.05, 0., 0., 0., angle, 0., 0.]) for angle in (.3, .65)
+    ), process]
     nominal_relation = np.asarray(route["tcp_from_object"])
     drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .1).as_quat())
     model.body_pose = lambda _source: model.tcp() @ drift @ nominal_relation
@@ -3419,7 +3514,7 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
     result = model.execute(arguments, Event())
     assert result["operation_completed"] is True
     assert result["measurements"]["qualified_tilt_hold_s"] >= .1
-    assert len(calls) == 1 and calls[0] == pytest.approx(transport["joints"])
+    assert len(calls) == 3 and calls[0] == pytest.approx(transport["joints"])
     assert any(command[:7] == pytest.approx(transport["joints"]) for command in commands)
     process_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "process"]
     assert process_samples

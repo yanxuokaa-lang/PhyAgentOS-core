@@ -50,6 +50,51 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.3 (2026-11-22 16:19) - codex
+
+- [eval] [fix] 所有实测倾倒修正解先检查关节连续性。若撤离修正解均不可用，确认双侧接触后，从实测关节与瓶姿重新验证剩余撤离路线一次。保留 R03/R05 通用的碰撞、连续性、夹持与终点检查。 / Check continuity for every measured pour correction. If no exit correction qualifies, verify bilateral contact and requalify the remaining exit once from measured joints and bottle pose. Preserve collision, continuity, contact, and end-pose checks. (local)
+- [eval] [exp] 在同一 Isaac 场景和 Agent 任务中已启动 R03 → R05 首轮。任务 `task_e3ab1057c7384766`，运行配置和回执目录 `out/labutopia-elevated-20261122/v17.9.3-r03-r05-agent-recovery-162058`。 / Started the first R03 → R05 run in one Isaac scene and Agent task. The listed run directory preserves configuration and receipts. (local)
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2252–L2298、L2579–L2643；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3378–L3523。 / Cover continuous exit recovery, qualification collision, live collision and contact loss.
+- [docs] [docs] `.task/current.md` L1–L7，记录层归属及仿真验收条件。 / Record layer ownership and simulation acceptance criteria.
+
+```diff
+- goal, valid = local_inverse_kinematics(..., start, ...)
+- # Check joint delta only for the fallback solution.
++ goal = self._pour_corrected_joints(start, goal, target_body, relation, tool, stage)
++ # After rejecting all corrections in exit, requalify the remaining path
++ # once from measured joints and attachment, only with bilateral contact.
++ qualified = self._qualify_pour_exit(route, remaining_exit, start, relation,
++                                     supported_pose, exc, tracking_refs)
+```
+
+- [eval] [exp] 217 项阶段运动测试、138 项恢复/调度/宿主回归通过。首轮启动补丁存于 `implementation.diff`，启动后增加的接触前置检查已独立通过回归。 / Passed 217 motion tests and 138 recovery, controller and host tests. The first run records its startup patch, and the subsequently added contact precheck has separate regression coverage.
+
+## v17.9.2 (2026-11-22 15:01) - codex
+
+- [eval] [exp] 更正流程顺序为 R03 → R05。同一仿真场景中，R03 倾倒、归位和松夹后撤成功才为 R05 采集新观测。 / Correct the sequence to R03 → R05. In one continuing simulation, acquire a fresh observation for R05 after R03 completes its pour, return, release and retreat.
+- [eval] [exp] 40 N 与 60 N 两轮在 R03 抬升开始约 0.18 s 后失去一侧接触，峰值相对位移分别为 7.87 mm 与 8.83 mm。 / With 40 N and 60 N drive caps, R03 lost contact on one side about 0.18 s into the lift. Peak relative displacements were 7.87 mm and 8.83 mm.
+- [eval] [exp] 水平预选路线在转腕段触及关节限位。完整路线搜索找到了可执行的水平入夹路径，实测抬升 11/22 样本有效，最大滑移 8.85 mm，未进入倾倒或 R05。 / The preselected level grip route hit a joint limit during transit orientation. Full route search found an executable level approach, but only 11/22 lift samples had a valid grip with 8.85 mm peak slip. Neither pour nor R05 started.
+- [eval] [exp] 两个最靠近瓶口的抓取候选均未通过瓶口间隙检查，仿真未运动。 / Both highest grasp candidates failed opening clearance and no motion occurred.
+
+### 本地仿真配置 Diff / Simulation configuration diff
+
+文件位于 / Files under `out/labutopia-elevated-20261122/`。Tracked source stayed unchanged.
+
+- `v17.9.2-r03-r05-level-search-150747/labutopia-oracle-perception.json` L40–L42: `tilt_angles_rad: [0.0, 0.2618, 0.5236, 0.6981] → [0.0]`。
+- `v17.9.2-r03-r05-level-search-150747/labutopia-ridgebase-elevated-motion.json` L13–L18: `acquire_route_selection: simulator_truth_preselected → first_feasible`, `acquire_route_strategies: ["staged"] → ["staged", "direct"]`。
+- `v17.9.2-r03-r05-high-151906/labutopia-oracle-perception.json` L43–L46: 新增 / add `bottle_depth_fractions: [0.30, 0.35]`。
+- `v17.9.2-r03-r05-band-152152/labutopia-oracle-perception.json` L43–L52: `bottle_depth_fractions: [0.30, 0.35] → [0.37, 0.38, 0.39, 0.45, 0.50, 0.55, 0.60, 0.65]`。
+- [eval] [exp] 调整候选高度后，整条路线通过验证，但 R03 抬升时仍失去一侧接触，13/25 样本有效，最大滑移 8.76 mm。 / With revised grasp bands, the full route passed validation but R03 still lost contact on one side in lift, with 13/25 valid samples and 8.76 mm peak slip.
+
+### 验证 / Validation
+
+- 执行命令与运行配置见各次本地仿真的 `command.json`、`metadata.json`。用 `ffprobe -v error -show_entries format=duration` 检查可播放视频。 / Each replay preserves its invocation and configuration in those files. Use the listed ffprobe command to check finalized videos.
+
+- [eval] [exp] 4 mm 预紧完成 R03 抬升和倾倒保持（峰值 1.0002 rad，持续 2.90 s），抬升及倾倒过程峰值相对位移 8.58 mm 和 5.51 mm。后撤阶段实测姿态修正逆解不可达，未归位。 / With 4 mm preload, R03 lifted and reached the pour goal (1.0002 rad, 2.90 s). Peak relative displacement was 8.58 mm in lift and 5.51 mm in the pour stage. The measured exit correction was unreachable, so return did not run.
+
+- [eval] [exp] 将倾倒进出间隙从 0.18 m 改为 0.14 m 后，R03 峰值 0.9968 rad，连续保持 2.80 s。撤离修正需跳变 1.01936 rad，超过 0.5 rad 上限，未归位或启动 R05。 / Reducing the process distance from 0.18 m to 0.14 m yielded 0.9968 rad peak tilt and 2.80 s qualified hold. An exit correction required 1.01936 rad versus a 0.5 rad limit. R03 did not return and R05 did not start. (local)
+
 ## v17.9.1 (2026-11-22 14:25) - codex
 
 - [eval] [exp] R05 的 Isaac 抓取、倾倒和归位均成功。倾倒峰值 1.0103 rad，对准连续保持 2.85 s。倾倒阶段滑移最大 2.65 mm，610/610 采样双侧接触。松夹后撤后归位误差 0.736 mm、0.00275 rad。 / R05 passed acquisition, pour and placement. Peak tilt was 1.0103 rad, continuous aligned hold 2.85 s, and peak slip during the tilt phase 2.65 mm with bilateral contact in all 610 samples. After release and retreat, return errors were 0.736 mm and 0.00275 rad.
@@ -97,47 +142,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `3ebacfef`，2026-11-22 13:28:02 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
-## v17.8.14 (2026-11-22 13:05) - codex
-
-### 双瓶流程实测 / Two-bottle simulation
-
-- [eval] [exp] 40 N 驱动上限、2 mm 预紧下，R05 抬升时瓶身相对夹爪的峰值位移从历史轮的 9.5 mm 降到 3.5 mm。但向烧杯搬运期间仍累计约 1.008 rad 相对转动，2,058 个采样均维持双侧接触。修正姿态需要 0.822 rad 关节变化，超过 0.500 rad 上限；峰值瓶身倾角 0.764 rad，合格保持 0 秒。未进入原位放回或 R06。 / At a 40 N drive cap and 2 mm preload, R05 peak relative travel during lift fell from 9.5 mm in the earlier run to 3.5 mm. During transport, relative rotation reached 1.008 rad despite 2,058 bilateral samples. Pose correction required a 0.822 rad joint change, exceeding the 0.500 rad limit. Peak tilt was 0.764 rad with zero aligned hold. Neither return nor R06 was reached.
-- [eval] [exp] 终态和影片见 `out/labutopia-elevated-20261122/v17.8.13-r05-r06-124313` 的 `acceptance.json`、`artifacts/labutopia/phase-feedback/6eba1492b59c4213a497a3ddbc20f96f.json` 和 `artifacts/labutopia/phase-video/8aeeba8020fa410b88af1768936ae874.mp4`。 / See these files for the terminal receipt, detailed feedback, and video.
-- [eval] [exp] 指垫对照轮启动于 `out/labutopia-elevated-20261122/v17.8.14-r05-r06-pad-130444`，`labutopia-ridgebase-physics.json` L2–L11 记录唯一物理参数差异。沿用双瓶顺序、夹爪驱动上限、预紧、碰撞和关节连续性检查。 / The pad comparison run uses the same two-bottle order, drive cap, preload, collision checks, and joint continuity limit. Its simulation physics file records the parameter change.
-
-```diff
-- "static_friction": 0.8,
-- "dynamic_friction": 0.6,
-+ "static_friction": 2.0,
-+ "dynamic_friction": 1.5,
-```
-
-### Git 提交 / Git Commit
-
-- 回执记录提交 / Receipt-record commit `020b97de`，2026-11-22 13:05:46 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
-## v17.8.13 (2026-11-22 12:41) - codex
-
-### 瓶口与瓶轴求解 / Bottle tip and axis IK [完成 / Completed]
-
-- [eval] [fix] 对照轮在进倾倒时因完整姿态补偿无解而停止，仍有双侧接触。完整姿态补偿失败时，倾倒和撤离阶段尝试求解瓶口位置与瓶轴方向。仍按关节位移上限、实测碰撞、倾角与保持时间判断执行结果。 / The comparison run could not solve a full pose at pour entry despite bilateral contact. If full pose correction fails, process and exit try tip position and bottle axis. Joint continuity, measured collisions, tilt, and hold still determine the outcome.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2563–L2595；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3313–L3390。 / Cover feature IK failure, successful process tracking, exit seed retry and joint continuity.
-```diff
-- if stage != "transport" or not point["attached"]:
--     raise PhaseMotionError("inverse_kinematics_failed", ...)
-+ elif point["attached"] and stage in {"process", "exit"}:
-+     for seed in (start, planned):
-+         goal, valid = local_tool_inverse_kinematics(
-+             self.tcp, target_body, relation, tool, seed, self.limits,
-+             self.config["position_tolerance_m"])
-+         if valid:
-+             break
-+ if not valid:
-+     raise PhaseMotionError("inverse_kinematics_failed", ...)
-```
-- [eval] [exp] 214 项 Isaac motion 测试通过。以 40 N 驱动上限、2 mm 保压位移进行下一轮同场景双瓶仿真，配置、复现命令和反馈目录为 `out/labutopia-elevated-20261122/v17.8.13-r05-r06-124313`。 / 214 Isaac motion tests passed. The next same-scene two-bottle run uses a 40 N drive cap and 2 mm preload offset. Its directory records configuration, replay command and feedback.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `a5a9835b`，2026-11-22 12:44:11 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.

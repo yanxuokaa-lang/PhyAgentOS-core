@@ -1,3 +1,10 @@
+# R03 → R05 pour and recovery (v17.9.3)
+
+- Tier C-Safety. Adapter owns measured world-frame attachment and continuous collision-qualified exit motion. AgentLoop and Coordinator own semantic ordering, assessment, recovery decisions, cancellation and settlement. No public contract change.
+- The prior R03 execution completed the 2 s hold, then an exit IK fallback exceeded the live 0.5 rad continuity limit. Try the existing route qualifier once for remaining exit poses using measured attachment and the cylindrical feature. Failed qualification or unknown grip stops motion. During execution keep measured collision/hold checks and measure the final feature.
+- Regression cases: first exit IK rejects, a newly qualified continuous route may run, qualification/collision failure issues no new command. Verify in the adapter suite and run the real Agent host against the existing Isaac scene with fresh observations after each scene change.
+- Evidence: live joints and object observations at exit, readiness/phase receipts and task revision history. A completed process hold does not count as release or settlement.
+
 
 # Current Task: scene-fresh AgentLoop continuation (v17.2.1)
 
