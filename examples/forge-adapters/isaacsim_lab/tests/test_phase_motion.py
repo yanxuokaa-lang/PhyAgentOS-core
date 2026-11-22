@@ -3155,7 +3155,7 @@ def _pour_correction_execution_fixture(monkeypatch):
     arguments["parameters"] = {"tilt_rad": 1., "hold_s": .1}
     route["target"] = {"tool_frame": {"tip_offset_m": [.01, 0., .1], "tip_axis_local": [0., 0., 1.]},
                        "process_frame": {"origin_m": [.15, 0., 1.], "axis": [0., 0., 1.]}}
-    route["steps"] = [dict(route["steps"][0], stage="transport", attached=True, hold_s=0.,
+    route["steps"] = [dict(route["steps"][0], stage="process", attached=True, hold_s=0.,
                            joints=[.02, 0., 0., 0., 0., 0., 0.])]
     model.profile.alignment_tolerance_m = .05
     model.profile.evaluation_profile = lambda: {}
@@ -3309,9 +3309,8 @@ def test_pour_failed_current_seed_retries_same_full_pose_with_planned_seed(monke
     assert commands
 
 
-@pytest.mark.parametrize(("stage", "distant_attempt"),
-                         [("process", None), ("transport", None), ("transport", 1), ("transport", 2)])
-def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, stage, distant_attempt):
+@pytest.mark.parametrize("stage", ["process", "transport"])
+def test_pour_failed_correction_or_distant_nominal_stops_before_any_command(monkeypatch, stage):
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
     point = arguments["phase_route"]["steps"][0]
     point["stage"] = stage
@@ -3321,25 +3320,24 @@ def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, s
 
     def solve(_forward, target, seed, _limits, _tolerance):
         calls.append((target.copy(), seed.copy()))
-        goal = seed.copy()
-        if len(calls) == distant_attempt:
-            goal[0] = .635
-            return goal, True
-        return goal, False
+        return seed.copy(), False
 
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics",
                         lambda _forward, _target, _relation, _tool, seed, *_: (seed.copy(), False))
     result = model.execute(arguments, Event())
     assert result["failure_code"] == ("ik_discontinuity" if stage == "transport" else "inverse_kinematics_failed")
-    assert len(calls) == 2 and not commands and model.world.steps == 0
-    assert calls[0][0] == pytest.approx(calls[1][0])
+    assert not commands and model.world.steps == 0
     assert not result["operation_completed"] and not result["world_change_started"]
     detail = artifacts[-1][1]["failure_detail"]
-    assert ("transport: measured pour-pose fallback joint delta 0.600000" if stage == "transport"
+    assert ("transport: qualified pour waypoint joint delta 0.600000" if stage == "transport"
             else "measured pour-pose correction is unreachable") in detail
     if stage == "transport":
+        assert not calls
         assert "maximum 0.500000" in detail
+    else:
+        assert len(calls) == 2
+        assert calls[0][0] == pytest.approx(calls[1][0])
 
 
 @pytest.mark.parametrize(("stage", "first_seed_fails", "branch_jump"),
@@ -3396,9 +3394,9 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
     monkeypatch.setattr("pick_place_workflow.cycle_protocol.evaluate_process_feedback", evaluate_process_feedback)
     route = arguments["phase_route"]
-    transport = route["steps"][0]
+    transport = dict(route["steps"][0], stage="transport")
     process = dict(transport, stage="process", hold_s=.2, joints=[.05, 0., 0., 0., 1., 0., 0.])
-    route["steps"].append(process)
+    route["steps"] = [transport, process]
     nominal_relation = np.asarray(route["tcp_from_object"])
     drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .1).as_quat())
     model.body_pose = lambda _source: model.tcp() @ drift @ nominal_relation
@@ -3415,14 +3413,13 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
 
     def solve(forward, target, seed, limits, tolerance):
         calls.append(seed.copy())
-        if len(calls) <= 2:
-            return seed.copy(), False
         return local_inverse_kinematics(forward, target, seed, limits, tolerance)
 
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
     result = model.execute(arguments, Event())
     assert result["operation_completed"] is True
     assert result["measurements"]["qualified_tilt_hold_s"] >= .1
+    assert len(calls) == 1 and calls[0] == pytest.approx(transport["joints"])
     assert any(command[:7] == pytest.approx(transport["joints"]) for command in commands)
     process_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "process"]
     assert process_samples
@@ -3430,18 +3427,17 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
                and sample["grasp_valid"] for sample in process_samples)
 
 
-@pytest.mark.parametrize("correction", ["nearby", "invalid", "distant"])
-def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, correction):
+@pytest.mark.parametrize("stage", ["process", "transport"])
+def test_pour_measured_payload_collision_rejects_before_apply(monkeypatch, stage):
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    arguments["phase_route"]["steps"][0]["stage"] = stage
     calls, checked = [], []
 
     def solve(forward, target, seed, limits, tolerance):
         calls.append(seed.copy())
-        if correction == "distant":
-            return np.array([.635, 0., 0., 0., 0., 0., 0.]), True
-        return ((seed.copy(), False) if len(calls) == 1 or correction == "invalid"
+        return ((seed.copy(), False) if len(calls) == 1
                 else local_inverse_kinematics(forward, target, seed, limits, tolerance))
 
     def collide(joints, _source, _allow_contact, attached, relation, *_args, **_kwargs):
@@ -3454,39 +3450,11 @@ def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, correcti
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
     model._collisions = collide
     result = model.execute(arguments, Event())
-    assert len(calls) == 2 and checked
+    assert len(calls) == (2 if stage == "process" else 0)
+    assert checked
     assert result["failure_code"] == "route_collision"
     assert "corrected path hits receiver" in artifacts[-1][1]["failure_detail"]
     assert not commands and model.world.steps == 0
-
-
-@pytest.mark.parametrize("second_correction_nearby", [False, True])
-def test_pour_transport_retries_distant_correction_then_uses_nearby_goal(monkeypatch, second_correction_nearby):
-    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
-    route = arguments["phase_route"]
-    transport = route["steps"][0]
-    route["steps"].append(dict(transport, stage="exit"))
-    seeds = []
-    from isaacsim_lab.phase_motion import local_inverse_kinematics
-
-    def solve(forward, target, seed, limits, tolerance):
-        seeds.append(seed.copy())
-        if len(seeds) == 1 or (len(seeds) == 2 and not second_correction_nearby):
-            return np.array([.635, 0., 0., 0., 0., 0., 0.]), True
-        return local_inverse_kinematics(forward, target, seed, limits, tolerance)
-
-    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
-    result = model.execute(arguments, Event())
-
-    assert result["operation_completed"] is True
-    assert len(seeds) == 3
-    assert seeds[0] == pytest.approx(np.zeros(7))
-    assert seeds[1] == pytest.approx(transport["joints"])
-    if second_correction_nearby:
-        assert seeds[2] == pytest.approx(commands[-1][:7], abs=.002)
-        assert abs(seeds[2][4]) > .01
-    else:
-        assert seeds[2] == pytest.approx(transport["joints"])
 
 
 def test_grasp_error_is_independent_of_object_coordinate_origin():

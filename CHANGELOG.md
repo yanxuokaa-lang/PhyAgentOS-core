@@ -50,6 +50,21 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.0 (2026-11-22 13:48) - codex
+
+- [eval] [fix] R05 搬运第 67 个零基路点实测需 0.635 rad 才能切回原路径，相邻原路点的最大关节位移只有 0.054 rad。持瓶搬运现在始终沿已验证的关节路点，每步仍从实测关节检查限制，按实测瓶姿检查碰撞和双侧接触。倾倒与撤离仍根据实测瓶姿求解。 / At zero-based transport waypoint 67, R05 needed 0.635 rad to return to the qualified route, while neighboring route points were only 0.054 rad apart. Attached transport now follows the qualified waypoints throughout, with live joint continuity, payload collision and bilateral contact checks. Process and exit continue to solve from measured bottle pose.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2563–L2599；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3153–L3154、L3312–L3341、L3389–L3457。 / Verify qualified transport without a pose solve, collision and joint-limit rejection before command, and subsequent measured alignment and hold.
+
+```diff
+- # Try measured pose correction throughout transport, then fall back.
++ elif operation == "pour" and stage == "transport" and point["attached"]:
++     delta = joint_delta(start, goal)
++     if delta > maximum_delta:
++         raise PhaseMotionError("ik_discontinuity", ...)
+```
+
+- [eval] [exp] 213 项 phase-motion 回归通过。前一轮失败回执见 `out/labutopia-elevated-20261122/v17.8.15-r05-r06-continuity-132709/acceptance.json`；本轮沿用相同夹爪参数，输出保存于 `out/labutopia-elevated-20261122/v17.8.16-r05-r06-qualified-135042`。 / Passed 213 phase-motion regressions. The previous run directory contains the failure receipt. The replay uses the same gripper settings and stores outputs in the new run directory.
+
 ## v17.8.15 (2026-11-22 13:25) - codex
 
 - [eval] [fix] 持瓶搬运中的补偿解超过现有 0.50 rad 上限时，先以原路点为初值重试；再不可用时，只在原路点本身通过同一上限时采用。执行器仍按实测瓶姿检查碰撞和双侧接触。倾倒过程和归位的验收不变。 / During attached transport, retry an out-of-range compensation from the planned seed. If neither correction qualifies, use the original waypoint only within the same 0.50 rad bound. The runtime still checks the measured payload for collisions and bilateral contact. Process and placement acceptance are unchanged.
@@ -155,39 +170,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `f4c08ec6`，2026-11-22 12:27:24 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.
-
-## v17.8.11 (2026-11-22 10:53) - codex
-
-### 持瓶搬运与倾倒回馈 / Held Transport and Pour Feedback [完成 / Completed]
-- [eval] [fix] 倾倒搬运的两次姿态补偿求解均失败时，以现有关节位移上限检查原计划点，再逐步按实测瓶姿检查碰撞。倾倒保持按双侧接触、瓶口对准和实际倾角计时。 / If both pose correction attempts fail during pour transport, check the planned waypoint against the existing joint-step limit, then check each step for collisions using the measured bottle pose. Evaluate the pour hold using bilateral contact, lip alignment and measured tilt. (local)
-- [eval] [fix] IsaacSim Adapter 负责实测持瓶反馈、候选关节目标与碰撞检查。任务参数和实测反馈继续通过既有接口交给工作流结算。 / The IsaacSim Adapter owns measured grip feedback, candidate joint targets and collision checks. The workflow settles the operation using the existing task parameters and feedback interface. (local)
-
-### 文件变更详情 / File Changes
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2476-L2483、L2541-L2561、L2585-L2593、L2698-L2712。
-```diff
-- "grasp_valid": held
-+ grasp_valid = contact_load_valid if operation == "pour" else held
-+ "grasp_valid": grasp_valid
-- if not valid: raise PhaseMotionError("inverse_kinematics_failed", ...)
-+ if not valid:
-+     if stage != "transport" or not point["attached"]:
-+         raise PhaseMotionError("inverse_kinematics_failed", ...)
-+     goal = np.asarray(point["joints"])
-- if valid and delta > maximum_delta:
-+ if delta > maximum_delta:
-```
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3196-L3290。 / Cover motion with drift, measured hold, discontinuity, and pre-command collisions.
-```diff
-+ assert result["measurements"]["qualified_tilt_hold_s"] >= .1
-+ assert all(sample["attachment_rotation_error_rad"] > model.config["grasp_rotation_tolerance_rad"]
-+            and sample["grasp_valid"] for sample in process_samples)
-+ assert relation == pytest.approx(observed_relation)
-```
-- [docs] [docs] `CHANGELOG.md` L53-L88 与 `changelog/2026-11_part3.md` L744-L779 收录双语记录。 / Record the complete entry in the latest five versions and the monthly archive.
-
-### 验证 / Validation
-- [eval] [exp] IsaacSim phase-motion / elevated USD 回归 209 项通过，工作流 cycle protocol / feedback adapter / held manipulation 回归 49 项通过。 / 209 IsaacSim phase-motion and elevated USD tests plus 49 workflow tests passed. 旧样本 1651 到计划点 61 的最大关节差为 0.3920 rad，低于现有 0.5 rad 上限。 / The largest joint delta from historical sample 1651 to planned waypoint 61 was 0.3920 rad, within the existing 0.5 rad limit.
-- [eval] [exp] LabUtopia R05→BEAKER 仿真（`out/labutopia-elevated-20261122/v17.8.11-full-run`）抓取与倾倒成功，实测峰值 1.0068 rad，连续对准保持 2.8333 s，4073 条倾倒回馈均有双侧接触，最大相对旋转偏差 0.5184 rad。未测量液体转移。放回在 lower 阶段以 `payload_collision` 拒绝，瓶身包络与桌面重叠，仍有双侧接触，整任务失败。 / The R05→BEAKER simulation completed acquisition and pour with 1.0068 rad peak tilt, 2.8333 s of continuous aligned hold, bilateral contact in all 4,073 pour samples and 0.5184 rad maximum attachment rotation error. Liquid transfer was unmeasured. Placement stopped during lowering on a payload-envelope overlap with the table while bilateral contact persisted. The overall task failed.
-
-### Git 提交 / Git Commit
-- 实现提交 / Implementation commit `243803f1`，2026-11-22 11:08:52 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.

@@ -2560,21 +2560,26 @@ class IsaacPhaseMotion:
                                                               start, self.limits, self.config["position_tolerance_m"])
                     if not valid:
                         raise PhaseMotionError("inverse_kinematics_failed", "measured tool-feature correction is unreachable")
+                elif operation == "pour" and stage == "transport" and point["attached"]:
+                    # Keep transport on the qualified joint path. The command
+                    # loop checks the payload with its measured attachment.
+                    delta = joint_delta(start, goal)
+                    maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
+                    if delta > maximum_delta:
+                        raise PhaseMotionError(
+                            "ik_discontinuity", f"{stage}: qualified pour waypoint joint delta "
+                            f"{delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
                 elif operation == "pour":
                     relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
                     planned = goal
                     target_body = self.tcp(planned) @ grasp_relation
                     target = target_body @ np.linalg.inv(relation)
-                    attached_transport = point["attached"] and stage == "transport"
                     maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                     goal, valid = local_inverse_kinematics(
                         self.tcp, target, start, self.limits, self.config["position_tolerance_m"])
-                    if not valid or (attached_transport and joint_delta(start, goal) > maximum_delta):
+                    if not valid:
                         goal, valid = local_inverse_kinematics(
                             self.tcp, target, planned, self.limits, self.config["position_tolerance_m"])
-                        if attached_transport and (not valid or joint_delta(start, goal) > maximum_delta):
-                            # The command loop checks the nominal waypoint with the measured payload.
-                            goal, valid = planned, True
                         if not valid:
                             if point["attached"] and stage in {"process", "exit"}:
                                 # The bottle can rotate around its axis while
