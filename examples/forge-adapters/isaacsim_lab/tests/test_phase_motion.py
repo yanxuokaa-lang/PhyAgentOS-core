@@ -3193,9 +3193,13 @@ def test_pour_failed_current_seed_retries_same_full_pose_with_planned_seed(monke
     assert commands
 
 
-@pytest.mark.parametrize("branch_jump", [False, True])
-def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, branch_jump):
+@pytest.mark.parametrize(("stage", "branch_jump"), [("process", False), ("transport", True), ("transport", False)])
+def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, stage, branch_jump):
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    point = arguments["phase_route"]["steps"][0]
+    point["stage"] = stage
+    if stage == "transport" and not branch_jump:
+        point["joints"][0] = .6
     calls = []
 
     def solve(_forward, target, seed, _limits, _tolerance):
@@ -3208,18 +3212,60 @@ def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, b
 
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
     result = model.execute(arguments, Event())
-    assert result["failure_code"] == ("ik_discontinuity" if branch_jump else "inverse_kinematics_failed")
+    assert result["failure_code"] == ("ik_discontinuity" if stage == "transport" else "inverse_kinematics_failed")
     assert len(calls) == 2 and not commands and model.world.steps == 0
     assert calls[0][0] == pytest.approx(calls[1][0])
     assert not result["operation_completed"] and not result["world_change_started"]
     detail = artifacts[-1][1]["failure_detail"]
-    assert ("transport: measured pour-pose fallback joint delta 0.600000" if branch_jump
+    assert ("transport: measured pour-pose fallback joint delta 0.600000" if stage == "transport"
             else "measured pour-pose correction is unreachable") in detail
-    if branch_jump:
+    if stage == "transport":
         assert "maximum 0.500000" in detail
 
 
-def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch):
+def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift(monkeypatch):
+    from pick_place_workflow.cycle_protocol import evaluate_process_feedback
+    from isaacsim_lab.phase_motion import local_inverse_kinematics
+
+    model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    monkeypatch.setattr("pick_place_workflow.cycle_protocol.evaluate_process_feedback", evaluate_process_feedback)
+    route = arguments["phase_route"]
+    transport = route["steps"][0]
+    process = dict(transport, stage="process", hold_s=.2, joints=[.05, 0., 0., 0., 1., 0., 0.])
+    route["steps"].append(process)
+    nominal_relation = np.asarray(route["tcp_from_object"])
+    drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .1).as_quat())
+    model.body_pose = lambda _source: model.tcp() @ drift @ nominal_relation
+    route["start_object_pose"] = model.body_pose(None).tolist()
+    tool = route["target"]["tool_frame"]
+    wanted_body = model.tcp(np.asarray(process["joints"])) @ nominal_relation
+    route["target"]["process_frame"]["origin_m"] = (
+        wanted_body[:3, 3] + wanted_body[:3, :3] @ tool["tip_offset_m"]).tolist()
+    model.profile.evaluation_profile = lambda: {
+        "max_sample_gap_s": .02, "alignment_tolerance_m": .05,
+        "tilt_tolerance_rad": .02, "maximum_tilt_rad": 1.2,
+    }
+    calls = []
+
+    def solve(forward, target, seed, limits, tolerance):
+        calls.append(seed.copy())
+        if len(calls) <= 2:
+            return seed.copy(), False
+        return local_inverse_kinematics(forward, target, seed, limits, tolerance)
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    result = model.execute(arguments, Event())
+    assert result["operation_completed"] is True
+    assert result["measurements"]["qualified_tilt_hold_s"] >= .1
+    assert any(command[:7] == pytest.approx(transport["joints"]) for command in commands)
+    process_samples = [sample for sample in artifacts[-1][1]["samples"] if sample["stage"] == "process"]
+    assert process_samples
+    assert all(sample["attachment_rotation_error_rad"] > model.config["grasp_rotation_tolerance_rad"]
+               and sample["grasp_valid"] for sample in process_samples)
+
+
+@pytest.mark.parametrize("require_nominal_waypoint", [False, True])
+def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, require_nominal_waypoint):
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
@@ -3227,10 +3273,13 @@ def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch):
 
     def solve(forward, target, seed, limits, tolerance):
         calls.append(seed.copy())
-        return ((seed.copy(), False) if len(calls) == 1
+        return ((seed.copy(), False) if len(calls) == 1 or require_nominal_waypoint
                 else local_inverse_kinematics(forward, target, seed, limits, tolerance))
 
-    def collide(joints, *_args, **_kwargs):
+    def collide(joints, _source, _allow_contact, attached, relation, *_args, **_kwargs):
+        assert attached
+        observed_relation = np.linalg.inv(model.tcp()) @ model.observed_pose("/World/source")
+        assert relation == pytest.approx(observed_relation)
         checked.append(joints.copy())
         raise PhaseMotionError("route_collision", "corrected path hits receiver")
 

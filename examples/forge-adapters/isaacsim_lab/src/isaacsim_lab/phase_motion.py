@@ -2476,8 +2476,10 @@ class IsaacPhaseMotion:
             held = (contact_load_valid
                     and relation_error <= self.config["grasp_position_tolerance_m"]
                     and rotation_error <= self.config["grasp_rotation_tolerance_rad"])
+            # Pour feedback judges the measured bottle tip and axis separately.
+            grasp_valid = contact_load_valid if operation == "pour" else held
             sample = {"timestamp_s": float(self.world.current_time), "feedback_valid": True,
-                      "grasp_valid": held, "contact_load_valid": contact_load_valid,
+                      "grasp_valid": grasp_valid, "contact_load_valid": contact_load_valid,
                       "contact_manifold_valid": contact_manifold_valid,
                       "stage": stage, "joints": self.joints().tolist(),
                       "finger_positions_m": np.asarray(self.robot.get_joint_positions())[finger_indices].tolist(),
@@ -2545,14 +2547,18 @@ class IsaacPhaseMotion:
                         goal, valid = local_inverse_kinematics(
                             self.tcp, target, np.asarray(point["joints"]), self.limits,
                             self.config["position_tolerance_m"])
+                        if not valid:
+                            if stage != "transport" or not point["attached"]:
+                                raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
+                            # Transport can follow the qualified waypoint with the measured
+                            # payload pose checked by the command loop below.
+                            goal = np.asarray(point["joints"])
                         delta = joint_delta(start, goal)
                         maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
-                        if valid and delta > maximum_delta:
+                        if delta > maximum_delta:
                             raise PhaseMotionError(
                                 "ik_discontinuity", f"{stage}: measured pour-pose fallback joint delta "
                                 f"{delta:.6f} rad exceeds configured maximum {maximum_delta:.6f} rad")
-                    if not valid:
-                        raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
                 hold_frames = math.ceil(point["hold_s"] / self.dt)
                 segment = ([goal] if point.get("continuous") else smooth_joint_segment(
                     start, goal, self.dt, self.config["joint_velocity_rad_s"], self.config["joint_acceleration_rad_s2"]))
