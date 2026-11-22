@@ -66,6 +66,12 @@
 
 - [eval] [exp] 225 项阶段运动测试通过。用历史实测终态回放找到 73 个满足关节约束的回程路点。此回放用于逆解诊断，完整场景复跑保存在 `out/labutopia-elevated-20261122/v17.9.5-r03-r05-agent-controller-173044`。 / Passed 225 motion tests. Kinematic replay from the historical measured pose found 73 in-limit return waypoints. The listed directory preserves the full simulation run.
 
+- [eval] [exp] 在独立 Isaac 仿真中用历史终态关节、夹爪开度、瓶姿和点云回放，通过 73 个放回路点的碰撞验证。实际执行结果以完整复跑回执为准。 / A separate Isaac scene replayed the measured joints, finger openings, bottle pose and point cloud and passed all 73 placement waypoints. Full execution is tracked by the live simulation receipts.
+
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `fcf879e7`，2026-11-22 17:31:09 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.9.4 (2026-11-22 16:52) - codex
 
 - [eval] [fix] `phase_motion.py` 与 `test_phase_motion.py` 补上重新验证后的撤离末端补偿。首轮 R03 为 0.996807 rad、2.800 s，撤离全段保持接触但末端瓶轴残差 0.14755 rad。继续使用相同验证与实测终态条件。 / Correct terminal drift after requalified pour exit. R03 held 0.996807 rad for 2.800 s and retained grip through exit, but the measured terminal tool axis error was 0.14755 rad. Reuse existing validation and terminal measurements.
