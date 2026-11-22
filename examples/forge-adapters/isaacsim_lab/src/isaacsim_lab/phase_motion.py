@@ -2562,19 +2562,30 @@ class IsaacPhaseMotion:
                         raise PhaseMotionError("inverse_kinematics_failed", "measured tool-feature correction is unreachable")
                 elif operation == "pour":
                     relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
-                    target = self.tcp(goal) @ np.asarray(route["tcp_from_object"]) @ np.linalg.inv(relation)
+                    planned = goal
+                    target_body = self.tcp(planned) @ grasp_relation
+                    target = target_body @ np.linalg.inv(relation)
                     goal, valid = local_inverse_kinematics(
                         self.tcp, target, start, self.limits, self.config["position_tolerance_m"])
                     if not valid:
                         goal, valid = local_inverse_kinematics(
-                            self.tcp, target, np.asarray(point["joints"]), self.limits,
-                            self.config["position_tolerance_m"])
+                            self.tcp, target, planned, self.limits, self.config["position_tolerance_m"])
                         if not valid:
-                            if stage != "transport" or not point["attached"]:
+                            if point["attached"] and stage == "transport":
+                                # The command loop checks the measured payload pose.
+                                goal, valid = planned, True
+                            elif point["attached"] and stage in {"process", "exit"}:
+                                # The bottle can rotate around its axis while
+                                # still meeting the measured pouring target.
+                                tool = route["target"]["tool_frame"]
+                                for seed in (start, planned):
+                                    goal, valid = local_tool_inverse_kinematics(
+                                        self.tcp, target_body, relation, tool, seed, self.limits,
+                                        self.config["position_tolerance_m"])
+                                    if valid:
+                                        break
+                            if not valid:
                                 raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
-                            # Transport can follow the qualified waypoint with the measured
-                            # payload pose checked by the command loop below.
-                            goal = np.asarray(point["joints"])
                         delta = joint_delta(start, goal)
                         maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                         if delta > maximum_delta:

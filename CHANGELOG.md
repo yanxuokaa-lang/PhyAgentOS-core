@@ -50,6 +50,27 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.13 (2026-11-22 12:41) - codex
+
+### 瓶口与瓶轴求解 / Bottle tip and axis IK [完成 / Completed]
+
+- [eval] [fix] 对照轮在进倾倒时因完整姿态补偿无解而停止，仍有双侧接触。完整姿态补偿失败时，倾倒和撤离阶段尝试求解瓶口位置与瓶轴方向。仍按关节位移上限、实测碰撞、倾角与保持时间判断执行结果。 / The comparison run could not solve a full pose at pour entry despite bilateral contact. If full pose correction fails, process and exit try tip position and bottle axis. Joint continuity, measured collisions, tilt, and hold still determine the outcome.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2563–L2595；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3313–L3390。 / Cover feature IK failure, successful process tracking, exit seed retry and joint continuity.
+```diff
+- if stage != "transport" or not point["attached"]:
+-     raise PhaseMotionError("inverse_kinematics_failed", ...)
++ elif point["attached"] and stage in {"process", "exit"}:
++     for seed in (start, planned):
++         goal, valid = local_tool_inverse_kinematics(
++             self.tcp, target_body, relation, tool, seed, self.limits,
++             self.config["position_tolerance_m"])
++         if valid:
++             break
++ if not valid:
++     raise PhaseMotionError("inverse_kinematics_failed", ...)
+```
+- [eval] [exp] 214 项 Isaac motion 测试通过。以 40 N 驱动上限、2 mm 保压位移进行下一轮同场景双瓶仿真，配置、复现命令和反馈目录为 `out/labutopia-elevated-20261122/v17.8.13-r05-r06-124313`。 / 214 Isaac motion tests passed. The next same-scene two-bottle run uses a 40 N drive cap and 2 mm preload offset. Its directory records configuration, replay command and feedback.
+
 ## v17.8.12 (2026-11-22 12:15) - codex
 
 ### 夹爪保压和原位归还 / Grip preload and return to the original slot [完成 / Completed]
@@ -85,7 +106,11 @@
 ### 验证 / Validation
 
 - [eval] [exp] 211 项 Isaac phase-motion、4 项 elevated USD 和 49 项工作流回归通过。测试覆盖动态重验通过与碰撞失败，实测完整链路以单独的 Isaac 回馈为准。 / Passed 211 Isaac phase-motion, 4 elevated USD and 49 workflow tests. Full physical simulation proof comes from the independent Isaac feedback.
-- [eval] [exp] 仿真专用配置将指爪驱动上限从 20 N 提高到 40 N，预紧位移从 2 mm 提高到 4 mm。R05 与相邻的 R06 已排入同一任务，角度 1.0 rad，各自对准保持至少 2.0 s，共用原有碰撞检查、回馈和归位后再继续的流程。配置、命令、回执和视频路径保存于 `out/labutopia-elevated-20261122/v17.8.12-r05-r06-corrected-122218`，完整运行终态待测。 / The simulation trial uses a 40 N drive cap and 4 mm preload offset in place of 20 N and 2 mm. R05 and its neighbor R06 are ordered in one scene at 1.0 rad for at least 2.0 s of aligned hold each and advance only after return. The run directory holds configuration, command and feedback. The end-to-end result is pending.
+- [eval] [exp] 仿真专用配置将指爪驱动上限从 20 N 提高到 40 N，预紧位移从 2 mm 提高到 4 mm。R05 与相邻的 R06 已排入同一任务，角度 1.0 rad，各自对准保持至少 2.0 s，共用原有碰撞检查、回馈和归位后再继续的流程。配置、命令、回执和视频路径保存于 `out/labutopia-elevated-20261122/v17.8.12-r05-r06-corrected-122218`，完整运行在 R05 搬运时丢失双侧接触，未进入归位或开始 R06。仅调高驱动上限和预紧量的对照轮保持 2052 帧双侧接触，但未求得倾倒姿态。 / The simulation trial uses a 40 N drive cap and 4 mm preload offset in place of 20 N and 2 mm. R05 and its neighbor R06 are ordered in one scene at 1.0 rad for at least 2.0 s of aligned hold each and advance only after return. The run directory holds configuration, command and feedback. The corrected run lost bilateral contact during R05 transport, before placement or R06. The comparison run preserved 2,052 bilateral samples but could not solve the pour pose.
+
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `f4c08ec6`，2026-11-22 12:27:24 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.
 
 ## v17.8.11 (2026-11-22 10:53) - codex
 
@@ -166,25 +191,3 @@
 ### 验证 / Validation
 - [eval] [chore] 诊断脚本`py_compile`及已保存JSON字段断言通过；JSON记录`route_suffix_rejected`、`payload_collision`、9,992次查询、0次local-IK fallback、后缀未完成、0步进/0运动命令及reset关节/时间不变。此前的LabUtopia无动作运行已记录于JSON，本次收尾未重启仿真。 / Script byte-compilation and assertions against the saved JSON pass. The JSON records `route_suffix_rejected`, `payload_collision`, 9,992 queries, 0 local-IK fallbacks, an incomplete suffix, 0 simulation steps/commands and unchanged reset joints/time. The earlier no-motion LabUtopia run is recorded there; simulation was not restarted for this closeout. (local)
 - [eval] [chore] 三份文档UTF-8回读、最近五版本核对与`git diff --check`通过；生产源码、配置、布局和阈值未改。 / UTF-8 readback of all three documents, latest-five verification and `git diff --check` pass; production source, configuration, placement and thresholds are unchanged. (local)
-
-## v17.8.8 (2026-11-21 13:40) - codex
-
-### 持瓶关系漂移复核 / Held-object Relation Drift Review [完成 / Completed]
-- [eval] [exp] acquire阶段status=succeeded，但lift的77/117条记录grasp_valid=false；双侧接触仍有效，末帧抓取锚点误差9.131mm。pour阶段先以新测关系建立基线，随后在任务倾角仅0.011209rad时样本150旋转误差已越过0.08rad阈值；样本1651为0.409201rad。 / Acquisition reports succeeded although grasp_valid is false for77/117 lift records; bilateral contacts persist and terminal grasp-anchor error is9.131mm. Pour establishes a fresh relation baseline, then exceeds the0.08rad rotation threshold at sample150 while task tilt is only0.011209rad; sample1651 reaches0.409201rad. (local)
-- [eval] [exp] 失败边界抓取锚点误差仅1.121mm，瓶体原点偏移18.659mm，表示主要是围绕近似稳定抓取区域的相对转动；指节开度基本保持，接触脉冲/接触面标记不能证明摩擦裕量或夹持力矩。现有反馈不能区分滑移、接触几何、物理模型或位姿映射原因。 / At the failure boundary, grasp-anchor error is1.121mm while bottle-origin offset is18.659mm, indicating relative rotation around a substantially steadier grasp region. Finger opening remains nearly fixed; contact impulses/manifold flags do not establish friction margin or grasp torque. Existing feedback cannot distinguish slip, contact geometry, physics-model or pose-mapping causes. (local)
-- [决策边界 / Decision boundary] 保持布局与阈值。可继续对失败边界Lula候选进行完整无动作路线连续性和碰撞资格检查；该检查不证明动态持瓶稳定，不授权执行。 / Retain layout and thresholds. The failure-boundary Lula candidate may proceed to complete no-motion route-continuity and collision qualification; this does not establish dynamic grasp stability or authorize execution. (local)
-
-### 文件变更详情 / File Changes
-- [docs] [docs] [修改 / Modified] docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md L59-L83：补充采集lift与倾倒transport逐样本关系漂移、指节与接触脉冲对照、源码判定语义和复现命令；更新下一步边界。 / Add acquisition-lift and pour-transport relation drift, finger/contact impulse comparisons, source semantics and reproduction command; update the next-step boundary.
-- 关键Diff / Key diff：此前推荐先诊断漂移或直接验证Lula；现改为漂移已确认、根因未分离，后续可完整无动作资格化失败点Lula路线，仍不能证明动态持瓶稳定。 / Before: choose between grip-drift diagnosis and immediate Lula qualification. After: drift is confirmed but its root cause is unresolved; a full no-motion Lula route check may follow and still cannot establish dynamic grasp stability.
-- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L649-L671：完成v17.8.8计划，记录双阶段统计、证据边界、验证与提交回执。 / Complete the v17.8.8 plan with both-phase statistics, evidence limits, validation and commit receipt.
-- [docs] [docs] [修改 / Modified] CHANGELOG.md L53-L74：新增v17.8.8并滚动最近五版本为v17.8.8至v17.8.4；v17.8.3完整记录保留在本月档。 / Add v17.8.8 and roll latest five to v17.8.8 through v17.8.4; retain the full v17.8.3 entry in the monthly archive.
-
-### 验证 / Validation
-- [eval] [chore] python3 -m py_compile out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py && python3 out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/analyze-held-object-relation-drift.py 通过；1653条pour、2114条acquire只读统计，首次越界样本150，两种接触标记全true。 / The read-only analyzer command passes across1653 pour and2114 acquisition records; first threshold breach is sample150 and both contact flags remain true throughout.
-- [eval] [chore] git diff --check与双语UTF-8回读通过。未启动仿真、未发运动命令；生产代码、配置、布局和阈值未修改。 / git diff --check and bilingual UTF-8 readback pass. No simulation was started and no motion command was issued; production code, configuration, placement and thresholds remain unchanged. (local)
-
-### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
-- 实现提交 / Implementation commit：a39b9f3957ce9c1e724b46d83a0edef71ab91289；分支feature/planning-loop。 / Implementation commit a39b9f3957ce9c1e724b46d83a0edef71ab91289 on feature/planning-loop.
-- 推送成功：远端由f964a9b8更新至a39b9f39；2026-11-21 14:08:20 Asia/Shanghai经git ls-remote核验完整指针为a39b9f3957ce9c1e724b46d83a0edef71ab91289。 / Push succeeded from f964a9b8 to a39b9f39; git ls-remote verified the full ref at2026-11-21 14:08:20 Asia/Shanghai.
-- 回执提交 / Receipt commit：90007f61d5e522a6971ecb3a84ba907ca41235f2；推送成功，远端由a39b9f39更新至90007f61，2026-11-21 14:11:59 Asia/Shanghai经git ls-remote核验。 / Receipt commit 90007f61d5e522a6971ecb3a84ba907ca41235f2 was pushed successfully; git ls-remote verified the remote at2026-11-21 14:11:59 Asia/Shanghai.

@@ -3327,6 +3327,8 @@ def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, s
         return goal, False
 
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics",
+                        lambda _forward, _target, _relation, _tool, seed, *_: (seed.copy(), False))
     result = model.execute(arguments, Event())
     assert result["failure_code"] == ("ik_discontinuity" if stage == "transport" else "inverse_kinematics_failed")
     assert len(calls) == 2 and not commands and model.world.steps == 0
@@ -3337,6 +3339,53 @@ def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, s
             else "measured pour-pose correction is unreachable") in detail
     if stage == "transport":
         assert "maximum 0.500000" in detail
+
+
+@pytest.mark.parametrize(("stage", "first_seed_fails", "branch_jump"),
+                         [("process", False, False), ("exit", True, False), ("process", False, True)])
+def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
+    monkeypatch, stage, first_seed_fails, branch_jump
+):
+    from isaacsim_lab.phase_motion import local_tool_inverse_kinematics
+
+    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
+    route = arguments["phase_route"]
+    point = route["steps"][0]
+    point["stage"] = stage
+    planned = np.asarray(point["joints"])
+    expected_body = model.tcp(planned) @ np.asarray(route["tcp_from_object"])
+    expected_relation = np.linalg.inv(model.tcp()) @ model.observed_pose(route["source_path"])
+    full_seeds, tool_seeds = [], []
+
+    def fail_full_pose(_forward, _target, seed, *_):
+        full_seeds.append(seed.copy())
+        return seed.copy(), False
+
+    def solve_tip_axis(forward, target, relation, tool, seed, limits, tolerance):
+        tool_seeds.append(seed.copy())
+        assert target == pytest.approx(expected_body)
+        assert relation == pytest.approx(expected_relation)
+        if first_seed_fails and len(tool_seeds) == 1:
+            return seed.copy(), False
+        if branch_jump:
+            return np.array([.6, 0., 0., 0., 0., 0., 0.]), True
+        return local_tool_inverse_kinematics(forward, target, relation, tool, seed, limits, tolerance)
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", fail_full_pose)
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics", solve_tip_axis)
+    result = model.execute(arguments, Event())
+
+    assert np.asarray(full_seeds) == pytest.approx(np.array([np.zeros(7), planned]))
+    expected_seeds = [np.zeros(7), planned] if first_seed_fails else [np.zeros(7)]
+    assert np.asarray(tool_seeds) == pytest.approx(np.asarray(expected_seeds))
+    if branch_jump:
+        assert result["failure_code"] == "ik_discontinuity"
+        assert not commands and model.world.steps == 0
+    else:
+        assert result["operation_completed"] is True
+        assert result["measurements"]["final_tool_tip_error_m"] <= .002
+        assert result["measurements"]["final_tool_axis_error_rad"] <= .02
+        assert commands
 
 
 def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift(monkeypatch):
