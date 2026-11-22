@@ -2142,6 +2142,59 @@ def test_nearby_ik_replaces_discontinuous_primary_solution(monkeypatch):
     assert max(float(np.max(np.abs(value))) for value in checked) <= .1
 
 
+@pytest.mark.parametrize("outcome", ["nearby", "unavailable", "discontinuous", "outside_limits", "collision"])
+def test_place_transport_requalifies_a_primary_solution_outside_joint_limits(monkeypatch, outcome):
+    import isaacsim_lab.phase_motion as phase_motion
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.hand_from_tcp = np.eye(4)
+    model.joints = lambda: np.zeros(7)
+    model.tcp = lambda joints: pose_matrix([joints[0], 0., 1.], [0., 0., 0., 1.])
+    model.limits = np.tile([-1., 1.], (7, 1))
+    model.limits[-1, 1] = .1
+
+    def inverse(_frame, position, *_args, **_kwargs):
+        return np.r_[position[0], np.zeros(5), 0. if position[0] <= .015 else .11], True
+
+    model.solver = SimpleNamespace(compute_inverse_kinematics=inverse)
+    local = phase_motion.local_inverse_kinematics
+    seeds, checked = [], []
+
+    def solve(forward, target, seed, limits, tolerance):
+        seeds.append(seed.copy())
+        if outcome == "unavailable":
+            return seed.copy(), False
+        if outcome == "discontinuous":
+            return np.r_[.02, .6, np.zeros(5)], True
+        if outcome == "outside_limits":
+            return np.r_[.02, np.zeros(5), .11], True
+        return local(forward, target, seed, limits, tolerance)
+
+    def collide(joints, _source, _contact, attached, *_args, **_kwargs):
+        assert attached
+        assert joints[-1] <= .1
+        checked.append(joints.copy())
+        if outcome == "collision" and joints[0] > .015:
+            raise PhaseMotionError("route_collision", "transport obstacle")
+
+    monkeypatch.setattr(phase_motion, "local_inverse_kinematics", solve)
+    model._collisions = collide
+    waypoints = [(model.tcp([x]), 0., "transport") for x in (.01, .02)]
+    if outcome == "nearby":
+        route = model.qualify(waypoints, "/World/source", np.eye(4), "place")
+        assert route["steps"][-1]["joints"] == pytest.approx([.02, *np.zeros(6)])
+        assert checked[-1][0] == pytest.approx(.02)
+    else:
+        with pytest.raises(PhaseMotionError) as captured:
+            model.qualify(waypoints, "/World/source", np.eye(4), "place")
+        assert captured.value.code == ("route_collision" if outcome == "collision" else "joint_limit_violation")
+        if outcome != "collision":
+            assert checked[-1][0] == pytest.approx(.01)
+    assert len(seeds) == 1
+    assert seeds[0] == pytest.approx([.01, *np.zeros(6)])
+
+
 def test_dense_collision_sampling_does_not_add_execution_stops():
     model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
     model.config = config()

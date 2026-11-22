@@ -50,6 +50,22 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.5 (2026-11-22 17:28) - codex
+
+- [eval] [exp] v17.9.4 复跑中 R03 实测 0.996807 rad、连续 2.800 s，末端补偿将瓶口误差从 3.419 降至 0.188 mm，瓶轴误差从 0.14755 降至 0.00371 rad。倾倒成功，随后的原位放回准备在 transport 报 `joint_limit_violation`，未归位或启动 R05。回执位于 `out/labutopia-elevated-20261122/v17.9.4-r03-r05-agent-controller-165606`。 / R03 completed the qualified pour. Terminal correction reduced tip error from 3.419 to 0.188 mm and axis error from 0.14755 to 0.00371 rad. Place preparation reported a joint-limit violation in transport and R05 remained pending.
+- [eval] [fix] 在 `phase_motion.py` 的既有路线资格验证中，主逆解越界时尝试原有有界局部逆解。适配器负责关节解与碰撞，Agent 继续负责双瓶顺序和任务恢复。新增测试覆盖首解越界且局部解通过或同样不可用。 / Try the existing bounded local IK if the primary solution falls outside limits. The Adapter owns kinematics and collision, and the Agent owns task sequencing and recovery.
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1832–1844 及 `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2145–2197。 / Test an in-bounds fallback, rejection of an unusable fallback, and collision after fallback.
+
+```diff
+- if not primary_success or primary_delta > maximum_delta or force_local:
++ if not primary_success or primary_delta > maximum_delta or force_local or place_limit_failure:
+      local_goal, local_success = local_inverse_kinematics(...)
++     # Retain the joint-limit failure if the nearby solution is unusable.
+```
+
+- [eval] [exp] 225 项阶段运动测试通过。用历史实测终态回放找到 73 个满足关节约束的回程路点。此回放用于逆解诊断，完整场景复跑保存在 `out/labutopia-elevated-20261122/v17.9.5-r03-r05-agent-controller-173044`。 / Passed 225 motion tests. Kinematic replay from the historical measured pose found 73 in-limit return waypoints. The listed directory preserves the full simulation run.
+
 ## v17.9.4 (2026-11-22 16:52) - codex
 
 - [eval] [fix] `phase_motion.py` 与 `test_phase_motion.py` 补上重新验证后的撤离末端补偿。首轮 R03 为 0.996807 rad、2.800 s，撤离全段保持接触但末端瓶轴残差 0.14755 rad。继续使用相同验证与实测终态条件。 / Correct terminal drift after requalified pour exit. R03 held 0.996807 rad for 2.800 s and retained grip through exit, but the measured terminal tool axis error was 0.14755 rad. Reuse existing validation and terminal measurements.
@@ -144,22 +160,3 @@
 - [eval] [exp] 已启动同一 Isaac 场景内的顺序复跑，由两个独立任务在各自启动时取像，见 `out/labutopia-elevated-20261122/v17.9.0-r05-r06-fresh-142453`。 / Started a sequential replay in one Isaac scene with separate, freshly observed tasks. The replay directory contains the launcher and run output.
 
 - [docs] [docs] `CHANGELOG.md` L53–L61；`changelog/2026-11_part3.md` L905–L913。本次只追加仿真证据。 / Added simulation evidence only.
-
-## v17.9.0 (2026-11-22 13:48) - codex
-
-- [eval] [fix] R05 搬运第 67 个零基路点实测需 0.635 rad 才能切回原路径，相邻原路点的最大关节位移只有 0.054 rad。持瓶搬运现在始终沿已验证的关节路点，每步仍从实测关节检查限制，按实测瓶姿检查碰撞和双侧接触。倾倒与撤离仍根据实测瓶姿求解。 / At zero-based transport waypoint 67, R05 needed 0.635 rad to return to the qualified route, while neighboring route points were only 0.054 rad apart. Attached transport now follows the qualified waypoints throughout, with live joint continuity, payload collision and bilateral contact checks. Process and exit continue to solve from measured bottle pose.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2563–L2599；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3153–L3154、L3312–L3341、L3389–L3457。 / Verify qualified transport without a pose solve, collision and joint-limit rejection before command, and subsequent measured alignment and hold.
-
-```diff
-- # Try measured pose correction throughout transport, then fall back.
-+ elif operation == "pour" and stage == "transport" and point["attached"]:
-+     delta = joint_delta(start, goal)
-+     if delta > maximum_delta:
-+         raise PhaseMotionError("ik_discontinuity", ...)
-```
-
-- [eval] [exp] 213 项 phase-motion 回归通过。前一轮失败回执见 `out/labutopia-elevated-20261122/v17.8.15-r05-r06-continuity-132709/acceptance.json`；本轮沿用相同夹爪参数，输出保存于 `out/labutopia-elevated-20261122/v17.8.16-r05-r06-qualified-135042`。 / Passed 213 phase-motion regressions. The previous run directory contains the failure receipt. The replay uses the same gripper settings and stores outputs in the new run directory.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `f36095fb`，2026-11-22 13:52:29 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.

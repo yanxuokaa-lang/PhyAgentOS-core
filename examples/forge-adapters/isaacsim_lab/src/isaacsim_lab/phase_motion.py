@@ -1829,14 +1829,19 @@ class IsaacPhaseMotion:
                 maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                 primary_delta = joint_delta(joints, primary_goal)
                 primary_finite = primary_delta < math.inf
+                place_limit_failure = (operation == "place" and primary_success and primary_finite
+                                       and (np.any(primary_goal < self.limits[:, 0])
+                                            or np.any(primary_goal > self.limits[:, 1])))
                 force_local = operation == "stir" and stage == "process"
                 goal, success = primary_goal, bool(primary_success)
-                if not primary_success or primary_delta > maximum_delta or force_local:
+                if not primary_success or primary_delta > maximum_delta or force_local or place_limit_failure:
                     local_goal, local_success = local_inverse_kinematics(
                         self.tcp, sample, joints, self.limits, self.config["position_tolerance_m"])
                     local_delta = joint_delta(joints, local_goal)
                     if local_success and local_delta <= maximum_delta:
                         goal, success = local_goal, True
+                    elif place_limit_failure:
+                        raise PhaseMotionError("joint_limit_violation", stage)
                     elif (primary_success and primary_finite and primary_delta > maximum_delta
                           and not force_local and tool_frame is None):
                         raise PhaseMotionError(
