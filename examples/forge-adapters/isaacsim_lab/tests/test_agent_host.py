@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -7,6 +8,7 @@ import pytest
 
 from isaacsim_lab.agent_host import (
     LabPlanningContext,
+    LabSemanticPlanBuilder,
     ObservedQueryPort,
     compose_host,
     environment_guidance,
@@ -120,7 +122,9 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
     monkeypatch.setattr("isaacsim_lab.agent_host.build_visual_providers", lambda *args: (Mock(), Mock()))
 
     async def run(tmp_path):
-        from PhyAgentOS.forge.task import AgentTaskError, TaskVerificationContract
+        from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
+        from PhyAgentOS.forge.task import AgentTaskError
+        from PhyAgentOS.planning.contracts import PlanNode, plan_graph_digest
 
         for name in ("camera.yaml", "scene.usd", "robot.usd"):
             (tmp_path / name).write_text("test fixture; never loaded by a simulator")
@@ -131,17 +135,48 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
             profile=profile, workspace=tmp_path, provider=Mock(generation=SimpleNamespace(max_tokens=2048)), inference=Mock(),
             model="test-model", sensor_ref="sensor://front")
         try:
-            task = await coordinator.create_task(task_description="test manipulation", verification=TaskVerificationContract(mode="off"))
             assert coordinator.config.execution_timeout_s == 1800
-            executor = loop.long_horizon_controller.adapter.node_executor
+            adapter = loop.long_horizon_controller.adapter
+            assert callable(adapter.recovery_policy)
+            assert callable(adapter.replan_proposer)
+            assert isinstance(loop._planner_plugin, AgentRecoveryDecisions)
+            executor = adapter.node_executor
             assert executor.max_action_polls * executor.action_poll_interval_s == 1800
+            # Stub perception and graph construction only. The production
+            # semantic task tool enrolls against the live local ToolSpec API.
+            graph = {
+                "task_id": "semantic-task", "revision_id": "semantic-revision",
+                "planner_decision_digest": "a" * 64, "policy_snapshot_digest": "b" * 64,
+                "nodes": [PlanNode(node_id="pour", obligation_id="pour", capability="manipulation.execute_subtask")
+                          .model_dump(mode="json")],
+            }
+            graph["graph_digest"] = plan_graph_digest(graph)
+
+            async def build(_self, _description, _subtasks):
+                return graph
+
+            monkeypatch.setattr(LabSemanticPlanBuilder, "build", build)
+            result = json.loads(await loop.tools.execute("forge_task_create", {
+                "task_description": "pour reagent", "verification": {"mode": "off"},
+                "semantic_subtasks": [{
+                    "subtask_id": "pour", "operation": "pour", "source_category": "reagent_bottle",
+                    "destination_category": "mixing_vessel", "sensor_refs": ["sensor://front"],
+                    "max_age_ms": 1000, "parameters": {"tilt_rad": 1.0, "hold_s": 2.0},
+                }],
+            }))
+            assert result["ok"] is True, result
+            task = coordinator.get_task(result["data"]["task_id"])
             assert task.runtime_binding is not None
-            contract = await coordinator.enroll_tool_contract(task.task_id, "manipulation.execute_subtask", "action")
+            bindings = {binding.tool_id: binding for binding in task.tool_bindings}
+            contract = bindings["manipulation.execute_subtask"]
             assert contract.planning_policy is not None
             assert "manipulation.execute_subtask" in contract.planning_policy.capabilities
-            assert coordinator.get_task(task.task_id).tool_bindings == [contract]
             with pytest.raises(AgentTaskError, match="not authorized"):
                 await coordinator.enroll_tool_contract(task.task_id, "object.acquire", "action")
+            observation = bindings["scene.observe"]
+            assert observation.semantics == "query"
+            assert observation.planning_policy is not None
+            assert "scene.observe" in observation.planning_policy.capabilities
             resolver = coordinator.binding_resolver
             resolver.runtime_registry.replace(replace(resolver.runtime_registry.current(), runtime_instance_id="replacement"))
             with pytest.raises(AgentTaskError, match="binding"):

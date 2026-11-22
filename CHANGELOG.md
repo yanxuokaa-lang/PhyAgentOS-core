@@ -70,6 +70,22 @@
 
 - [eval] [exp] 217 项阶段运动测试、138 项恢复/调度/宿主回归通过。首轮启动补丁存于 `implementation.diff`，启动后增加的接触前置检查已独立通过回归。 / Passed 217 motion tests and 138 recovery, controller and host tests. The first run records its startup patch, and the subsequently added contact precheck has separate regression coverage.
 
+### Agent 恢复接线 / Agent recovery wiring
+
+- [eval] [fix] Isaac 宿主注入既有 Agent 恢复规划插件，并在语义建任务时登记 `scene.observe`。Coordinator 根据反馈启动恢复。 / The Isaac host injects the existing Agent recovery planner and enrolls `scene.observe` during semantic task creation. The Coordinator owns recovery.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L13、L50–L56、L177–L184；`examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L2、L11、L125–L184。
+- [eval] [exp] 56 项恢复决策及宿主回归通过。 / Passed 56 recovery and host tests.
+
+```diff
+- semantic_plan_builder=AsyncQuerySemanticPlanBuilder(queries)
++ semantic_plan_builder=LabSemanticPlanBuilder(queries)  # enrolls scene.observe
++ planner_plugin=AgentRecoveryDecisions(provider, model, coordinator, ...)
+```
+
+### Git 提交 / Git Commit
+
+- 撤离修复 / Exit implementation `56c5ee27`，2026-11-22 16:27:42 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.9.2 (2026-11-22 15:01) - codex
 
 - [eval] [exp] 更正流程顺序为 R03 → R05。同一仿真场景中，R03 倾倒、归位和松夹后撤成功才为 R05 采集新观测。 / Correct the sequence to R03 → R05. In one continuing simulation, acquire a fresh observation for R05 after R03 completes its pour, return, release and retreat.

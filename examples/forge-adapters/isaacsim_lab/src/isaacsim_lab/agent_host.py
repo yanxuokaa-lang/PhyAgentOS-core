@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.planning_context import PlanningContextUnavailableError, context_from_task
+from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
@@ -44,6 +45,13 @@ class ObservedQueryPort:
         if tool_id == "scene.observe" and payload.get("status") == "available":
             self.observations[payload["observation_ref"]] = payload
         return payload
+
+
+class LabSemanticPlanBuilder(AsyncQuerySemanticPlanBuilder):
+    required_tool_contracts = (
+        *AsyncQuerySemanticPlanBuilder.required_tool_contracts,
+        ("scene.observe", "query"),
+    )
 
 
 class LabPlanningContext:
@@ -166,11 +174,14 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
     coordinator.runtime_session_ids = active.session_ids
     coordinator.runtime_task_binding_ids = active.task_binding_ids
     queries = ObservedQueryPort(client)
+    turn_timeout_s = 3000
     loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=workspace, model=model,
                      forge_tool_client=client, forge_task_coordinator=coordinator,
-                     semantic_plan_builder=AsyncQuerySemanticPlanBuilder(queries),
+                     semantic_plan_builder=LabSemanticPlanBuilder(queries),
                      planning_context_provider=LabPlanningContext(coordinator, engine, queries),
-                     turn_timeout_s=3000, max_iterations=40, restrict_to_workspace=True)
+                     planner_plugin=AgentRecoveryDecisions(provider, model, coordinator,
+                                                          decision_timeout_s=turn_timeout_s),
+                     turn_timeout_s=turn_timeout_s, max_iterations=40, restrict_to_workspace=True)
     loop.set_long_horizon_controller(loop.build_long_horizon_controller())
     return loop, coordinator, bundle, assignments
 
