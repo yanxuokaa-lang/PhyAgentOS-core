@@ -50,6 +50,23 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.15 (2026-11-22 13:25) - codex
+
+- [eval] [fix] 持瓶搬运中的补偿解超过现有 0.50 rad 上限时，先以原路点为初值重试；再不可用时，只在原路点本身通过同一上限时采用。执行器仍按实测瓶姿检查碰撞和双侧接触。倾倒过程和归位的验收不变。 / During attached transport, retry an out-of-range compensation from the planned seed. If neither correction qualifies, use the original waypoint only within the same 0.50 rad bound. The runtime still checks the measured payload for collisions and bilateral contact. Process and placement acceptance are unchanged.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2563–L2595；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3312–L3343、L3433–L3490。 / Cover alternate-seed retry, qualified nominal continuation, over-limit rejection, and collision rejection before a command.
+
+```diff
+- if not valid:
++ if not valid or (attached_transport and joint_delta(start, goal) > maximum_delta):
+      goal, valid = local_inverse_kinematics(self.tcp, target, planned, ...)
++     if attached_transport and (not valid or joint_delta(start, goal) > maximum_delta):
++         goal, valid = planned, True
+      # The existing joint-delta check still applies.
+```
+
+- [eval] [exp] 指垫对照轮 `out/labutopia-elevated-20261122/v17.8.14-r05-r06-pad-130444` 的 R05 搬运最大相对位移由 9.1 降至 3.5 mm，最大相对旋转由 1.008 降至 0.515 rad；1,967 个采样均有双侧接触。姿态补偿仍需 0.635 rad，未完成倾倒、归位或 R06。 / The pad trial reduced peak relative transport displacement from 9.1 to 3.5 mm and rotation from 1.008 to 0.515 rad with 1,967 bilateral samples. Correction still required 0.635 rad, leaving pour, placement and R06 incomplete.
+- [eval] [exp] 218 项 phase-motion 测试通过。修复后由同配置重新运行，命令、配置和回执目录为 `out/labutopia-elevated-20261122/v17.8.15-r05-r06-continuity-132709`。 / Passed 218 phase-motion tests. The same-configuration replay stores its command, configuration and receipts in that directory.
+
 ## v17.8.14 (2026-11-22 13:05) - codex
 
 ### 双瓶流程实测 / Two-bottle simulation
@@ -170,26 +187,3 @@
 
 ### Git 提交 / Git Commit
 - 实现提交 / Implementation commit `243803f1`，2026-11-22 11:08:52 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.
-
-## v17.8.10 (2026-11-21 21:51) - codex
-
-### 静态烧杯几何与载荷盒关系复核 / Static Beaker Geometry and Payload-Box Relationship Review [完成 / Completed]
-- [eval] [exp] 以保存的R05点云/标定和生产坐标变换重算9个观测表面盒，确认waypoint71命中最低层box0；其局部半尺寸范数上界为50.60mm，失败中心至烧杯mesh世界Z上界相距30.73mm，故局部half不能与世界AABB逐轴直接比较。失败时盒旋转未保存，不能精确重放查询。 / Recompute 9 observed-surface boxes from the saved R05 cloud/calibration using production transforms and confirm waypoint71 hits lowest slab box0. Its local half-extent norm is an upper bound of50.60mm versus a30.73mm vertical gap from the failure center to the beaker mesh world-Z bound, so local half-extents cannot be compared directly to the world AABB. The hit-time box rotation is absent, preventing exact query replay. (local)
-- [eval] [exp] 静态USD显示烧杯1698点/3408面、collision enabled、`convexDecomposition`、scale `[0.0004,0.0005,0.0004]`；PhysX日志另有ScaleOrientation warning。根scene无单位/up-axis元数据、tabletop sublayer为1m/Z-up；静态根stage读取的`.01m`/Y-up是fallback，运行时显式构造传入`stage_units_in_meters=1.0`，但运行时up-axis没有落盘读回。不能据此确认cook错误、物理穿透或坐标根因。 / Static USD shows a1,698-point/3,408-face beaker mesh, collision enabled, `convexDecomposition` and scale `[0.0004,0.0005,0.0004]`; the PhysX log also contains a ScaleOrientation warning. The scene root omits units/up-axis while its tabletop sublayer authors1m/Z-up; `.01m`/Y-up from static root-stage opening is a fallback, and runtime construction explicitly passes `stage_units_in_meters=1.0`, but runtime up-axis was not read back. This does not establish a cooking defect, physical penetration or frame root cause. / (local)
-- [决策边界 / Decision boundary] 维持布局、阈值和运动代码；下一步若继续，只读检查命中时实际cook凸分解与OBB姿态。持瓶关系漂移仍为独立未决问题，未执行仿真、物理步进或机械臂动作。 / Retain placement, thresholds and motion code; if continued, read-only inspect the cooked convex decomposition and OBB pose at the hit. Held-object relation drift remains a separate open issue; no simulation, physics step or arm motion was performed. (local)
-
-### 文件变更详情 / File Changes
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L100-L120：记录生产观测盒复算、失败box0、烧杯mesh/碰撞近似、OBB投影边界、USD静态单位来源及未决项。 / Record the production-box recomputation, failure box0, beaker mesh/collision approximation, OBB projection bound, static USD metadata source and open questions.
-```diff
-- 下一步：静态复核首个process目标与9个观测载荷盒。
-+ 结果：box0的OBB局部半尺寸不能与世界AABB逐轴比较；cook后凸分解及命中姿态仍待只读核对。
-```
-- [docs] [docs] [修改 / Modified] `changelog/2026-11_part3.md` L707-L733：归档静态几何复核、范围受限的OBB投影解释、USD元数据来源、Diff和验证。 / Archive the static geometry review, bounded OBB projection interpretation, USD metadata provenance, diff and validation.
-
-### 验证 / Validation
-- [eval] [chore] 使用本机pxr静态读取保存的scene root、tabletop sublayer和TargetBeaker mesh；Python离线读取点云/calibration/route并按生产变换重算9盒及OBB投影上界。UTF-8回读与`git diff --check`通过；未启动Isaac、未推进仿真、无动作命令。 / Use local pxr to statically inspect the saved scene root, tabletop sublayer and TargetBeaker mesh; offline Python reads the saved cloud/calibration/route and recomputes9 boxes and the OBB projection bound using production transforms. UTF-8 readback and `git diff --check` pass; Isaac was not started, simulation did not advance, and no motion command was issued. (local)
-- [eval] [chore] 受跟踪源码、运动配置、USD部署资产、布局及阈值均未改；仅更新诊断报告与日志。 / Tracked source, motion configuration, USD deployment assets, placement and thresholds are unchanged; only the diagnostic report and logs are updated. (local)
-
-### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
-- 实现提交 / Implementation commit：`4fd42f64207ea2614940a72a5a2c048336e0b3a9`；2026-11-21 22:58:08 Asia/Shanghai，`feature/planning-loop`。 / Implementation commit `4fd42f64207ea2614940a72a5a2c048336e0b3a9` at 2026-11-21 22:58:08 Asia/Shanghai on `feature/planning-loop`.
-- `git push origin feature/planning-loop`成功；22:58:54由`git ls-remote`核验远端完整指针为`4fd42f64207ea2614940a72a5a2c048336e0b3a9`。 / Push succeeded; `git ls-remote` verified the full remote ref at 22:58:54 Asia/Shanghai.

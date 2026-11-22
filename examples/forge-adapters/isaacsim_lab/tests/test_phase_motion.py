@@ -3309,20 +3309,21 @@ def test_pour_failed_current_seed_retries_same_full_pose_with_planned_seed(monke
     assert commands
 
 
-@pytest.mark.parametrize(("stage", "branch_jump"), [("process", False), ("transport", True), ("transport", False)])
-def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, stage, branch_jump):
+@pytest.mark.parametrize(("stage", "distant_attempt"),
+                         [("process", None), ("transport", None), ("transport", 1), ("transport", 2)])
+def test_pour_failed_or_distant_fallback_stops_before_any_command(monkeypatch, stage, distant_attempt):
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
     point = arguments["phase_route"]["steps"][0]
     point["stage"] = stage
-    if stage == "transport" and not branch_jump:
+    if stage == "transport":
         point["joints"][0] = .6
     calls = []
 
     def solve(_forward, target, seed, _limits, _tolerance):
         calls.append((target.copy(), seed.copy()))
         goal = seed.copy()
-        if branch_jump and len(calls) == 2:
-            goal[0] = .6
+        if len(calls) == distant_attempt:
+            goal[0] = .635
             return goal, True
         return goal, False
 
@@ -3429,8 +3430,8 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
                and sample["grasp_valid"] for sample in process_samples)
 
 
-@pytest.mark.parametrize("require_nominal_waypoint", [False, True])
-def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, require_nominal_waypoint):
+@pytest.mark.parametrize("correction", ["nearby", "invalid", "distant"])
+def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, correction):
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
@@ -3438,7 +3439,9 @@ def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, require_
 
     def solve(forward, target, seed, limits, tolerance):
         calls.append(seed.copy())
-        return ((seed.copy(), False) if len(calls) == 1 or require_nominal_waypoint
+        if correction == "distant":
+            return np.array([.635, 0., 0., 0., 0., 0., 0.]), True
+        return ((seed.copy(), False) if len(calls) == 1 or correction == "invalid"
                 else local_inverse_kinematics(forward, target, seed, limits, tolerance))
 
     def collide(joints, _source, _allow_contact, attached, relation, *_args, **_kwargs):
@@ -3455,6 +3458,35 @@ def test_pour_fallback_path_collision_rejects_before_apply(monkeypatch, require_
     assert result["failure_code"] == "route_collision"
     assert "corrected path hits receiver" in artifacts[-1][1]["failure_detail"]
     assert not commands and model.world.steps == 0
+
+
+@pytest.mark.parametrize("second_correction_nearby", [False, True])
+def test_pour_transport_retries_distant_correction_then_uses_nearby_goal(monkeypatch, second_correction_nearby):
+    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
+    route = arguments["phase_route"]
+    transport = route["steps"][0]
+    route["steps"].append(dict(transport, stage="exit"))
+    seeds = []
+    from isaacsim_lab.phase_motion import local_inverse_kinematics
+
+    def solve(forward, target, seed, limits, tolerance):
+        seeds.append(seed.copy())
+        if len(seeds) == 1 or (len(seeds) == 2 and not second_correction_nearby):
+            return np.array([.635, 0., 0., 0., 0., 0., 0.]), True
+        return local_inverse_kinematics(forward, target, seed, limits, tolerance)
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
+    result = model.execute(arguments, Event())
+
+    assert result["operation_completed"] is True
+    assert len(seeds) == 3
+    assert seeds[0] == pytest.approx(np.zeros(7))
+    assert seeds[1] == pytest.approx(transport["joints"])
+    if second_correction_nearby:
+        assert seeds[2] == pytest.approx(commands[-1][:7], abs=.002)
+        assert abs(seeds[2][4]) > .01
+    else:
+        assert seeds[2] == pytest.approx(transport["joints"])
 
 
 def test_grasp_error_is_independent_of_object_coordinate_origin():

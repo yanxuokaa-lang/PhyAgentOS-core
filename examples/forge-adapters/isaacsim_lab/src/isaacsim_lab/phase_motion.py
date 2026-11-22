@@ -2565,16 +2565,18 @@ class IsaacPhaseMotion:
                     planned = goal
                     target_body = self.tcp(planned) @ grasp_relation
                     target = target_body @ np.linalg.inv(relation)
+                    attached_transport = point["attached"] and stage == "transport"
+                    maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                     goal, valid = local_inverse_kinematics(
                         self.tcp, target, start, self.limits, self.config["position_tolerance_m"])
-                    if not valid:
+                    if not valid or (attached_transport and joint_delta(start, goal) > maximum_delta):
                         goal, valid = local_inverse_kinematics(
                             self.tcp, target, planned, self.limits, self.config["position_tolerance_m"])
+                        if attached_transport and (not valid or joint_delta(start, goal) > maximum_delta):
+                            # The command loop checks the nominal waypoint with the measured payload.
+                            goal, valid = planned, True
                         if not valid:
-                            if point["attached"] and stage == "transport":
-                                # The command loop checks the measured payload pose.
-                                goal, valid = planned, True
-                            elif point["attached"] and stage in {"process", "exit"}:
+                            if point["attached"] and stage in {"process", "exit"}:
                                 # The bottle can rotate around its axis while
                                 # still meeting the measured pouring target.
                                 tool = route["target"]["tool_frame"]
@@ -2587,7 +2589,6 @@ class IsaacPhaseMotion:
                             if not valid:
                                 raise PhaseMotionError("inverse_kinematics_failed", "measured pour-pose correction is unreachable")
                         delta = joint_delta(start, goal)
-                        maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
                         if delta > maximum_delta:
                             raise PhaseMotionError(
                                 "ik_discontinuity", f"{stage}: measured pour-pose fallback joint delta "
