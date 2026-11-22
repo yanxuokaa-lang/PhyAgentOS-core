@@ -3164,6 +3164,122 @@ def _pour_correction_execution_fixture(monkeypatch):
     return model, arguments, commands, artifacts
 
 
+@pytest.mark.parametrize("follow", [False, True])
+def test_held_pour_retains_configured_preload_at_phase_entry(monkeypatch, follow):
+    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
+    model._test_positions_ref[7:] = [.018, .019]
+    model.config.update(finger_hold_follow=follow, finger_retain_overshoot_m=.002)
+
+    result = model.execute(arguments, Event())
+
+    assert result["operation_completed"] is True
+    expected = [.016, .017] if follow else [.018, .019]
+    assert len(commands) > 1
+    assert all(command[7:] == pytest.approx(expected) for command in commands)
+
+
+def test_held_place_releases_after_entering_with_preload(monkeypatch):
+    model, arguments, commands, _ = _pour_correction_execution_fixture(monkeypatch)
+    route = arguments["phase_route"]
+    arguments["operation"] = route["operation"] = "place"
+    route["original_return_pose"] = route["start_object_pose"]
+    route["tcp_from_object"] = (np.linalg.inv(model.tcp()) @ model.observed_pose(route["source_path"])).tolist()
+    model._test_positions_ref[7:] = [.018, .019]
+    model.config.update(finger_hold_follow=True, finger_retain_overshoot_m=.002)
+    lower = dict(route["steps"][0], stage="lower", hold_s=.03, joints=np.zeros(7).tolist())
+    route["steps"] = [
+        lower,
+        dict(lower, stage="release", attached=False),
+        dict(lower, stage="retreat", attached=False),
+    ]
+    loaded_frame = model.sensors[0].get_current_frame
+    for sensor in model.sensors:
+        sensor.get_current_frame = lambda: (
+            loaded_frame() if not commands or commands[-1][7] < .035
+            else {"time": model.world.current_time, "contacts": []})
+
+    result = model.execute(arguments, Event())
+
+    assert result["operation_completed"] is True
+    assert commands[0][7:] == pytest.approx([.016, .017])
+    assert commands[-1][7:] == pytest.approx([.04, .04])
+
+
+@pytest.mark.parametrize("drift,reject", [(False, False), (True, False), (True, True)])
+def test_place_qualifies_descent_again_only_after_measured_drift(monkeypatch, drift, reject):
+    model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    route = arguments["phase_route"]
+    arguments["operation"] = route["operation"] = "place"
+    nominal = np.asarray(route["tcp_from_object"])
+    rest = np.asarray(route["original_return_pose"])
+    shifted = pose_matrix([.012, 0., 0.], Rotation.from_euler("y", .24).as_quat()) @ nominal
+    model._test_positions_ref[7:] = [.018, .019]
+    route["start_object_pose"] = rest.tolist()
+    above = [0., 0., model.config["lift_distance_m"], 0., 0., 0., 0.]
+    waypoint = route["steps"][0]
+    route["steps"] = [
+        dict(waypoint, stage="transport", joints=above),
+        dict(waypoint, stage="lower", joints=np.zeros(7).tolist(), allow_contact=True),
+        dict(waypoint, stage="release", joints=np.zeros(7).tolist(), attached=False),
+        dict(waypoint, stage="retreat", joints=above, attached=False),
+    ]
+    saved_route = deepcopy(route)
+    released = None
+
+    def body_pose(_source):
+        relation = shifted if drift and model.world.steps else nominal
+        pose = model.tcp() @ relation
+        return released if released is not None else pose
+
+    model.body_pose = body_pose
+    apply_action = model.robot.apply_action
+
+    def command(action):
+        nonlocal released
+        if action.joint_positions[7] >= .035 and released is None:
+            released = body_pose(route["source_path"])
+        apply_action(action)
+
+    model.robot.apply_action = command
+    loaded_frame = model.sensors[0].get_current_frame
+    model.sensors[0].get_current_frame = lambda: (
+        loaded_frame() if released is None else {"time": model.world.current_time, "contacts": []})
+
+    def solve(_link, position, orientation, **_kwargs):
+        return np.r_[position - [.1, 0., 1.],
+                     Rotation.from_quat(np.roll(orientation, -1)).as_rotvec(), 0.], True
+
+    model.hand_from_tcp = np.eye(4)
+    model.solver = SimpleNamespace(compute_inverse_kinematics=solve)
+    qualification_calls = []
+    original_qualify = model.qualify
+
+    def qualify(waypoints, source, relation, operation, supported_pose, **kwargs):
+        assert supported_pose == pytest.approx(rest)
+        assert relation == pytest.approx(shifted)
+        assert kwargs["initial_joints"] == pytest.approx(above)
+        qualification_calls.append(waypoints)
+        if reject:
+            raise PhaseMotionError("payload_collision", "requalified lower hits the support")
+        return original_qualify(waypoints, source, relation, operation, supported_pose, **kwargs)
+
+    model.qualify = qualify
+    result = model.execute(arguments, Event())
+
+    assert len(qualification_calls) == int(drift)
+    assert route == saved_route
+    if reject:
+        assert result["failure_code"] == "payload_collision"
+        assert result["possession_state"] == "holding"
+        assert all(command[7] < .035 for command in commands)
+        assert {sample["stage"] for sample in artifacts[-1][1]["samples"]} == {"transport"}
+    else:
+        assert result["operation_completed"] is True
+        assert released == pytest.approx(rest)
+        if drift:
+            assert np.asarray(commands[-1][:7]) != pytest.approx(above)
+
+
 def test_pour_failed_current_seed_retries_same_full_pose_with_planned_seed(monkeypatch):
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 

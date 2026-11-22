@@ -704,6 +704,15 @@ def local_tool_inverse_kinematics(forward, target_body, relation, tool, seed, li
     return result.x, bool(np.linalg.norm(error[:3]) <= 10 * position_tolerance and angle <= .02)
 
 
+def place_waypoints(supported_pose, tcp_from_object, config):
+    desired = supported_pose @ np.linalg.inv(tcp_from_object)
+    above = desired.copy()
+    above[2, 3] += config["lift_distance_m"]
+    settle = config["settle_s"]
+    return [(above, 0., "transport"), (desired, settle, "lower"),
+            (desired, settle, "release"), (above, settle, "retreat")]
+
+
 def process_waypoints(operation, parameters, tcp, body, tcp_from_object, target, config):
     """Generate absolute tool-feature poses, preserving the measured attachment."""
     frame = target.get("process_frame", {})
@@ -1358,11 +1367,7 @@ class IsaacPhaseMotion:
             desired = pose_matrix(grasp["position_m"], grasp["orientation_xyzw"])
             approach = np.asarray(target["approach_direction"]["vector"])
         elif operation == "place":
-            desired = np.asarray(original_return) @ np.linalg.inv(tcp_from_object)
-            above = desired.copy()
-            above[2, 3] += self.config["lift_distance_m"]
-            waypoints = [(above, 0., "transport"), (desired, self.config["settle_s"], "lower"),
-                         (desired, self.config["settle_s"], "release"), (above, self.config["settle_s"], "retreat")]
+            waypoints = place_waypoints(np.asarray(original_return), tcp_from_object, self.config)
         else:
             # Receiving-vessel process features were refreshed from the current
             # observation by the Provider, not corrected from simulator truth.
@@ -2451,9 +2456,12 @@ class IsaacPhaseMotion:
         failure_detail = None
         status = "succeeded"
         finger_indices = [self.robot.get_dof_index(name) for name in ("panda_finger_joint1", "panda_finger_joint2")]
-        # Retain an established grip for lift/pour/stir; never squeeze it back to zero.
         finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
             self.robot.get_joint_positions())[finger_indices].copy()
+        if operation in {"pour", "place", "stir"} and self.config.get("finger_hold_follow", False):
+            # Preserve bounded drive preload when a new phase inherits a held object.
+            retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
+            finger_target = np.maximum(finger_target - retain_overshoot, 0.0)
         hold_follow_active = False
         follow_diverged = False
         last_follow_fingers = None
@@ -2516,9 +2524,23 @@ class IsaacPhaseMotion:
         try:
             if "execution_steps" in route and not math.isclose(route["execution_dt_s"], self.dt):
                 raise PhaseMotionPreconditionError("stale_phase_route", "retimed route control period changed")
-            points = self._stir_execution_points(route, tracking_refs) if track_stir else route.get("execution_steps", route["steps"])
-            for point in points:
+            points = (self._stir_execution_points(route, tracking_refs) if track_stir
+                      else iter(route.get("execution_steps", route["steps"])))
+            place_pose_checked = False
+            while (point := next(points, None)) is not None:
                 stage = point["stage"]
+                if operation == "place" and stage == "lower" and not place_pose_checked:
+                    place_pose_checked = True
+                    start = self.joints()
+                    relation = np.linalg.inv(self.tcp(start)) @ self.observed_pose(source)
+                    position_error, rotation_error = grasp_pose_errors(grasp_relation, relation)
+                    if position_error > self.config["position_tolerance_m"] or rotation_error > .02:
+                        # Approach the original support pose with the attachment
+                        # measured at the end of transport.
+                        waypoints = place_waypoints(supported_pose, relation, self.config)
+                        points = iter(self.qualify(waypoints, source, relation, operation, supported_pose,
+                                                   initial_joints=start)["steps"])
+                        continue
                 if stage == "lift" and last_stage != "lift" and not contacts():
                     raise PhaseMotionError("grasp_not_confirmed", "both fingers must contact the selected body before lift")
                 if stage == "lift" and last_stage != "lift":
@@ -2819,7 +2841,7 @@ class IsaacPhaseMotion:
                 recovery["initial_arm"]
                 if recovery is not None
                 else last_goal
-                if (track_stir or operation == "pour") and status == "succeeded"
+                if (track_stir or operation in {"pour", "place"}) and status == "succeeded"
                 else np.asarray(route["steps"][-1]["joints"])
             )
             actual_tcp = self.tcp()

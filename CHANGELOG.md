@@ -50,6 +50,43 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.12 (2026-11-22 12:15) - codex
+
+### 夹爪保压和原位归还 / Grip preload and return to the original slot [完成 / Completed]
+
+- [eval] [fix] 倾倒、放置和搅拌接棒时，对启用保压的配置沿用有界预紧位移，释放时按既有指令开爪。 / For deployments with hold following enabled, apply the configured preload once when entering pour, place, or stir. Release uses the existing opening target. (local)
+- [eval] [fix] 历史 R05 归位在回程积累了 0.240 rad 的夹持旋转偏移，之后下降时撞入桌面包络。新版下降前若发现超出既有运动容差的偏移，使用实测 TCP 和瓶身关系重新验证余下路线，保持原归位姿态，验证失败时不执行下降和释放。 / The historical R05 return accumulated 0.240 rad of attachment rotation before descent hit the table envelope. When the measured relation now differs beyond existing motion tolerances, requalify leveling, descent, release, and retreat to the same original pose. Failed qualification stops before descent and release. (local)
+
+### 文件变更详情 / File Changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L707–L713、L1369–L1370、L2458–L2464、L2527–L2543、L2840–L2846。 / Share placement waypoints with preparation, keep hold preload, and execute the freshly qualified placement suffix using the measured terminal target.
+```diff
+- finger_target = measured_fingers
++ finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)  # opted-in held phases
+- waypoints = [(above, 0., "transport"), ...]  # preparation only
++ waypoints = place_waypoints(original_return, tcp_from_object, self.config)
++ if operation == "place" and stage == "lower" and not place_pose_checked:
++     relation = np.linalg.inv(self.tcp(start)) @ self.observed_pose(source)
++     # If drift exceeds existing tolerances, qualify before issuing commands.
++     waypoints = place_waypoints(supported_pose, relation, self.config)
++     points = iter(self.qualify(waypoints, source, relation, operation,
++                                supported_pose, initial_joints=start)["steps"])
+```
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3167–L3282。 / Covers configured preload, default grip target, opening on release, measured pose correction, the unchanged route without drift, and blocking descent on failed qualification.
+```diff
++ assert all(command[7:] == pytest.approx(expected) for command in commands)
++ assert commands[-1][7:] == pytest.approx([.04, .04])
++ assert len(qualification_calls) == int(drift)
++ assert route == saved_route
++ assert all(command[7] < .035 for command in commands)  # blocked correction
+```
+- [docs] [docs] `.task/current.md` L730–L731、`CHANGELOG.md` L53 及月度归档 L780 起记录安全边界、验证与复现。 / Record ownership, validation and reproduction in the task note, index and monthly archive.
+
+### 验证 / Validation
+
+- [eval] [exp] 211 项 Isaac phase-motion、4 项 elevated USD 和 49 项工作流回归通过。测试覆盖动态重验通过与碰撞失败，实测完整链路以单独的 Isaac 回馈为准。 / Passed 211 Isaac phase-motion, 4 elevated USD and 49 workflow tests. Full physical simulation proof comes from the independent Isaac feedback.
+- [eval] [exp] 仿真专用配置将指爪驱动上限从 20 N 提高到 40 N，预紧位移从 2 mm 提高到 4 mm。R05 与相邻的 R06 已排入同一任务，角度 1.0 rad，各自对准保持至少 2.0 s，共用原有碰撞检查、回馈和归位后再继续的流程。配置、命令、回执和视频路径保存于 `out/labutopia-elevated-20261122/v17.8.12-r05-r06-corrected-122218`，完整运行终态待测。 / The simulation trial uses a 40 N drive cap and 4 mm preload offset in place of 20 N and 2 mm. R05 and its neighbor R06 are ordered in one scene at 1.0 rad for at least 2.0 s of aligned hold each and advance only after return. The run directory holds configuration, command and feedback. The end-to-end result is pending.
+
 ## v17.8.11 (2026-11-22 10:53) - codex
 
 ### 持瓶搬运与倾倒回馈 / Held Transport and Pour Feedback [完成 / Completed]
@@ -151,30 +188,3 @@
 - 实现提交 / Implementation commit：a39b9f3957ce9c1e724b46d83a0edef71ab91289；分支feature/planning-loop。 / Implementation commit a39b9f3957ce9c1e724b46d83a0edef71ab91289 on feature/planning-loop.
 - 推送成功：远端由f964a9b8更新至a39b9f39；2026-11-21 14:08:20 Asia/Shanghai经git ls-remote核验完整指针为a39b9f3957ce9c1e724b46d83a0edef71ab91289。 / Push succeeded from f964a9b8 to a39b9f39; git ls-remote verified the full ref at2026-11-21 14:08:20 Asia/Shanghai.
 - 回执提交 / Receipt commit：90007f61d5e522a6971ecb3a84ba907ca41235f2；推送成功，远端由a39b9f39更新至90007f61，2026-11-21 14:11:59 Asia/Shanghai经git ls-remote核验。 / Receipt commit 90007f61d5e522a6971ecb3a84ba907ca41235f2 was pushed successfully; git ls-remote verified the remote at2026-11-21 14:11:59 Asia/Shanghai.
-
-## v17.8.7 (2026-11-21 12:34) - codex
-
-### v17.8.4 transport无动作诊断 / v17.8.4 Transport No-Motion Diagnosis [完成 / Completed]
-- [eval] [exp] 1653条transport记录含1条重复终态；1652条动作样本精确对应125个路径点，零基waypoint61/样本1651复现首次姿态修正IK失败。位置残差0.578mm通过现行2mm值，角残差0.022648rad超过现行0.02rad。 / The1653 transport records include one duplicated terminal record; all1652 command samples exactly map to125 route points, reconstructing the first measured-pose correction IK failure at zero-based waypoint61/sample1651. Position residual0.578mm meets the existing2mm value, while angular residual0.022648rad exceeds0.02rad. (local)
-- [eval] [exp] transport grasp_valid从样本150（37.718752s）起持续false至末尾；attachment旋转误差从0.080425rad升至0.409201rad，末端物体原点偏移18.659mm，但1653条样本contact_load_valid与contact_manifold_valid均为true。现有Lula在失败目标可求得数值合格且限位内候选，但未做路径碰撞/连续性资格验证。 / Transport grasp_valid remains false from sample150 (37.718752s) through the end; attachment rotation error grows from0.080425rad to0.409201rad, with18.659mm final object-origin offset, while contact_load_valid and contact_manifold_valid remain true across all1653 samples. Existing Lula finds a numerically qualified, in-limit candidate at the failure target, but route collision/continuity qualification remains undone. (local)
-- [决策边界 / Decision boundary] 保留现有底盘位置、高度、物品布局和阈值。建议先只读诊断持瓶关系漂移，再决定是否验证Lula候选；没有把候选或路线资格等同真实执行成功，也未授权动作。 / Retain chassis position, height, tabletop layout and thresholds. Recommend a read-only held-object relation-drift diagnosis before deciding whether to qualify the Lula candidate; neither the candidate nor route qualification is treated as execution success, and no motion is authorized. (local)
-
-### 文件变更详情 / File Changes
-- [docs] [docs] [修改 / Modified] docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md L37-L63：新增transport对齐、IK残差与Lula候选、先发生的持瓶旋转误差漂移、复现命令和决策分支。 / Add transport accounting, IK residuals and Lula candidate, earlier held-object rotation drift, reproduction command and decision branch.
-```diff
-+ failure waypoint 61: local IK rotation residual 0.022648rad > 0.02rad.
-+ Earlier sample 150: grasp_valid becomes false; contact/load flags remain true through sample 1652.
-+ Lula endpoint candidate fits pose/joint limits, but full path and collision checks are unverified.
-+ No motion commands; placement and thresholds unchanged; recommend read-only grip-drift diagnosis first.
-```
-- [docs] [docs] [修改 / Modified] changelog/2026-11_part3.md L612-L647：完成v17.8.7计划，补充失败边界、夹持漂移证据、验证和未决生产选择。 / Complete the v17.8.7 plan with failure boundary, grip-drift evidence, validation and pending production choice.
-- [docs] [fix] CHANGELOG.md L53-L78：最近五版本更新为v17.8.7、v17.8.6、v17.8.5、v17.8.4、v17.8.3；更早版本详情留在月档。 / Update latest five to v17.8.7 through v17.8.3; retain earlier details in the monthly archive.
-
-### 验证 / Validation
-- [eval] [chore] 诊断脚本py_compile与fresh Isaac无动作运行通过；结果为exact_saved_boundary_accounting、失败点61、1652/1652动作样本消费、motion_commands=0、reset joints/time unchanged。 / Diagnostic py_compile and fresh Isaac no-motion run pass; result is exact_saved_boundary_accounting, failure point61, all1652/1652 command samples consumed, motion_commands=0 and unchanged reset joints/time. (local)
-- [eval] [chore] Ridgebase运动源码、配置和部署资产均无差异；git diff --check通过，UTF-8双语文档可正常读取。 / Ridgebase motion source, configuration and deployment assets are unchanged; git diff --check passes and bilingual UTF-8 documents read correctly. (local)
-
-### Git提交与推送 / Git Commit and Push [完成 / Completed]
-- 实现提交aead469a854dcdc29feab4bd12577f2669c17c39与回执提交b06cdc7d9693d00321e70ffb06dbbb0de76835d7均位于feature/planning-loop。 / Implementation commit aead469a854dcdc29feab4bd12577f2669c17c39 and receipt commit b06cdc7d9693d00321e70ffb06dbbb0de76835d7 are on feature/planning-loop.
-- git push origin feature/planning-loop成功；git ls-remote于2026-11-21 13:09:32 Asia/Shanghai核验远端指针为b06cdc7d9693d00321e70ffb06dbbb0de76835d7。 / Push succeeded; git ls-remote verified the remote ref at the stated time.
-- 最终回执提交a92adcdb7166654ecdc5cdee57d188acd4382289亦已推送；远端由b06cdc7d更新，git ls-remote于2026-11-21 13:13:59 Asia/Shanghai核验。 / Final receipt commit a92adcdb7166654ecdc5cdee57d188acd4382289 was also pushed and verified at the stated time.

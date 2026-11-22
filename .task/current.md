@@ -726,3 +726,6 @@ PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/ro
   examples/forge-adapters/isaacsim_lab/tests \
   examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py
 ```
+
+## 2026-11-22 · R05/R06 simulation grip and return (Tier C-Safety)
+Use the existing Isaac simulation deployment profile and ordered pour subtasks. Jaw drive and collision behavior belong to the Isaac Adapter, original-slot release and transition belong to the existing Runtime/coordinator; no public contract changes. Start from a fresh simulation using the same elevated USD, world frame and calibration. Compare measured attachment drift and continuous aligned hold against the prior run, and require placement feedback before crediting either cycle. Keep cancellation, collision and unknown-outcome handling in the existing runtime. Evaluate the stronger profile before considering any change to the placement collision model.
