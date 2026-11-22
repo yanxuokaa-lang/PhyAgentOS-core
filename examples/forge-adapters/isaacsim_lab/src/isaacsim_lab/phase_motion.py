@@ -156,6 +156,14 @@ def held_tool_pose(tcp_from_object, tip_offset, desired_tip, object_rotation):
     return world_from_object @ np.linalg.inv(tcp_from_object)
 
 
+def tool_feature_errors(actual, target, tool):
+    tip, axis = np.asarray(tool["tip_offset_m"]), np.asarray(tool["tip_axis_local"])
+    tip_error = float(np.linalg.norm(actual[:3, 3] + actual[:3, :3] @ tip
+                                    - target[:3, 3] - target[:3, :3] @ tip))
+    axis_error = float(math.acos(np.clip(np.dot(actual[:3, :3] @ axis, target[:3, :3] @ axis), -1., 1.)))
+    return tip_error, axis_error
+
+
 def grasp_pose_errors(reference, current, axial_symmetry=None):
     """Measure slip at the bound grasp anchor, independent of the body origin.
 
@@ -2518,6 +2526,7 @@ class IsaacPhaseMotion:
         last_stage = None
         lift_grip_confirmed = False
         recovery = None
+        terminal_exit_correction = None
         self.world.play()
 
         def contacts():
@@ -2577,7 +2586,30 @@ class IsaacPhaseMotion:
                       else iter(route.get("execution_steps", route["steps"])))
             place_pose_checked = False
             pour_exit_requalified = False
-            while (point := next(points, None)) is not None:
+            terminal_exit_checked = False
+            while True:
+                point = next(points, None)
+                if point is None:
+                    if not pour_exit_requalified or terminal_exit_checked or last_stage != "exit":
+                        break
+                    terminal_exit_checked = True
+                    planned = np.asarray(route["steps"][-1]["joints"])
+                    tool = route["target"]["tool_frame"]
+                    expected = self.tcp(planned) @ np.asarray(route["tcp_from_object"])
+                    observed = self.observed_pose(source)
+                    tip_error, axis_error = tool_feature_errors(observed, expected, tool)
+                    if tip_error <= self.config["position_tolerance_m"] and axis_error <= .02:
+                        break
+                    terminal_exit_correction = {"tip_error_before_m": tip_error,
+                                                "axis_error_before_rad": axis_error}
+                    if not contacts():
+                        raise PhaseMotionError("physical_grasp_lost",
+                                               "fresh bilateral contact required for terminal exit correction")
+                    start = self.joints()
+                    relation = np.linalg.inv(self.tcp(start)) @ observed
+                    goal = self._pour_corrected_joints(start, planned, expected, relation, tool, "exit")
+                    point = {"stage": "exit", "joints": goal, "hold_s": 0.,
+                             "allow_contact": False, "attached": True}
                 stage = point["stage"]
                 if operation == "place" and stage == "lower" and not place_pose_checked:
                     place_pose_checked = True
@@ -2925,13 +2957,12 @@ class IsaacPhaseMotion:
             completed = status == "succeeded" and final_pose_reached
             if track_stir or operation == "pour":
                 tool = route["target"]["tool_frame"]
-                tip, axis = np.asarray(tool["tip_offset_m"]), np.asarray(tool["tip_axis_local"])
                 expected = self.tcp(np.asarray(route["steps"][-1]["joints"])) @ np.asarray(route["tcp_from_object"])
-                tip_error = float(np.linalg.norm(physical_body[:3, 3] + physical_body[:3, :3] @ tip
-                                                - expected[:3, 3] - expected[:3, :3] @ tip))
-                axis_error = float(math.acos(np.clip(np.dot(physical_body[:3, :3] @ axis, expected[:3, :3] @ axis), -1., 1.)))
+                tip_error, axis_error = tool_feature_errors(physical_body, expected, tool)
                 measurements.update(final_tool_tip_error_m=tip_error, final_tool_axis_error_rad=axis_error)
                 completed = completed and tip_error <= self.config["position_tolerance_m"] and axis_error <= .02
+                if terminal_exit_correction is not None:
+                    terminal_exit_correction.update(tip_error_after_m=tip_error, axis_error_after_rad=axis_error)
             if operation == "acquire":
                 completed = completed and carried and lifted
             elif operation in {"pour", "stir"}:
@@ -2950,6 +2981,8 @@ class IsaacPhaseMotion:
                                       "scene_revision": arguments["scene_revision"], "samples": samples,
                                       "measurements": measurements, "status": status, "failure_code": failure,
                                       "failure_detail": failure_detail,
+                                      **({"terminal_exit_correction": terminal_exit_correction}
+                                         if terminal_exit_correction is not None else {}),
                                       "returned_to_safe_pose": safely_recovered,
                                       "observation_ready": safely_recovered})
             return {"status": status if known else "unknown", "outcome_known": known,

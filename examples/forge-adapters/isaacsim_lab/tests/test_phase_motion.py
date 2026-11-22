@@ -3387,7 +3387,10 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
         assert commands
 
 
-@pytest.mark.parametrize("outcome", ["passes", "qualification_collision", "live_collision", "grasp_lost"])
+@pytest.mark.parametrize("outcome", [
+    "passes", "qualification_collision", "live_collision", "grasp_lost",
+    "terminal_corrected", "terminal_collision", "terminal_still_drifted",
+])
 def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome):
     from isaacsim_lab.phase_motion import local_tool_inverse_kinematics
 
@@ -3404,6 +3407,22 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     far = first_joints + np.array([.6, 0., 0., 0., 0., 0., 0.])
     attempts, qualification_points = [], []
     loaded_frame = model.sensors[0].get_current_frame
+    terminal_checks = []
+    terminal_waypoint = None
+    terminal_drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .15).as_quat()) @ relation
+    further_drift = pose_matrix([.006, 0., 0.], Rotation.from_euler("y", .19).as_quat()) @ relation
+    body_pose = model.body_pose
+
+    def observed_pose(source):
+        if terminal_waypoint is not None and np.allclose(model.joints(), terminal_waypoint, atol=1e-9):
+            return model.tcp() @ terminal_drift
+        if outcome == "terminal_still_drifted" and terminal_checks:
+            return model.tcp() @ further_drift
+        if terminal_checks:
+            return model.tcp() @ terminal_drift
+        return body_pose(source)
+
+    model.body_pose = observed_pose
 
     def contact_frame():
         if outcome == "grasp_lost" and attempts:
@@ -3426,27 +3445,43 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     model.solver = SimpleNamespace(compute_inverse_kinematics=lambda _link, position, orientation, **_kwargs: (
         np.r_[position - [.1, 0., 1.], Rotation.from_quat(np.roll(orientation, -1)).as_rotvec(), 0.], True))
     original_qualify = model.qualify
+    original_correct = model._pour_corrected_joints
     qualifying = False
 
     def qualify(waypoints, source, measured, operation, supported_pose, **kwargs):
-        nonlocal qualifying
+        nonlocal qualifying, terminal_waypoint
         assert kwargs["initial_joints"] == pytest.approx(first_joints)
         assert measured == pytest.approx(relation)
         qualification_points.extend(waypoints)
         qualifying = True
         try:
-            return original_qualify(waypoints, source, measured, operation, supported_pose, **kwargs)
+            qualified = original_qualify(waypoints, source, measured, operation, supported_pose, **kwargs)
+            if outcome.startswith("terminal_"):
+                terminal_waypoint = np.asarray(qualified["steps"][-1]["joints"])
+            return qualified
         finally:
             qualifying = False
 
+    def correct(start, planned, target, measured, tool, stage):
+        if terminal_waypoint is not None:
+            assert start == pytest.approx(terminal_waypoint)
+            assert measured == pytest.approx(terminal_drift)
+            assert target == pytest.approx(model.tcp(original_steps[-1]["joints"]) @ nominal)
+            terminal_checks.append(len(commands))
+        return original_correct(start, planned, target, measured, tool, stage)
+
     def collide(joints, _source, _allow_contact, attached, measured, *_args, **_kwargs):
         assert attached
-        assert measured == pytest.approx(relation)
+        if not outcome.startswith("terminal_"):
+            assert measured == pytest.approx(relation)
+        if outcome == "terminal_collision" and terminal_checks:
+            raise PhaseMotionError("payload_collision", "terminal correction hits receiver")
         if ((qualifying and outcome == "qualification_collision")
                 or (not qualifying and qualification_points and outcome == "live_collision")):
             raise PhaseMotionError("payload_collision", "exit hits receiver")
 
     model.qualify = qualify
+    model._pour_corrected_joints = correct
     model._collisions = collide
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", distant_full_pose)
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics", tool_solver)
@@ -3467,11 +3502,32 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         assert (hold, stage) == (point["hold_s"], "exit")
     readiness, = [artifact for kind, artifact in artifacts if kind == "readiness"]
     assert readiness["trigger_code"] == "ik_discontinuity"
-    if outcome == "passes":
+    feedback = artifacts[-1][1]
+    if outcome.startswith("terminal_"):
+        correction = feedback["terminal_exit_correction"]
+        assert correction["axis_error_before_rad"] == pytest.approx(.15)
+        assert correction["tip_error_before_m"] > 0.
+        assert correction["axis_error_after_rad"] == result["measurements"]["final_tool_axis_error_rad"]
+        assert correction["tip_error_after_m"] == result["measurements"]["final_tool_tip_error_m"]
+    else:
+        assert "terminal_exit_correction" not in feedback
+    if outcome in {"passes", "terminal_corrected"}:
         assert readiness["qualification"] == "passed"
         assert result["operation_completed"] is True
         assert result["measurements"]["final_tool_tip_error_m"] <= .002
         assert result["measurements"]["final_tool_axis_error_rad"] <= .02
+        assert len(terminal_checks) == int(outcome == "terminal_corrected")
+    elif outcome in {"terminal_collision", "terminal_still_drifted"}:
+        assert len(terminal_checks) == 1
+        assert result["operation_completed"] is False
+        assert result["possession_state"] == "holding"
+        if outcome == "terminal_collision":
+            assert result["failure_code"] == "payload_collision"
+            assert len(commands) == terminal_checks[0] + 1  # Existing terminal hold only.
+            assert commands[-1][:7] == pytest.approx(terminal_waypoint)
+        else:
+            assert result["failure_code"] == "measured_postcondition_failed"
+            assert result["measurements"]["final_tool_axis_error_rad"] > .02
     else:
         assert readiness["qualification"] == ("rejected" if outcome == "qualification_collision" else "passed")
         assert result["failure_code"] == "payload_collision"

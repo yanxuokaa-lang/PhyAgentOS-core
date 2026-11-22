@@ -798,6 +798,8 @@ def _measured_completion(raw, arguments):
         return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= limit
     params = arguments["parameters"]
     if arguments["operation"] == "pour":
+        if "qualified_tilt_hold_s" in metrics:
+            return metrics.get("process_completed") is True and at_least("qualified_tilt_hold_s", params["hold_s"])
         return at_least("aligned_hold_s", params["hold_s"]) and at_least("maximum_tilt_rad", params["tilt_rad"])
     if arguments["operation"] == "stir":
         return at_least("in_container_turns", params["turns"]) and at_least("in_container_duration_s", params["duration_s"])

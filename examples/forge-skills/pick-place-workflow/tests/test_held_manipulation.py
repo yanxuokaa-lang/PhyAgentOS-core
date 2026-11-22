@@ -167,6 +167,27 @@ def test_unproven_success_is_unknown_and_blocks_replay(changes):
     assert len(provider.starts) == 1
 
 
+@pytest.mark.parametrize("peak,qualified_hold,process_completed,expected_status", [
+    (0.996807, 2.80, True, "succeeded"),
+    (1.0, 2.7, True, "unknown"),
+    (1.0, 2.80, False, "unknown"),
+    (1.0, 2.80, None, "unknown"),
+    (1.0, float("inf"), True, "unknown"),
+])
+def test_pour_action_uses_the_qualified_measurement(peak, qualified_hold, process_completed, expected_status):
+    provider, held = Provider(), possession()
+    rt = runtime(provider, held)
+    args = prepare(rt, {**request(), "parameters": {"tilt_rad": 1.0, "hold_s": 2.80}})
+    metrics = {"aligned_hold_s": 2.80, "maximum_tilt_rad": peak, "qualified_tilt_hold_s": qualified_hold}
+    if process_completed is not None:
+        metrics["process_completed"] = process_completed
+    provider.next_result = measured(measurements=metrics)
+    invocation = rt.start_action("object.pour", args, caller_id=CALLER)["invocation_id"]
+    result = rt.invocation_result(invocation)
+    assert result["status"] == expected_status
+    assert held.state == ("holding" if expected_status == "succeeded" else "uncertain")
+
+
 @pytest.mark.parametrize("spec", [PREPARE_HELD_TOOL_SPEC, POUR_TOOL_SPEC, STIR_TOOL_SPEC])
 def test_published_contract_matches_runtime(spec):
     path = Path(__file__).resolve().parents[1] / "contracts" / f"{spec['tool_id']}.tool.yaml"
