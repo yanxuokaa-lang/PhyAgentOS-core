@@ -67,6 +67,10 @@
 - [eval] [exp] 指垫对照轮 `out/labutopia-elevated-20261122/v17.8.14-r05-r06-pad-130444` 的 R05 搬运最大相对位移由 9.1 降至 3.5 mm，最大相对旋转由 1.008 降至 0.515 rad；1,967 个采样均有双侧接触。姿态补偿仍需 0.635 rad，未完成倾倒、归位或 R06。 / The pad trial reduced peak relative transport displacement from 9.1 to 3.5 mm and rotation from 1.008 to 0.515 rad with 1,967 bilateral samples. Correction still required 0.635 rad, leaving pour, placement and R06 incomplete.
 - [eval] [exp] 218 项 phase-motion 测试通过。修复后由同配置重新运行，命令、配置和回执目录为 `out/labutopia-elevated-20261122/v17.8.15-r05-r06-continuity-132709`。 / Passed 218 phase-motion tests. The same-configuration replay stores its command, configuration and receipts in that directory.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `3ebacfef`，2026-11-22 13:28:02 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.8.14 (2026-11-22 13:05) - codex
 
 ### 双瓶流程实测 / Two-bottle simulation
