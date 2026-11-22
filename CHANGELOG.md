@@ -81,10 +81,10 @@
 
 ### 验证 / Validation
 - [eval] [exp] IsaacSim phase-motion / elevated USD 回归 209 项通过，工作流 cycle protocol / feedback adapter / held manipulation 回归 49 项通过。 / 209 IsaacSim phase-motion and elevated USD tests plus 49 workflow tests passed. 旧样本 1651 到计划点 61 的最大关节差为 0.3920 rad，低于现有 0.5 rad 上限。 / The largest joint delta from historical sample 1651 to planned waypoint 61 was 0.3920 rad, within the existing 0.5 rad limit.
-- [eval] [exp] 仿真 / Simulation: `out/labutopia-elevated-20261122/v17.8.11-full-run`。
+- [eval] [exp] LabUtopia R05→BEAKER 仿真（`out/labutopia-elevated-20261122/v17.8.11-full-run`）抓取与倾倒成功，实测峰值 1.0068 rad，连续对准保持 2.8333 s，4073 条倾倒回馈均有双侧接触，最大相对旋转偏差 0.5184 rad。未测量液体转移。放回在 lower 阶段以 `payload_collision` 拒绝，瓶身包络与桌面重叠，仍有双侧接触，整任务失败。 / The R05→BEAKER simulation completed acquisition and pour with 1.0068 rad peak tilt, 2.8333 s of continuous aligned hold, bilateral contact in all 4,073 pour samples and 0.5184 rad maximum attachment rotation error. Liquid transfer was unmeasured. Placement stopped during lowering on a payload-envelope overlap with the table while bilateral contact persisted. The overall task failed.
 
 ### Git 提交 / Git Commit
-- 分支 / Branch `feature/planning-loop`。
+- 实现提交 / Implementation commit `243803f1`，2026-11-22 11:08:52 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.
 
 ## v17.8.10 (2026-11-21 21:51) - codex
 
