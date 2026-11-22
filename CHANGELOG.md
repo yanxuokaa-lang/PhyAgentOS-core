@@ -50,6 +50,21 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.8.14 (2026-11-22 13:05) - codex
+
+### 双瓶流程实测 / Two-bottle simulation
+
+- [eval] [exp] 40 N 驱动上限、2 mm 预紧下，R05 抬升时瓶身相对夹爪的峰值位移从历史轮的 9.5 mm 降到 3.5 mm。但向烧杯搬运期间仍累计约 1.008 rad 相对转动，2,058 个采样均维持双侧接触。修正姿态需要 0.822 rad 关节变化，超过 0.500 rad 上限；峰值瓶身倾角 0.764 rad，合格保持 0 秒。未进入原位放回或 R06。 / At a 40 N drive cap and 2 mm preload, R05 peak relative travel during lift fell from 9.5 mm in the earlier run to 3.5 mm. During transport, relative rotation reached 1.008 rad despite 2,058 bilateral samples. Pose correction required a 0.822 rad joint change, exceeding the 0.500 rad limit. Peak tilt was 0.764 rad with zero aligned hold. Neither return nor R06 was reached.
+- [eval] [exp] 终态和影片见 `out/labutopia-elevated-20261122/v17.8.13-r05-r06-124313` 的 `acceptance.json`、`artifacts/labutopia/phase-feedback/6eba1492b59c4213a497a3ddbc20f96f.json` 和 `artifacts/labutopia/phase-video/8aeeba8020fa410b88af1768936ae874.mp4`。 / See these files for the terminal receipt, detailed feedback, and video.
+- [eval] [exp] 指垫对照轮启动于 `out/labutopia-elevated-20261122/v17.8.14-r05-r06-pad-130444`，`labutopia-ridgebase-physics.json` L2–L11 记录唯一物理参数差异。沿用双瓶顺序、夹爪驱动上限、预紧、碰撞和关节连续性检查。 / The pad comparison run uses the same two-bottle order, drive cap, preload, collision checks, and joint continuity limit. Its simulation physics file records the parameter change.
+
+```diff
+- "static_friction": 0.8,
+- "dynamic_friction": 0.6,
++ "static_friction": 2.0,
++ "dynamic_friction": 1.5,
+```
+
 ## v17.8.13 (2026-11-22 12:41) - codex
 
 ### 瓶口与瓶轴求解 / Bottle tip and axis IK [完成 / Completed]
@@ -174,24 +189,3 @@
 ### Git提交与推送回执 / Git Commit and Push Receipt [完成 / Completed]
 - 实现提交 / Implementation commit：`4fd42f64207ea2614940a72a5a2c048336e0b3a9`；2026-11-21 22:58:08 Asia/Shanghai，`feature/planning-loop`。 / Implementation commit `4fd42f64207ea2614940a72a5a2c048336e0b3a9` at 2026-11-21 22:58:08 Asia/Shanghai on `feature/planning-loop`.
 - `git push origin feature/planning-loop`成功；22:58:54由`git ls-remote`核验远端完整指针为`4fd42f64207ea2614940a72a5a2c048336e0b3a9`。 / Push succeeded; `git ls-remote` verified the full remote ref at 22:58:54 Asia/Shanghai.
-
-## v17.8.9 (2026-11-21 14:19) - codex
-
-### 失败边界Lula路线后缀无动作资格复核 / No-Motion Lula Route-Suffix Qualification at the Failure Boundary [完成 / Completed]
-- [eval] [exp] 使用sample 1651的实测TCP/object关系检查zero-based waypoint 61至124共64点后缀。与readiness的scene revision/calibration匹配的R05点云有1,214个有限点，生产变换生成9个观测表面载荷盒；首个process目标waypoint 71的插值因载荷盒与烧杯mesh重叠而拒绝。 / Qualify the 64-waypoint suffix from zero-based waypoint 61 through 124 using the measured TCP/object relation at sample 1651. The R05 cloud matching readiness scene revision/calibration has 1,214 finite points and yields 9 observed-surface payload boxes with the production transform; interpolation toward the first process target, waypoint 71, is rejected on overlap with the beaker mesh. (local)
-- [eval] [exp] 拒绝前完成9,992次overlap查询，local-IK fallback为0；64点后缀未全部检查，不能据此断言整段路线失败或发生物理穿透。`simulation_steps`和`motion_commands`均为0，reset关节/时间不变。 / The run completes 9,992 overlap queries with 0 local-IK fallbacks before rejection. The 64-point suffix is incomplete, so this does not establish whole-route failure or physical interpenetration. `simulation_steps` and `motion_commands` are 0; reset joints/time are unchanged. (local)
-- [决策边界 / Decision boundary] 保留机座布局与阈值；下一步只读复核首个process姿态、烧杯碰撞几何及观测表面载荷盒。持瓶关系漂移仍未解决，本检查不授权动作。 / Preserve placement and thresholds. Next, review the first process pose, beaker collision geometry and observed-surface payload boxes. Held-object relation drift remains unresolved; this check does not authorize motion. (local)
-
-### 文件变更详情 / File Changes
-- [docs] [docs] [修改 / Modified] `docs/forge/LABUTOPIA_RIDGEBASE_ELEVATED_20261119.md` L79-L102：新增点云/坐标绑定、payload collision拒绝、检查中止范围、无动作读回和下一决策。 / Add cloud/frame binding, payload-collision rejection, stop boundary, no-motion readbacks and next decision.
-- 关键Diff / Key diff：原计划“检查64点路线后缀” → 实际“waypoint71首个process插值触发payload_collision，后续点未检查”。 / Key change: planned 64-point suffix check → actual `payload_collision` at interpolation toward waypoint71; later points remain unchecked.
-- [docs] [chore] `out/labutopia-elevated-20261120/v17.8.4-transport-diagnostic-20261121/qualify-lula-route-suffix.py` L83-L114：验证point-cloud、calibration与geometry sidecar的scene/frame/entity引用，将R05点云复制至隔离artifact store，并用生产坐标变换与route关系绑定观测载荷几何；脚本和JSON保留本地，不纳入Git。 / Validate point-cloud, calibration and geometry-sidecar identities, copy R05 to an isolated artifact store, and bind observed payload geometry using the production transform and route relation; keep the script and JSON local and outside Git. (local)
-- [docs] [chore] `changelog/2026-11_part3.md` L673-L705：记录本版本计划、结果、报告/脚本行号、验证及实现/回执提交和推送核验。 / Record this version's plan, result, report/script line references, validation, implementation/receipt commits and push verification.
-```diff
-- route suffix qualification pending
-+ payload_collision at process waypoint71; remaining suffix unchecked
-```
-
-### 验证 / Validation
-- [eval] [chore] 诊断脚本`py_compile`及已保存JSON字段断言通过；JSON记录`route_suffix_rejected`、`payload_collision`、9,992次查询、0次local-IK fallback、后缀未完成、0步进/0运动命令及reset关节/时间不变。此前的LabUtopia无动作运行已记录于JSON，本次收尾未重启仿真。 / Script byte-compilation and assertions against the saved JSON pass. The JSON records `route_suffix_rejected`, `payload_collision`, 9,992 queries, 0 local-IK fallbacks, an incomplete suffix, 0 simulation steps/commands and unchanged reset joints/time. The earlier no-motion LabUtopia run is recorded there; simulation was not restarted for this closeout. (local)
-- [eval] [chore] 三份文档UTF-8回读、最近五版本核对与`git diff --check`通过；生产源码、配置、布局和阈值未改。 / UTF-8 readback of all three documents, latest-five verification and `git diff --check` pass; production source, configuration, placement and thresholds are unchanged. (local)
