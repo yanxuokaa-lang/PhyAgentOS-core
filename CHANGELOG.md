@@ -71,6 +71,10 @@
 ```
 - [eval] [exp] 214 项 Isaac motion 测试通过。以 40 N 驱动上限、2 mm 保压位移进行下一轮同场景双瓶仿真，配置、复现命令和反馈目录为 `out/labutopia-elevated-20261122/v17.8.13-r05-r06-124313`。 / 214 Isaac motion tests passed. The next same-scene two-bottle run uses a 40 N drive cap and 2 mm preload offset. Its directory records configuration, replay command and feedback.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `a5a9835b`，2026-11-22 12:44:11 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.8.12 (2026-11-22 12:15) - codex
 
 ### 夹爪保压和原位归还 / Grip preload and return to the original slot [完成 / Completed]
