@@ -71,6 +71,10 @@
 
 - [eval] [exp] 311 项阶段运动、宿主和操作回归通过。修复后启动同场景双瓶复跑，目录 `out/labutopia-elevated-20261122/v17.9.4-r03-r05-agent-controller-165606`，保留命令、实施补丁和回执。 / Passed 311 motion, host and manipulation tests. The listed single-scene two-bottle replay preserves its command, implementation patch and receipts.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `6b6ce702`，2026-11-22 16:58:13 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.9.3 (2026-11-22 16:19) - codex
 
 - [eval] [fix] 所有实测倾倒修正解先检查关节连续性。若撤离修正解均不可用，确认双侧接触后，从实测关节与瓶姿重新验证剩余撤离路线一次。保留 R03/R05 通用的碰撞、连续性、夹持与终点检查。 / Check continuity for every measured pour correction. If no exit correction qualifies, verify bilateral contact and requalify the remaining exit once from measured joints and bottle pose. Preserve collision, continuity, contact, and end-pose checks. (local)
