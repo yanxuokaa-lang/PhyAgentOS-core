@@ -50,6 +50,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.1 (2026-11-22 14:25) - codex
+
+- [eval] [exp] R05 的 Isaac 抓取、倾倒和归位均成功。倾倒峰值 1.0103 rad，对准连续保持 2.85 s。倾倒阶段滑移最大 2.65 mm，610/610 采样双侧接触。松夹后撤后归位误差 0.736 mm、0.00275 rad。 / R05 passed acquisition, pour and placement. Peak tilt was 1.0103 rad, continuous aligned hold 2.85 s, and peak slip during the tilt phase 2.65 mm with bilateral contact in all 610 samples. After release and retreat, return errors were 0.736 mm and 0.00275 rad.
+- [eval] [exp] 原双瓶任务在 R05 归位后继续准备 R06。28 个通过几何筛选的候选因场景观测过期而被拒绝，未启动 R06 运动。终态回执、抓取漏斗和三段可播放录像保存在 `out/labutopia-elevated-20261122/v17.8.16-r05-r06-qualified-135042`。 / The original two-bottle task advanced to R06 planning after R05 returned. Its 28 geometry-qualified candidates were rejected because their scene observation was stale, before R06 motion. The run directory contains the terminal receipt, qualification funnel, and three playable videos.
+- [eval] [exp] 已启动同一 Isaac 场景内的顺序复跑，由两个独立任务在各自启动时取像，见 `out/labutopia-elevated-20261122/v17.9.0-r05-r06-fresh-142453`。 / Started a sequential replay in one Isaac scene with separate, freshly observed tasks. The replay directory contains the launcher and run output.
+
+- [docs] [docs] `CHANGELOG.md` L53–L61；`changelog/2026-11_part3.md` L905–L913。本次只追加仿真证据。 / Added simulation evidence only.
+
 ## v17.9.0 (2026-11-22 13:48) - codex
 
 - [eval] [fix] R05 搬运第 67 个零基路点实测需 0.635 rad 才能切回原路径，相邻原路点的最大关节位移只有 0.054 rad。持瓶搬运现在始终沿已验证的关节路点，每步仍从实测关节检查限制，按实测瓶姿检查碰撞和双侧接触。倾倒与撤离仍根据实测瓶姿求解。 / At zero-based transport waypoint 67, R05 needed 0.635 rad to return to the qualified route, while neighboring route points were only 0.054 rad apart. Attached transport now follows the qualified waypoints throughout, with live joint continuity, payload collision and bilateral contact checks. Process and exit continue to solve from measured bottle pose.
@@ -133,44 +141,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `a5a9835b`，2026-11-22 12:44:11 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
-## v17.8.12 (2026-11-22 12:15) - codex
-
-### 夹爪保压和原位归还 / Grip preload and return to the original slot [完成 / Completed]
-
-- [eval] [fix] 倾倒、放置和搅拌接棒时，对启用保压的配置沿用有界预紧位移，释放时按既有指令开爪。 / For deployments with hold following enabled, apply the configured preload once when entering pour, place, or stir. Release uses the existing opening target. (local)
-- [eval] [fix] 历史 R05 归位在回程积累了 0.240 rad 的夹持旋转偏移，之后下降时撞入桌面包络。新版下降前若发现超出既有运动容差的偏移，使用实测 TCP 和瓶身关系重新验证余下路线，保持原归位姿态，验证失败时不执行下降和释放。 / The historical R05 return accumulated 0.240 rad of attachment rotation before descent hit the table envelope. When the measured relation now differs beyond existing motion tolerances, requalify leveling, descent, release, and retreat to the same original pose. Failed qualification stops before descent and release. (local)
-
-### 文件变更详情 / File Changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L707–L713、L1369–L1370、L2458–L2464、L2527–L2543、L2840–L2846。 / Share placement waypoints with preparation, keep hold preload, and execute the freshly qualified placement suffix using the measured terminal target.
-```diff
-- finger_target = measured_fingers
-+ finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)  # opted-in held phases
-- waypoints = [(above, 0., "transport"), ...]  # preparation only
-+ waypoints = place_waypoints(original_return, tcp_from_object, self.config)
-+ if operation == "place" and stage == "lower" and not place_pose_checked:
-+     relation = np.linalg.inv(self.tcp(start)) @ self.observed_pose(source)
-+     # If drift exceeds existing tolerances, qualify before issuing commands.
-+     waypoints = place_waypoints(supported_pose, relation, self.config)
-+     points = iter(self.qualify(waypoints, source, relation, operation,
-+                                supported_pose, initial_joints=start)["steps"])
-```
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3167–L3282。 / Covers configured preload, default grip target, opening on release, measured pose correction, the unchanged route without drift, and blocking descent on failed qualification.
-```diff
-+ assert all(command[7:] == pytest.approx(expected) for command in commands)
-+ assert commands[-1][7:] == pytest.approx([.04, .04])
-+ assert len(qualification_calls) == int(drift)
-+ assert route == saved_route
-+ assert all(command[7] < .035 for command in commands)  # blocked correction
-```
-- [docs] [docs] `.task/current.md` L730–L731、`CHANGELOG.md` L53 及月度归档 L780 起记录安全边界、验证与复现。 / Record ownership, validation and reproduction in the task note, index and monthly archive.
-
-### 验证 / Validation
-
-- [eval] [exp] 211 项 Isaac phase-motion、4 项 elevated USD 和 49 项工作流回归通过。测试覆盖动态重验通过与碰撞失败，实测完整链路以单独的 Isaac 回馈为准。 / Passed 211 Isaac phase-motion, 4 elevated USD and 49 workflow tests. Full physical simulation proof comes from the independent Isaac feedback.
-- [eval] [exp] 仿真专用配置将指爪驱动上限从 20 N 提高到 40 N，预紧位移从 2 mm 提高到 4 mm。R05 与相邻的 R06 已排入同一任务，角度 1.0 rad，各自对准保持至少 2.0 s，共用原有碰撞检查、回馈和归位后再继续的流程。配置、命令、回执和视频路径保存于 `out/labutopia-elevated-20261122/v17.8.12-r05-r06-corrected-122218`，完整运行在 R05 搬运时丢失双侧接触，未进入归位或开始 R06。仅调高驱动上限和预紧量的对照轮保持 2052 帧双侧接触，但未求得倾倒姿态。 / The simulation trial uses a 40 N drive cap and 4 mm preload offset in place of 20 N and 2 mm. R05 and its neighbor R06 are ordered in one scene at 1.0 rad for at least 2.0 s of aligned hold each and advance only after return. The run directory holds configuration, command and feedback. The corrected run lost bilateral contact during R05 transport, before placement or R06. The comparison run preserved 2,052 bilateral samples but could not solve the pour pose.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `f4c08ec6`，2026-11-22 12:27:24 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送并核对远端引用。 / Pushed and verified against the remote ref.
