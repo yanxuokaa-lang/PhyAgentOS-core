@@ -65,6 +65,10 @@
 
 - [eval] [exp] 213 项 phase-motion 回归通过。前一轮失败回执见 `out/labutopia-elevated-20261122/v17.8.15-r05-r06-continuity-132709/acceptance.json`；本轮沿用相同夹爪参数，输出保存于 `out/labutopia-elevated-20261122/v17.8.16-r05-r06-qualified-135042`。 / Passed 213 phase-motion regressions. The previous run directory contains the failure receipt. The replay uses the same gripper settings and stores outputs in the new run directory.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `f36095fb`，2026-11-22 13:52:29 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
+
 ## v17.8.15 (2026-11-22 13:25) - codex
 
 - [eval] [fix] 持瓶搬运中的补偿解超过现有 0.50 rad 上限时，先以原路点为初值重试；再不可用时，只在原路点本身通过同一上限时采用。执行器仍按实测瓶姿检查碰撞和双侧接触。倾倒过程和归位的验收不变。 / During attached transport, retry an out-of-range compensation from the planned seed. If neither correction qualifies, use the original waypoint only within the same 0.50 rad bound. The runtime still checks the measured payload for collisions and bilateral contact. Process and placement acceptance are unchanged.
