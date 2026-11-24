@@ -50,7 +50,7 @@ class ObservedQueryPort:
 class LabSemanticPlanBuilder(AsyncQuerySemanticPlanBuilder):
     required_tool_contracts = (
         *AsyncQuerySemanticPlanBuilder.required_tool_contracts,
-        ("scene.observe", "query"),
+        *((tool_id, "query") for tool_id in PerceptionBindingAdapter._QUERY_SPECS),
     )
 
 
@@ -121,6 +121,7 @@ Each subtask includes physical acquire, process and return; do not invent object
 Use semantic_intent with allowed_arms=[franka], coordination_mode=single_arm, a goal and success_criteria.
 Set verification mode=off: physical Runtime measurements decide process completion; no model chemistry verdict.
 {handoff}
+After a scene-changing success or a known empty recovery with the object supported, preserve completed obligations. Before preparing new candidates or selecting an Action, use a current scene.observe result and fresh understanding, grasp, and capability evidence bound to that observation.
 Respect failed or uncertain outcomes. Never substitute raw or excluded grasps for the qualified predecessor references.
 Report only measured no-liquid manipulation, never transferred volume or chemical mixing quality.
 """

@@ -50,6 +50,24 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.8 (2026-11-24 20:55) - codex
+
+- [eval] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` 与宿主测试。预先绑定同运行时已有的语义抓取发现查询，让任务恢复可以在新观测上获取理解、候选与能力回执。补充宿主计划指引，使用当前场景发现证据，保持已完成动作及原有动作准入。 / Enroll existing semantic discovery Queries so a task can collect understanding, candidates and capabilities from a fresh observation. Guide the host to keep settled effects and use current scene evidence before preparing the next bottle. (local)
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L50–L54、L124。登记四个语义发现查询，说明恢复后重新获取当前观测与候选。 / Enroll all four semantic discovery queries and describe the current observation and candidate requirements for recovery.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L62–L63、L178–L182。验证真实运行时查询绑定和计划指引。 / Check real Runtime Query bindings and host guidance.
+
+```diff
+-        ("scene.observe", "query"),
++        *((tool_id, "query") for tool_id in PerceptionBindingAdapter._QUERY_SPECS),
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 12 项宿主测试通过。21:01:49 启动复跑，R05 和 R03 同任务完成及恢复后重抓仍待实测。 / All 12 host tests passed. The 21:01:49 replay is running, with same-task completion and reacquisition still to verify.
+
 ## v17.9.7 (2026-11-24 20:29) - codex
 
 - [eval] [fix] [完成] 修改 `phase_motion.py` 与阶段测试。实测 R05 抬升失败时瓶底回到支撑高度，已无双侧承载但仍报告双侧零载接触；允许仅原地开夹，验证空夹与稳定支撑后沿已验证路径回撤，交接同任务恢复决策。 / In the measured R05 lift failure the bottle was back at support height with zero-load residual contact. Permit opening at the fixed arm pose and verify empty grip and stable support before the qualified reverse path and same-task recovery. (local)
@@ -158,39 +176,3 @@
 
 - 实现提交 / Implementation commit `6b6ce702`，2026-11-22 16:58:13 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
 
-## v17.9.3 (2026-11-22 16:19) - codex
-
-- [eval] [fix] 所有实测倾倒修正解先检查关节连续性。若撤离修正解均不可用，确认双侧接触后，从实测关节与瓶姿重新验证剩余撤离路线一次。保留 R03/R05 通用的碰撞、连续性、夹持与终点检查。 / Check continuity for every measured pour correction. If no exit correction qualifies, verify bilateral contact and requalify the remaining exit once from measured joints and bottle pose. Preserve collision, continuity, contact, and end-pose checks. (local)
-- [eval] [exp] 在同一 Isaac 场景和 Agent 任务中已启动 R03 → R05 首轮。任务 `task_e3ab1057c7384766`，运行配置和回执目录 `out/labutopia-elevated-20261122/v17.9.3-r03-r05-agent-recovery-162058`。 / Started the first R03 → R05 run in one Isaac scene and Agent task. The listed run directory preserves configuration and receipts. (local)
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2252–L2298、L2579–L2643；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3378–L3523。 / Cover continuous exit recovery, qualification collision, live collision and contact loss.
-- [docs] [docs] `.task/current.md` L1–L7，记录层归属及仿真验收条件。 / Record layer ownership and simulation acceptance criteria.
-
-```diff
-- goal, valid = local_inverse_kinematics(..., start, ...)
-- # Check joint delta only for the fallback solution.
-+ goal = self._pour_corrected_joints(start, goal, target_body, relation, tool, stage)
-+ # After rejecting all corrections in exit, requalify the remaining path
-+ # once from measured joints and attachment, only with bilateral contact.
-+ qualified = self._qualify_pour_exit(route, remaining_exit, start, relation,
-+                                     supported_pose, exc, tracking_refs)
-```
-
-- [eval] [exp] 217 项阶段运动测试、138 项恢复/调度/宿主回归通过。首轮启动补丁存于 `implementation.diff`，启动后增加的接触前置检查已独立通过回归。 / Passed 217 motion tests and 138 recovery, controller and host tests. The first run records its startup patch, and the subsequently added contact precheck has separate regression coverage.
-
-### Agent 恢复接线 / Agent recovery wiring
-
-- [eval] [fix] Isaac 宿主注入既有 Agent 恢复规划插件，并在语义建任务时登记 `scene.observe`。Coordinator 根据反馈启动恢复。 / The Isaac host injects the existing Agent recovery planner and enrolls `scene.observe` during semantic task creation. The Coordinator owns recovery.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L13、L50–L56、L177–L184；`examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L2、L11、L125–L184。
-- [eval] [exp] 56 项恢复决策及宿主回归通过。 / Passed 56 recovery and host tests.
-
-```diff
-- semantic_plan_builder=AsyncQuerySemanticPlanBuilder(queries)
-+ semantic_plan_builder=LabSemanticPlanBuilder(queries)  # enrolls scene.observe
-+ planner_plugin=AgentRecoveryDecisions(provider, model, coordinator, ...)
-```
-
-### Git 提交 / Git Commit
-
-- 撤离修复 / Exit implementation `56c5ee27`，2026-11-22 16:27:42 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-- 宿主接线 / Agent host wiring `99f016b0`，2026-11-22 16:36:18 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.

@@ -59,6 +59,8 @@ def test_host_guidance_distinguishes_query_qualification_from_action_handoff():
     assert 'complete route before any controller motion' in executable
     assert 'video artifact references, including a failed phase' in executable
     for guidance in (readonly, executable):
+        assert 'preserve completed obligations' in guidance
+        assert 'fresh understanding, grasp, and capability evidence bound to that observation' in guidance
         assert 'Never substitute raw or excluded grasps' in guidance
 
 
@@ -173,10 +175,11 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
             assert "manipulation.execute_subtask" in contract.planning_policy.capabilities
             with pytest.raises(AgentTaskError, match="not authorized"):
                 await coordinator.enroll_tool_contract(task.task_id, "object.acquire", "action")
-            observation = bindings["scene.observe"]
-            assert observation.semantics == "query"
-            assert observation.planning_policy is not None
-            assert "scene.observe" in observation.planning_policy.capabilities
+            for tool_id in ("scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities"):
+                query_binding = bindings[tool_id]
+                assert query_binding.semantics == "query"
+                assert query_binding.planning_policy is not None
+                assert tool_id in query_binding.planning_policy.capabilities
             resolver = coordinator.binding_resolver
             resolver.runtime_registry.replace(replace(resolver.runtime_registry.current(), runtime_instance_id="replacement"))
             with pytest.raises(AgentTaskError, match="binding"):
