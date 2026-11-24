@@ -2543,6 +2543,9 @@ class IsaacPhaseMotion:
         def in_support_band(pose):
             return support_contact_allowed("lift", pose, original, tolerance)
 
+        def seated_on_support(pose):
+            return in_support_band(pose) and abs(pose[2, 3] - original[2, 3]) <= .0005
+
         def safe_to_open(pose):
             return contact_window.current_unloaded(require_clear=True, whole_interval=False) or (
                 failure == "physical_grasp_lost" and in_support_band(pose) and contact_window.current_unloaded()
@@ -2555,10 +2558,12 @@ class IsaacPhaseMotion:
                 return None
             evidence = support_reader(contact_window.start)
             if (evidence is None
-                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)
-                    or evidence["upward_force_n"] < .9 * evidence["weight_n"]):
+                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)):
                 return None
             return evidence
+
+        def support_bears_weight(evidence, minimum_fraction=.9):
+            return evidence is not None and evidence["upward_force_n"] >= minimum_fraction * evidence["weight_n"]
 
         controller = self.robot.get_articulation_controller()
 
@@ -2629,7 +2634,8 @@ class IsaacPhaseMotion:
                     can_open = True
                     break
             else:
-                if settle_steps and evidence is not None and contact_window.has_unilateral_load():
+                if (settle_steps and seated_on_support(physical_body) and support_bears_weight(evidence)
+                        and contact_window.has_unilateral_load()):
                     require_supported_opening = can_open = True
         if not can_open:
             raise PhaseMotionError(
@@ -2652,28 +2658,38 @@ class IsaacPhaseMotion:
             )
             if require_supported_opening:
                 supported, _, _ = measure_support(physical_body)
-                if (held or not supported or not in_support_band(physical_body) or evidence is None
+                unloaded = safe_to_open(physical_body)
+                # During partial release the seated bottle can share load with one finger.
+                shared_support = not unloaded and contact_window.has_unilateral_load()
+                if (held or not supported or not seated_on_support(physical_body)
                         or not contact_window.has_current_feedback(after=contact_window.start)
-                        or not (safe_to_open(physical_body) or contact_window.has_unilateral_load())):
+                        or not (unloaded or shared_support)
+                        or not support_bears_weight(evidence, .75 if shared_support else .9)):
                     raise PhaseMotionError(
                         "acquire_recovery_support_lost",
                         "opening requires the bottle to remain stable on the measured support",
                     )
 
-        def verify_empty(stage):
-            held, physical_body = record(stage)
+        def verify_empty(stage, *, require_support_load=False):
+            evidence = read_support() if require_support_load else None
+            held, physical_body = record(stage, support_evidence=evidence)
             supported, position_error, rotation_error = measure_support(physical_body)
             open_gripper = np.min(np.asarray(self.robot.get_joint_positions())[finger_indices]) >= .035
             if (held or not supported or not open_gripper
                     or not support_contact_allowed("lift", physical_body, original, tolerance)
-                    or not contact_window.current_unloaded(require_clear=True)):
+                    or not contact_window.current_unloaded(require_clear=True)
+                    or (require_support_load and not (
+                        seated_on_support(physical_body)
+                        and contact_window.has_current_feedback(after=contact_window.start)
+                        and support_bears_weight(evidence)
+                    ))):
                 raise PhaseMotionError(
                     "acquire_recovery_postcondition_failed",
                     f"{stage} requires an open, clear gripper and a stable supported object",
                 )
             return position_error, rotation_error
 
-        verify_empty("recovery_open_check")
+        verify_empty("recovery_open_check", require_support_load=require_supported_opening)
 
         current = self.joints()
         for point in reversed(executed_path):

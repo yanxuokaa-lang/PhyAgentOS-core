@@ -2614,7 +2614,9 @@ def test_acquire_support_reader_measures_only_enabled_external_support_colliders
 
 
 @pytest.mark.parametrize("case", [
-    "supported", "zero", "grazing", "stale", "moving", "bilateral", "support_lost", "stale_open_finger",
+    "supported", "shared_support", "zero", "grazing", "stale", "moving", "bilateral",
+    "support_lost", "grazing_during_open", "above_seat", "low_force_clear", "low_force_open_check",
+    "stale_open_finger",
 ])
 def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkeypatch, case):
     model, arguments, commands, artifacts = execution_fixture(monkeypatch)
@@ -2623,6 +2625,16 @@ def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkey
     model.tcp = lambda *_: pose_matrix([.1 + positions[0], 0., 1.], [0., 0., 0., 1.])
     stopped_fingers = None
     apply_action = model.robot.apply_action
+    body_pose = model.body_pose
+
+    def opening_started():
+        return stopped_fingers is not None and any(positions[7:] > stopped_fingers)
+
+    def measured_pose(source):
+        pose = body_pose(source)
+        if case == "above_seat" and opening_started():
+            pose[2, 3] += .0006
+        return pose
 
     def capture_stop(action):
         nonlocal stopped_fingers
@@ -2633,7 +2645,7 @@ def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkey
     def contact_frame(index):
         contacts = []
         timestamp = model.world.current_time
-        if case == "stale_open_finger" and stopped_fingers is not None and any(positions[7:] > stopped_fingers):
+        if case == "stale_open_finger" and opening_started():
             return {"time": timestamp - model.dt if index else timestamp, "contacts": []}
         if min(positions[7:]) < .035:
             loaded = positions[0] <= 1e-9 or (positions[0] > .008 and (
@@ -2648,18 +2660,27 @@ def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkey
         0., 0., .04 if case == "moving" and stopped_fingers is not None else 0.,
     ])
     model.body = lambda _: source_body
+    model.body_pose = measured_pose
     model.robot.apply_action = capture_stop
     model.sensors = [SimpleNamespace(get_current_frame=lambda index=index: contact_frame(index))
                      for index in range(2)]
     support_reads = []
+    last_read_time = None
 
     def read(after):
+        nonlocal last_read_time
+        now = model.world.current_time
         upward = {"grazing": .2, "zero": 0.}.get(case, .98)
-        if case == "support_lost" and any(commands[-1][7:] > stopped_fingers):
-            upward = 0.
+        if opening_started():
+            upward = {"support_lost": 0., "grazing_during_open": .7, "above_seat": .8}.get(case, upward)
+            if (case == "shared_support" and min(positions[7:]) < .035
+                    or case == "low_force_clear" and min(positions[7:]) >= .035
+                    or case == "low_force_open_check" and now == last_read_time):
+                upward = .8
         support_reads.append(upward)
+        last_read_time = now
         return {"upward_force_n": upward, "weight_n": .981,
-                "timestamp_s": after if case == "stale" else model.world.current_time}
+                "timestamp_s": after if case == "stale" else now}
 
     model._acquire_support_reader = lambda source: read
     result = model.execute(arguments, Event())
@@ -2667,19 +2688,34 @@ def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkey
     samples = feedback["samples"]
     opened = [sample for sample in samples if sample["stage"] == "recovery_open"]
     retreated = [sample for sample in samples if sample["stage"] == "recovery_retreat"]
+    forces = [sample["support_contact"]["upward_force_n"] for sample in opened]
     assert result["failure_code"] == "physical_grasp_lost"
-    if case == "supported":
+    if case in {"supported", "shared_support"}:
         assert opened and retreated
         assert result["outcome_known"] and result["returned_to_safe_pose"]
         assert result["possession_state"] == "empty"
-        assert all(sample["support_contact"]["upward_force_n"] == .98 for sample in opened)
-        assert len(support_reads) == len(opened) + 1
+        assert set(forces) == ({.98} if case == "supported" else {.8, .98})
+        opening_check = next(sample for sample in samples if sample["stage"] == "recovery_open_check")
+        assert opening_check["support_contact"]["upward_force_n"] == .98
+        assert len(support_reads) == len(opened) + 2
     else:
         assert not retreated
         assert result["status"] == "unknown" and result["possession_state"] == "uncertain"
-        if case in {"support_lost", "stale_open_finger"}:
-            assert len(opened) == 1
+        first_open_failure_force = {
+            "support_lost": 0., "grazing_during_open": .7, "above_seat": .8, "stale_open_finger": .98,
+        }
+        if case in first_open_failure_force:
+            assert forces == [first_open_failure_force[case]]
             assert feedback["recovery_failure_code"] == "acquire_recovery_support_lost"
+        elif case == "low_force_clear":
+            assert len(opened) > 1 and forces[-1] == .8
+            assert opened[-1]["contact_manifold_valid"] is False
+            assert feedback["recovery_failure_code"] == "acquire_recovery_support_lost"
+        elif case == "low_force_open_check":
+            assert opened and set(forces) == {.98}
+            opening_check = next(sample for sample in samples if sample["stage"] == "recovery_open_check")
+            assert opening_check["support_contact"]["upward_force_n"] == .8
+            assert feedback["recovery_failure_code"] == "acquire_recovery_postcondition_failed"
         else:
             assert not opened
             assert feedback["recovery_failure_code"] == "acquire_recovery_possession_uncertain"

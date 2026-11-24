@@ -51,6 +51,71 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.2 (2026-11-25 04:06) - codex
+
+- [env] [fix] Isaac 回放 `031330` 的 R03 在失抓后原位开夹首帧未通过承重复核。局部复现显示，开夹初段台面和单侧指爪分担荷载，期间瓶体高度变化约 0.094 mm。仅在夹爪固定、瓶体距原支撑高度不超过 0.5 mm 且单侧仍有有效载荷时，允许按 75% 瓶重确认继续开夹。开始开夹与开夹后回撤前仍要求至少 90% 实测承重。 / R03 stopped on the first recovery opening frame in Isaac replay `031330`. Isolated simulation replay showed shared support during partial opening with about 0.094 mm vertical bottle travel. Fixed-arm opening accepts 75% of vessel weight only within 0.5 mm of the original seated height with measured unilateral finger load. Admission and retreat still require measured support of at least 90% of vessel weight.
+- [env] [fix] 把有效但不足的实测力保存在阶段回执中，便于区分承重不足与反馈缺失。 / Retain valid subthreshold force samples to distinguish low force from missing feedback.
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2546–L2567、L2637–L2639、L2661–L2692。区分承重读数新鲜度与重量比例，新增固定臂位开夹的坐落判断，在回撤前校验开夹空夹与独立支撑。 / Separate read freshness from load qualification, check the seated pose during fixed-arm opening, and verify an open clear gripper and independent support before retreat.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2617–L2718。验证开夹时的分担荷载、低载、离座、清空后承重不足及回撤前复核失败。 / Exercise shared load, weak support, unseated geometry, low support after finger clearance, and a failed final recheck.
+
+```diff
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+index 3abc51fc..80f2d807 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+@@ -2545,0 +2546,3 @@ class IsaacPhaseMotion:
++        def seated_on_support(pose):
++            return in_support_band(pose) and abs(pose[2, 3] - original[2, 3]) <= .0005
++
+@@ -2558,2 +2561 @@ class IsaacPhaseMotion:
+-                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)
+-                    or evidence["upward_force_n"] < .9 * evidence["weight_n"]):
++                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)):
+@@ -2562,0 +2565,3 @@ class IsaacPhaseMotion:
++        def support_bears_weight(evidence, minimum_fraction=.9):
++            return evidence is not None and evidence["upward_force_n"] >= minimum_fraction * evidence["weight_n"]
++
+@@ -2632 +2637,2 @@ class IsaacPhaseMotion:
+-                if settle_steps and evidence is not None and contact_window.has_unilateral_load():
++                if (settle_steps and seated_on_support(physical_body) and support_bears_weight(evidence)
++                        and contact_window.has_unilateral_load()):
+@@ -2655 +2661,4 @@ class IsaacPhaseMotion:
+-                if (held or not supported or not in_support_band(physical_body) or evidence is None
++                unloaded = safe_to_open(physical_body)
++                # During partial release the seated bottle can share load with one finger.
++                shared_support = not unloaded and contact_window.has_unilateral_load()
++                if (held or not supported or not seated_on_support(physical_body)
+@@ -2657 +2666,2 @@ class IsaacPhaseMotion:
+-                        or not (safe_to_open(physical_body) or contact_window.has_unilateral_load())):
++                        or not (unloaded or shared_support)
++                        or not support_bears_weight(evidence, .75 if shared_support else .9)):
+@@ -2663,2 +2673,3 @@ class IsaacPhaseMotion:
+-        def verify_empty(stage):
+-            held, physical_body = record(stage)
++        def verify_empty(stage, *, require_support_load=False):
++            evidence = read_support() if require_support_load else None
++            held, physical_body = record(stage, support_evidence=evidence)
+@@ -2669 +2680,6 @@ class IsaacPhaseMotion:
+-                    or not contact_window.current_unloaded(require_clear=True)):
++                    or not contact_window.current_unloaded(require_clear=True)
++                    or (require_support_load and not (
++                        seated_on_support(physical_body)
++                        and contact_window.has_current_feedback(after=contact_window.start)
++                        and support_bears_weight(evidence)
++                    ))):
+@@ -2676 +2692 @@ class IsaacPhaseMotion:
+-        verify_empty("recovery_open_check")
++        verify_empty("recovery_open_check", require_support_load=require_supported_opening)
+```
+
+### 验证 / Validation
+
+- [env] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` 通过 261 项。 / All 261 phase motion tests passed.
+- [env] [exp] 独立 Isaac 5.1 局部复现采用 `031330` 的关节序列与每控制步 16 个物理子步。前 20 帧台面实测最低 0.757 N，瓶重 0.981 N，开夹后的最后八帧平均承重 0.979–0.984 N。 / The isolated Isaac 5.1 replay used the `031330` joint samples and 16 physics substeps per control interval. The first 20 opening frames had a minimum measured support of 0.757 N for a 0.981 N vessel. Over the last eight frames, control-interval mean support was 0.979–0.984 N.
+
 ## v17.10.1 (2026-11-25 03:09) - codex
 
 - [policy] [fix] Isaac 回放 `023108` 中，R05 的抓取、倾倒和放置都已完成，但前台工具迭代用尽后将整个任务结算为失败，R03 未运行。语义任务创建持久化 PlanGraph 成功后，由前台直接交接后台控制器。 / In Isaac replay `023108`, R05 acquisition, pour and return settled successfully, but the foreground iteration limit failed the task before R03 ran. Successful semantic creation now hands the persisted PlanGraph to the background controller.
@@ -473,47 +538,3 @@ index 57044f43..68916aed 100644
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `3a449a99`，`feature/planning-loop`，2026-11-25 00:21:25 +0800。
-
-## v17.9.13 (2026-11-24 23:33) - codex
-
-- [eval] [fix] [完成] 失抓后可沿已执行路线退回本次安全起点。R05 归位后从退让姿态接续 R03 时，Adapter 可在满足原有卸载和支撑条件后恢复。 / Recover from a failed acquire by reversing the route to its qualified start. The Adapter can recover R03 after R05's retreat when the existing unloading and support checks pass.
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L807–L817、L2380–L2418、L2434–L2464、L2568–L2583、L2627–L2633、L2994–L3012、L3055、L3074–L3077、L3108–L3110。进场记录已张开且无对应瓶身接触的夹爪与经过碰撞验证的路线起点。反馈区分固定观察原点和本次抓取起点。 / Capture an open gripper, fresh source-clear frames, and a collision-checked route start before motion. Keep observation home and the current route start distinct in feedback.
-- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2601–L2602、L2613–L2683。验证非原点回撤、过期或缺失读数、闭夹、接触和起终点碰撞。 / Cover non-home retreat and rejection for stale or missing readings, closed fingers, body contact, or blocked endpoints.
-
-```diff
-@@ -2411,5 +2455,5 @@ class IsaacPhaseMotion:
--        if (
--            route_start.shape != initial_arm.shape
--            or np.max(np.abs(route_start - initial_arm))
--            > self.config["joint_tracking_tolerance_rad"]
--        ):
-+        joint_tolerance = self.config["joint_tracking_tolerance_rad"]
-+        if route_start.shape != initial_arm.shape or not np.isfinite(route_start).all():
-+            raise PhaseMotionError("acquire_recovery_start_not_safe_pose", "qualified route start is invalid")
-+        at_home = np.max(np.abs(route_start - initial_arm)) <= joint_tolerance
-+        if not at_home and (qualified_start is None or qualified_start["joints_rad"] != route_start.tolist()):
-@@ -2418 +2462 @@ class IsaacPhaseMotion:
--                "automatic recovery requires the qualified route to start at observation home",
-+                "non-home recovery requires open fingers, fresh clear contact frames and collision clearance at route start",
-@@ -2419,0 +2464 @@ class IsaacPhaseMotion:
-+        recovery_target = initial_arm if at_home else route_start
-@@ -2523,2 +2568,2 @@ class IsaacPhaseMotion:
--        home_error = float(np.max(np.abs(self.joints() - initial_arm)))
--        if home_error > self.config["joint_tracking_tolerance_rad"]:
-+        endpoint_error = float(np.max(np.abs(self.joints() - recovery_target)))
-+        if not math.isfinite(endpoint_error) or endpoint_error > joint_tolerance:
-@@ -2528,0 +2574,3 @@ class IsaacPhaseMotion:
-+        if not at_home:
-+            self._collisions(self.joints(), source, False, False,
-+                             np.linalg.inv(self.tcp()) @ self.observed_pose(source), held_fingers=False)
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 240 项阶段动作测试及 `git diff --check` 通过。下一轮 Isaac 实跑沿用 R05→R03 任务和原有物理配置，并从抓取角候选移除 R03 上次失抓的 −π/2。 / All 240 phase motion tests and the diff check passed. The next Isaac run keeps the R05→R03 task and the prior physics profile, omitting the −π/2 angle used by the failed R03 grasp.
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `6f35b2f0`，`feature/planning-loop`，2026-11-24 23:41:26 +0800。
