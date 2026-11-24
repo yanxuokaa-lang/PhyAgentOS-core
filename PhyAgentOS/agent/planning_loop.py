@@ -1661,6 +1661,9 @@ class AgentLoopNodeExecutor:
             revision_id=context.revision_id,
             node_id=context.node_id,
             tool_id=records[-1].tool_id,
+            invocation_id=(
+                getattr(records[0], "invocation_id", None) if len(records) == 1 else None
+            ),
             status=status,
             scene_write_behavior=scene_write_behavior,
             world_changed=world_changed,
@@ -2280,12 +2283,29 @@ class PlanningLoopAdapter:
                 )
             ):
                 continue
-            settlement = settle_node(
-                graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
-                result,
-                current_scene_revision=scene_revision,
-            )
-            self.coordinator.record_node_settlement(settlement)
+            settlement = None
+            if result.invocation_id and task.active_revision_id == result.revision_id:
+                # Foreground reconciliation can settle an invocation before its
+                # background node turn returns against the already updated scene.
+                settlement = next(
+                    (
+                        item
+                        for item in self.coordinator.effective_node_settlements(task_id)
+                        if item.task_id == result.task_id
+                        and item.revision_id == result.revision_id
+                        and item.node_id == result.node_id
+                        and item.source_tool_id == result.tool_id
+                        and item.invocation_id == result.invocation_id
+                    ),
+                    None,
+                )
+            if settlement is None:
+                settlement = settle_node(
+                    graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
+                    result,
+                    current_scene_revision=scene_revision,
+                )
+                self.coordinator.record_node_settlement(settlement)
             if settlement.status == "completed":
                 completed.append(node_id)
                 if result.world_changed and result.new_scene_revision:

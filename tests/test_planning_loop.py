@@ -3764,6 +3764,107 @@ def test_replan_provider_and_state_failure_persist_terminal_task(tmp_path):
     assert c.store.events(task.task_id)[-1]["event_type"] == "plan_replan_outcome_recorded"
 
 
+@pytest.mark.parametrize("handoff_invocation", ["pour-1", "other-invocation", None])
+def test_planning_loop_reuses_only_matching_foreground_action_settlement(
+    tmp_path, handoff_invocation
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="pour and verify",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-action-handoff", ("pour", "verify"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/action-handoff",
+    )
+    action = ToolExecutionRecord(
+        record_id="pour-result",
+        revision_id=graph.revision_id,
+        tool_id="object.pour",
+        semantics="action",
+        caller_id="test",
+        node_id="pour",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id=graph.nodes[0].obligation_id,
+        input_binding_digest=tool_input_binding_digest({}),
+        decision_trace_ref="artifact://trace/pour",
+        status="succeeded",
+        invocation_id="pour-1",
+        response={"data": {
+            "world_changed": True,
+            "outcome_known": True,
+            "new_scene_revision": "scene-2",
+        }},
+        evidence_refs=["placed:pour"],
+    )
+    model_calls = []
+    foreground_settlements = []
+    projected_results = []
+    postconditions = []
+
+    async def run_node_turn(*, node_id, **_kwargs):
+        model_calls.append(node_id)
+        assert node_id == "pour"
+        c.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(action),
+            event_type="test_foreground_action",
+        )
+        reconciled = c.reconcile_terminal_settlements(task.task_id)
+        foreground_settlements.extend(reconciled.active_revision.node_settlements)
+
+    executor = AgentLoopNodeExecutor(SimpleNamespace(run_node_turn=run_node_turn), c)
+
+    async def execute(context):
+        if context.node_id == "pour":
+            result = await executor(context)
+            projected_results.append(result)
+            if handoff_invocation == action.invocation_id:
+                return result
+            return result.model_copy(update={"invocation_id": handoff_invocation})
+        assert context.scene_revision == "scene-2"
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="scene.verify",
+            status="succeeded",
+        )
+
+    def check_postcondition(context, _result):
+        postconditions.append(context.node_id)
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-2", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        postcondition_checker=check_postcondition,
+        finalize_completed_graph=False,
+    )
+    if handoff_invocation == action.invocation_id:
+        result = asyncio.run(adapter.run(task.task_id, scene_revision="scene-2"))
+        assert result.status == "segment_completed"
+        assert result.completed_nodes == ("pour", "verify")
+        assert postconditions == ["pour", "verify"]
+    else:
+        with pytest.raises(AgentTaskError, match=r"pour \(completed vs stale\)"):
+            asyncio.run(adapter.run(task.task_id, scene_revision="scene-2"))
+        assert postconditions == []
+
+    assert model_calls == ["pour"]
+    assert [item.invocation_id for item in projected_results] == [action.invocation_id]
+    assert len(foreground_settlements) == 1
+    assert foreground_settlements[0].status == "completed"
+    current = c.get_task(task.task_id).active_revision
+    assert current.execution_records == [action]
+    assert current.node_settlements[0] == foreground_settlements[0]
+
+
 def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="replay changed result", verification=TaskVerificationContract(mode="off"))

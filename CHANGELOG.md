@@ -50,6 +50,68 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.14 (2026-11-25 00:16) - codex
+
+- [policy] [fix] [完成] PlanningLoop 接续已通过原调用结算的动作时，复用 Coordinator 已保存的同调用结算，避免用执行后的场景重算成 stale。保留不同调用的冲突检查、未知结果、实际重试与场景刷新。 / Reuse the Coordinator settlement of the same invocation during handoff to the planning loop. Preserve checks for distinct invocations, unknown outcomes, actual retries, and scene refresh.
+
+### 文件变更详情 / File changes
+
+- [policy] [fix] `PhyAgentOS/agent/planning_loop.py` L1664–L1666、L2286–L2308。转发单条终态执行的调用 ID，以同任务、活动修订、节点、工具及调用 ID 查找 Coordinator 有效结算。匹配时继续原有场景刷新和后续执行。 / Forward the invocation ID of a single terminal record and reuse the Coordinator's effective settlement only when task, active revision, node, tool, and invocation match. Continue through the existing scene refresh and execution paths.
+- [policy] [exp] `tests/test_planning_loop.py` L3767–L3867。覆盖同一调用继续下一节点，以及不同或缺失调用 ID 时仍报告冲突。 / Assert continuation for the same invocation and preserved conflict detection when the invocation differs or is absent.
+
+```diff
+@@ -1661,6 +1661,9 @@ class AgentLoopNodeExecutor:
+             revision_id=context.revision_id,
+             node_id=context.node_id,
+             tool_id=records[-1].tool_id,
++            invocation_id=(
++                getattr(records[0], "invocation_id", None) if len(records) == 1 else None
++            ),
+             status=status,
+             scene_write_behavior=scene_write_behavior,
+             world_changed=world_changed,
+@@ -2280,12 +2283,29 @@ class PlanningLoopAdapter:
+                 )
+             ):
+                 continue
+-            settlement = settle_node(
+-                graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
+-                result,
+-                current_scene_revision=scene_revision,
+-            )
+-            self.coordinator.record_node_settlement(settlement)
++            settlement = None
++            if result.invocation_id and task.active_revision_id == result.revision_id:
++                # Foreground reconciliation can settle an invocation before its
++                # background node turn returns against the already updated scene.
++                settlement = next(
++                    (
++                        item
++                        for item in self.coordinator.effective_node_settlements(task_id)
++                        if item.task_id == result.task_id
++                        and item.revision_id == result.revision_id
++                        and item.node_id == result.node_id
++                        and item.source_tool_id == result.tool_id
++                        and item.invocation_id == result.invocation_id
++                    ),
++                    None,
++                )
++            if settlement is None:
++                settlement = settle_node(
++                    graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
++                    result,
++                    current_scene_revision=scene_revision,
++                )
++                self.coordinator.record_node_settlement(settlement)
+             if settlement.status == "completed":
+                 completed.append(node_id)
+                 if result.world_changed and result.new_scene_revision:
+```
+
+### 验证 / Validation
+
+- [policy] [exp] 214 项 PlanningLoop、长程续接、多物体及未知动作恢复测试通过，`git diff --check` 通过。原仿真轮次 R05 三阶段完成，宿主因冲突关闭，新一轮用于验证 R03 续接。 / All 214 PlanningLoop, long-horizon, multi-object and unknown-action recovery tests passed, as did the diff check. The original run completed all R05 phases before its host exited on the conflict. A new run will validate continuation to R03.
+
 ## v17.9.13 (2026-11-24 23:33) - codex
 
 - [eval] [fix] [完成] 失抓后可沿已执行路线退回本次安全起点。R05 归位后从退让姿态接续 R03 时，Adapter 可在满足原有卸载和支撑条件后恢复。 / Recover from a failed acquire by reversing the route to its qualified start. The Adapter can recover R03 after R05's retreat when the existing unloading and support checks pass.
@@ -169,29 +231,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `71ad9d7b`，`feature/planning-loop`，2026-11-24 21:41:50 +0800。
-
-## v17.9.9 (2026-11-24 21:06) - codex
-
-- [eval] [fix] [完成] 修改 Isaac 宿主的续接计划和测试。用 Coordinator 已持久化的当前场景查询及原始子任务语义编译新的准备段，失败恢复后从新观测继续，保留已经完成的动作，并在发现准备节点引用旧场景时先重规划观察。 / Use Coordinator-persisted current-scene queries and the original subtask semantics to compile fresh preparation after recovery. Preserve completed actions and refresh the scene when preparation is bound to an earlier revision.
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L28、L183–L184。给现有 AgentLoop 接入仿真续接插件。 / Attach the simulation continuation plugin to the existing AgentLoop.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/subtask_continuation.py` L1–L239。根据当前修订的查询回执恢复语义绑定，再通过既有准备段编译器保留工艺查询到实际动作的参数依赖。 / Rebind from current Query receipts and use the existing subtask composer to preserve argument dependencies from process Queries to the Action.
-- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py` L1–L243。验证安全失抓后续接、第二瓶换用新场景、保留已完成动作，以及已发布查询的参数兼容性。 / Cover safe-failure continuation, scene refresh for the second bottle, retention of completed actions, and published Query argument compatibility.
-
-```diff
-- planner_plugin=AgentRecoveryDecisions(provider, model, coordinator, ...)
-+ planner_plugin=LabSubtaskContinuation(provider, model, coordinator, sensor_ref=sensor_ref, ...)
-+ records = current_scene_query_records(task)
-+ rebound = spec.model_copy(update={"binding": binding, "depends_on": ()})
-+ composed = compose_subtask_plan(..., (rebound,), ...)
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 17 项宿主和续接测试通过。21:18:30 轮已实测 R05 抓取抬升 58.01 mm，倾倒和第二瓶结果待该轮结算。 / All 17 host and continuation tests passed. The 21:18:30 replay measured a successful 58.01 mm R05 lift. The pour and second bottle remain in progress.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `bc841612`，`feature/planning-loop`，2026-11-24 21:37:20 +0800。
