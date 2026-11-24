@@ -116,6 +116,10 @@ index 3abc51fc..80f2d807 100644
 - [env] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` 通过 261 项。 / All 261 phase motion tests passed.
 - [env] [exp] 独立 Isaac 5.1 局部复现采用 `031330` 的关节序列与每控制步 16 个物理子步。前 20 帧台面实测最低 0.757 N，瓶重 0.981 N，开夹后的最后八帧平均承重 0.979–0.984 N。 / The isolated Isaac 5.1 replay used the `031330` joint samples and 16 physics substeps per control interval. The first 20 opening frames had a minimum measured support of 0.757 N for a 0.981 N vessel. Over the last eight frames, control-interval mean support was 0.979–0.984 N.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `80cee4e0`，`feature/planning-loop`，2026-11-25 04:09:52 +0800。
+
 ## v17.10.1 (2026-11-25 03:09) - codex
 
 - [policy] [fix] Isaac 回放 `023108` 中，R05 的抓取、倾倒和放置都已完成，但前台工具迭代用尽后将整个任务结算为失败，R03 未运行。语义任务创建持久化 PlanGraph 成功后，由前台直接交接后台控制器。 / In Isaac replay `023108`, R05 acquisition, pour and return settled successfully, but the foreground iteration limit failed the task before R03 ran. Successful semantic creation now hands the persisted PlanGraph to the background controller.
