@@ -2328,6 +2328,70 @@ def test_known_lost_grasp_opens_and_reverses_to_observation_home(monkeypatch):
     assert commands
 
 
+@pytest.mark.parametrize("outcome", [
+    "clears", "loaded", "stale", "unsupported", "residual", "loaded_after_open", "moves_after_open",
+])
+def test_failed_lift_recovery_opens_at_fixed_pose_and_retreats_only_when_clear(monkeypatch, outcome):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    positions = model._test_positions_ref
+    original = np.asarray(arguments["phase_route"]["original_return_pose"])
+    model.tcp = lambda *_: pose_matrix([.1 + positions[0], 0., 1.], [0., 0., 0., 1.])
+
+    def body_pose(_source):
+        pose = original.copy()
+        if outcome == "unsupported" and positions[0] > .008:
+            pose[2, 3] -= .003
+        if outcome == "moves_after_open" and positions[0] > .008 and min(positions[7:]) >= .035:
+            pose[0, 3] += .012
+        return pose
+
+    def contact_frame(index):
+        timestamp = model.world.current_time
+        closed = min(positions[7:]) < .035
+        contacts = []
+        if closed or (positions[0] > .008 and index == 0 and outcome in {"residual", "loaded_after_open"}):
+            impulse = float(positions[0] <= 1e-9 or (
+                index == 0 and positions[0] > .008
+                and (outcome == "loaded" or (outcome == "loaded_after_open" and not closed))
+            ))
+            contacts = [{"body0": "/World/source/mesh", "body1": "/World/Franka/finger",
+                         "impulse": [impulse, 0., 0.]}]
+        if outcome == "stale" and positions[0] > .008 and index == 0:
+            timestamp -= 3 * model.dt
+        return {"time": timestamp, "contacts": contacts}
+
+    model.body_pose = body_pose
+    model.sensors = [SimpleNamespace(get_current_frame=lambda index=index: contact_frame(index))
+                     for index in range(2)]
+    result = model.execute(arguments, Event())
+
+    feedback = artifacts[-1][1]
+    assert result["failure_code"] == "physical_grasp_lost"
+    opening_samples = [sample for sample in feedback["samples"] if sample["stage"] == "recovery_open"]
+    if outcome in {"loaded", "stale", "unsupported"}:
+        assert feedback["recovery_failure_code"] == "acquire_recovery_possession_uncertain"
+        assert not opening_samples
+        assert min(commands[-1][7:]) < .035
+    else:
+        assert opening_samples
+        assert all(sample["joints"] == opening_samples[0]["joints"] for sample in opening_samples)
+        assert min(opening_samples[-1]["finger_positions_m"]) >= .035
+        if outcome == "clears":
+            assert result["status"] == "failed"
+            assert result["outcome_known"] and result["returned_to_safe_pose"]
+            assert result["possession_state"] == "empty"
+            assert positions[:7] == pytest.approx(np.zeros(7))
+            assert any(sample["stage"] == "recovery_retreat" for sample in feedback["samples"])
+            start = next(sample for sample in feedback["samples"] if sample["stage"] == "recovery_check")
+            assert start["contact_manifold_valid"] and not start["contact_load_valid"]
+            assert start["selected_contact_impulse_ns"] == [0., 0.]
+            return
+        assert feedback["recovery_failure_code"] == "acquire_recovery_postcondition_failed"
+    assert result["status"] == "unknown"
+    assert result["possession_state"] == "uncertain"
+    assert not any(sample["stage"] == "recovery_retreat" for sample in feedback["samples"])
+
+
 def test_closure_settling_walk_is_judged_at_lift_entry_not_per_frame(monkeypatch):
     model, arguments, commands, artifacts = execution_fixture(monkeypatch)
 

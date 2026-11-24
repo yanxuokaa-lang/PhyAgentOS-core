@@ -841,6 +841,19 @@ class GripContactWindow:
             for latest in self.latest
         )
 
+    def current_unloaded(self, *, require_clear=False, whole_interval=True):
+        """Judge both fingers using their latest capture and current interval."""
+        if self.error is not None:
+            raise PhaseMotionError("contact_sampling_failed", str(self.error)) from self.error
+        now = float(self.world.current_time)
+        return len(self.sensors) == 2 and all(
+            latest is not None and latest[0] in frames and now - latest[0] <= self.dt * 2
+            and frames[latest[0]] == 0.
+            and (not whole_interval or all(impulse == 0. for impulse in frames.values()))
+            and (not require_clear or not latest[1])
+            for latest, frames in zip(self.latest, self.frames, strict=True)
+        )
+
     def evidence(self):
         return {"contact_window_start_s": self.start,
                 "contact_window_end_s": float(self.world.current_time),
@@ -2337,7 +2350,7 @@ class IsaacPhaseMotion:
         contact_window,
         articulation_action,
     ):
-        """Open an empty gripper and reverse the measured qualified path."""
+        """Open at a fixed arm pose, then reverse the qualified path once clear."""
         if failure not in acquire_failure_recovery_codes(self.config):
             raise PhaseMotionError("acquire_recovery_not_allowed", failure)
         initial_arm = np.asarray(self.scene.get("initial_joint_positions"), dtype=float)
@@ -2366,21 +2379,30 @@ class IsaacPhaseMotion:
                 "automatic recovery requires the qualified route to start at observation home",
             )
 
+        tolerance = self.config["placement_tolerance_m"]
+
+        def measure_support(pose):
+            position_error = float(np.linalg.norm(pose[:3, 3] - original[:3, 3]))
+            rotation_error = grasp_pose_errors(original, pose, axial_symmetry)[1]
+            supported = (
+                position_error <= tolerance
+                and rotation_error <= self.config["grasp_rotation_tolerance_rad"]
+                and float(np.linalg.norm(self.body(source).get_linear_velocity())) <= .03
+            )
+            return supported, position_error, rotation_error
+
         held, physical_body = record("recovery_check")
-        return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
-        return_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
-        velocity = float(np.linalg.norm(self.body(source).get_linear_velocity()))
-        supported = (
-            return_error <= self.config["placement_tolerance_m"]
-            and return_rotation_error <= self.config["grasp_rotation_tolerance_rad"]
-            and velocity <= .03
+        supported, _, _ = measure_support(physical_body)
+        clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
+        residual_unloaded = (
+            failure == "physical_grasp_lost"
+            and support_contact_allowed("lift", physical_body, original, tolerance)
+            and contact_window.current_unloaded()
         )
-        contact_load_valid = contact_window.valid()
-        contact_manifold_valid = contact_window.fresh_bilateral_manifolds()
-        if held or contact_load_valid or contact_manifold_valid or not supported:
+        if held or not supported or not (clear or residual_unloaded):
             raise PhaseMotionError(
                 "acquire_recovery_possession_uncertain",
-                "safe retreat requires a stable supported object with no measured grasp contact",
+                "safe opening requires a stable supported object and current unloaded fingers",
             )
 
         controller = self.robot.get_articulation_controller()
@@ -2424,6 +2446,7 @@ class IsaacPhaseMotion:
             if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
                 raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
 
+        opening_arm = self.joints().copy()
         current_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
         for fingers in smooth_joint_segment(
             current_fingers,
@@ -2432,7 +2455,22 @@ class IsaacPhaseMotion:
             self.config.get("finger_velocity_m_s", .015),
             self.config.get("finger_acceleration_m_s2", .15),
         ):
-            command(self.joints(), fingers, "recovery_open", True)
+            command(opening_arm, fingers, "recovery_open", True)
+
+        def verify_empty(stage):
+            held, physical_body = record(stage)
+            supported, position_error, rotation_error = measure_support(physical_body)
+            open_gripper = np.min(np.asarray(self.robot.get_joint_positions())[finger_indices]) >= .035
+            if (held or not supported or not open_gripper
+                    or not support_contact_allowed("lift", physical_body, original, tolerance)
+                    or not contact_window.current_unloaded(require_clear=True)):
+                raise PhaseMotionError(
+                    "acquire_recovery_postcondition_failed",
+                    f"{stage} requires an open, clear gripper and a stable supported object",
+                )
+            return position_error, rotation_error
+
+        verify_empty("recovery_open_check")
 
         current = self.joints()
         for point in reversed(executed_path):
@@ -2442,28 +2480,9 @@ class IsaacPhaseMotion:
             command(goal, initial_gripper, "recovery_retreat", bool(point["allow_contact"]))
             current = goal
 
-        held, physical_body = record("recovery_complete")
-        contact_load_valid = contact_window.valid()
-        contact_manifold_valid = contact_window.fresh_bilateral_manifolds()
-        final_return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
-        final_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
-        open_gripper = bool(
-            np.min(np.asarray(self.robot.get_joint_positions())[finger_indices]) >= .035
-        )
-        supported = (
-            final_return_error <= self.config["placement_tolerance_m"]
-            and final_rotation_error <= self.config["grasp_rotation_tolerance_rad"]
-            and float(np.linalg.norm(self.body(source).get_linear_velocity())) <= .03
-        )
+        final_return_error, final_rotation_error = verify_empty("recovery_complete")
         home_error = float(np.max(np.abs(self.joints() - initial_arm)))
-        if (
-            held
-            or contact_load_valid
-            or contact_manifold_valid
-            or not supported
-            or not open_gripper
-            or home_error > self.config["joint_tracking_tolerance_rad"]
-        ):
+        if home_error > self.config["joint_tracking_tolerance_rad"]:
             raise PhaseMotionError(
                 "acquire_recovery_postcondition_failed",
                 "safe acquire recovery did not establish empty observation readiness",

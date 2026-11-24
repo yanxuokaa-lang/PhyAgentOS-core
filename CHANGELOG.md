@@ -50,6 +50,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.7 (2026-11-24 20:29) - codex
+
+- [eval] [fix] [完成] 修改 `phase_motion.py` 与阶段测试。实测 R05 抬升失败时瓶底回到支撑高度，已无双侧承载但仍报告双侧零载接触；允许仅原地开夹，验证空夹与稳定支撑后沿已验证路径回撤，交接同任务恢复决策。 / In the measured R05 lift failure the bottle was back at support height with zero-load residual contact. Permit opening at the fixed arm pose and verify empty grip and stable support before the qualified reverse path and same-task recovery. (local)
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L844–L856、L2353、L2382–L2405、L2449–L2485。检查两指最新采样、接触负载、瓶位与支撑高度。冻结开夹时的手臂目标，开夹后和撤离后确认瓶身稳定及双指脱离。 / Check current finger samples, load, bottle pose and support height. Hold the arm target fixed during opening and verify stable support and clearance before and after retreat.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2331–L2394。覆盖零载接触成功、单侧载荷、过期采样、支撑高度异常、开夹后残留接触或负载、瓶身移动。 / Cover zero-load residual contact recovery and rejection of unilateral load, stale samples, unsupported height, continued contact or load, and bottle movement.
+- [docs] [docs] `.task/current.md` L744–L746。记录适配器与 AgentLoop 的职责和证据边界。 / Record ownership and evidence boundaries.
+
+```diff
+- if held or contact_load_valid or contact_manifold_valid or not supported:
++ clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
++ residual_unloaded = (
++     failure == "physical_grasp_lost"
++     and support_contact_allowed("lift", physical_body, original, tolerance)
++     and contact_window.current_unloaded()
++ )
++ if held or not supported or not (clear or residual_unloaded):
+      raise PhaseMotionError("acquire_recovery_possession_uncertain", ...)
+- command(self.joints(), fingers, "recovery_open", True)
++ command(opening_arm, fingers, "recovery_open", True)
++ verify_empty("recovery_open_check")
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 232 项运动阶段测试通过，包含新增的 7 种失抓恢复场景。使用 20:03:32 的仿真配置启动同任务复跑，证据保存在 `out/labutopia-elevated-20261124/v17.9.7-r05-r03-agent-loop-recovery-203551`。 / All 232 motion phase tests passed, including seven recovery cases. A same-task replay using the 20:03:32 simulation profile was started and its evidence is stored at the listed path.
+
 ## v17.9.6 (2026-11-24 20:00) - codex
 
 - [eval] [fix] [完成] 修改 `phase_motion.py` 中已完成归位运输后的下降重验证，从实测关节和夹持姿态求解剩余下降、释放和后撤。上一轮高位重复修正遇腕限位，跳过已完成的运输段后 13 个实测回放路点通过碰撞和限位资格检查。 / Requalify the remaining descent, release and retreat from measured joints and attachment after return transport completes. The repeat high approach hit a wrist limit, while all 13 remaining waypoints passed simulator collision and limit qualification. (local)
@@ -161,28 +190,3 @@
 
 - 撤离修复 / Exit implementation `56c5ee27`，2026-11-22 16:27:42 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
 - 宿主接线 / Agent host wiring `99f016b0`，2026-11-22 16:36:18 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
-## v17.9.2 (2026-11-22 15:01) - codex
-
-- [eval] [exp] 更正流程顺序为 R03 → R05。同一仿真场景中，R03 倾倒、归位和松夹后撤成功才为 R05 采集新观测。 / Correct the sequence to R03 → R05. In one continuing simulation, acquire a fresh observation for R05 after R03 completes its pour, return, release and retreat.
-- [eval] [exp] 40 N 与 60 N 两轮在 R03 抬升开始约 0.18 s 后失去一侧接触，峰值相对位移分别为 7.87 mm 与 8.83 mm。 / With 40 N and 60 N drive caps, R03 lost contact on one side about 0.18 s into the lift. Peak relative displacements were 7.87 mm and 8.83 mm.
-- [eval] [exp] 水平预选路线在转腕段触及关节限位。完整路线搜索找到了可执行的水平入夹路径，实测抬升 11/22 样本有效，最大滑移 8.85 mm，未进入倾倒或 R05。 / The preselected level grip route hit a joint limit during transit orientation. Full route search found an executable level approach, but only 11/22 lift samples had a valid grip with 8.85 mm peak slip. Neither pour nor R05 started.
-- [eval] [exp] 两个最靠近瓶口的抓取候选均未通过瓶口间隙检查，仿真未运动。 / Both highest grasp candidates failed opening clearance and no motion occurred.
-
-### 本地仿真配置 Diff / Simulation configuration diff
-
-文件位于 / Files under `out/labutopia-elevated-20261122/`。Tracked source stayed unchanged.
-
-- `v17.9.2-r03-r05-level-search-150747/labutopia-oracle-perception.json` L40–L42: `tilt_angles_rad: [0.0, 0.2618, 0.5236, 0.6981] → [0.0]`。
-- `v17.9.2-r03-r05-level-search-150747/labutopia-ridgebase-elevated-motion.json` L13–L18: `acquire_route_selection: simulator_truth_preselected → first_feasible`, `acquire_route_strategies: ["staged"] → ["staged", "direct"]`。
-- `v17.9.2-r03-r05-high-151906/labutopia-oracle-perception.json` L43–L46: 新增 / add `bottle_depth_fractions: [0.30, 0.35]`。
-- `v17.9.2-r03-r05-band-152152/labutopia-oracle-perception.json` L43–L52: `bottle_depth_fractions: [0.30, 0.35] → [0.37, 0.38, 0.39, 0.45, 0.50, 0.55, 0.60, 0.65]`。
-- [eval] [exp] 调整候选高度后，整条路线通过验证，但 R03 抬升时仍失去一侧接触，13/25 样本有效，最大滑移 8.76 mm。 / With revised grasp bands, the full route passed validation but R03 still lost contact on one side in lift, with 13/25 valid samples and 8.76 mm peak slip.
-
-### 验证 / Validation
-
-- 执行命令与运行配置见各次本地仿真的 `command.json`、`metadata.json`。用 `ffprobe -v error -show_entries format=duration` 检查可播放视频。 / Each replay preserves its invocation and configuration in those files. Use the listed ffprobe command to check finalized videos.
-
-- [eval] [exp] 4 mm 预紧完成 R03 抬升和倾倒保持（峰值 1.0002 rad，持续 2.90 s），抬升及倾倒过程峰值相对位移 8.58 mm 和 5.51 mm。后撤阶段实测姿态修正逆解不可达，未归位。 / With 4 mm preload, R03 lifted and reached the pour goal (1.0002 rad, 2.90 s). Peak relative displacement was 8.58 mm in lift and 5.51 mm in the pour stage. The measured exit correction was unreachable, so return did not run.
-
-- [eval] [exp] 将倾倒进出间隙从 0.18 m 改为 0.14 m 后，R03 峰值 0.9968 rad，连续保持 2.80 s。撤离修正需跳变 1.01936 rad，超过 0.5 rad 上限，未归位或启动 R05。 / Reducing the process distance from 0.18 m to 0.14 m yielded 0.9968 rad peak tilt and 2.80 s qualified hold. An exit correction required 1.01936 rad versus a 0.5 rad limit. R03 did not return and R05 did not start. (local)
