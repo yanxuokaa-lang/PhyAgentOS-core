@@ -1421,12 +1421,12 @@ class IsaacPhaseMotion:
             policy = acquire_route_selection(self.config)
             strategies = acquire_route_strategies(self.config)
             clearances = acquire_transit_clearances(self.config)
+            configured_search = (
+                strategies, direct_corridors, clearances, transport_orientations, staging_corridors, variants,
+            )
             if policy == "simulator_truth_preselected":
-                # Oracle execution mode: the grasp pose already comes from
-                # simulator truth, so collapse every search dimension to one
-                # preselected element and qualify exactly one variant.
-                # Route qualification, contact checks and safety boundaries
-                # are unchanged; only the enumeration is skipped.
+                # Try the probe's preferred search dimensions before enumerating
+                # the configured alternatives. All routes qualify the same way.
                 strategies = (strategies[0],)
                 # Preselection honours the approach probe's validated variant
                 # when its evidence identity still matches: the probe-qualified
@@ -1456,11 +1456,18 @@ class IsaacPhaseMotion:
                 direct_corridors = tuple(dict.fromkeys(
                     (corridor[0], 0., 0.) for corridor in staging_corridors
                 ))
-            variant_count = sum(
-                len(direct_corridors) * len(variants) if strategy == "direct"
-                else len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants)
-                for strategy in strategies
+            def count_routes(strategies, direct_corridors, clearances, orientations, corridors, variants):
+                return sum(
+                    len(direct_corridors) * len(variants) if strategy == "direct"
+                    else len(clearances) * len(orientations) * len(corridors) * len(variants)
+                    for strategy in strategies
+                )
+
+            initial_search = (
+                strategies, direct_corridors, clearances, transport_orientations, staging_corridors, variants,
             )
+            variant_count = count_routes(*initial_search)
+            fallback_ref = None
             search_started = time.monotonic()
             search_timeout = acquire_route_search_timeout(self.config)
             search_deadline = search_started + search_timeout
@@ -1490,6 +1497,8 @@ class IsaacPhaseMotion:
                     "elapsed_s": max(0., now - search_started),
                     "timeout_s": search_timeout,
                 }
+                if fallback_ref is not None:
+                    diagnostics["fallback_ref"] = fallback_ref
                 timeout_ref = self._artifact("acquire-search", {
                     **diagnostics,
                     "status": "unavailable",
@@ -1507,7 +1516,32 @@ class IsaacPhaseMotion:
                     diagnostics=diagnostics,
                 )
 
-            for strategy in strategies:
+            def searches():
+                nonlocal fallback_ref, variant_count
+                yield initial_search, policy == "first_feasible"
+                if policy == "simulator_truth_preselected":
+                    now = time.monotonic()
+                    if now >= search_deadline:
+                        route_search_timeout(now)
+                    fallback_count = count_routes(*configured_search)
+                    variant_count += fallback_count
+                    fallback_ref = self._artifact("acquire-search", {
+                        "search_ref": search_ref, "stage": "search", "status": "fallback",
+                        "scene_revision": arguments["scene_revision"], "candidate_ref": target.get("candidate_ref"),
+                        "policy": "first_feasible", "route_strategies": list(configured_search[0]),
+                        "variant_count": fallback_count, "attempted_count": attempted_count,
+                        "reason": "preselected_route_unavailable",
+                        "motion_authorized": False, "world_change_started": False,
+                    })
+                    yield configured_search, True
+
+            ordered_strategies = (
+                (strategy, dimensions, first_feasible)
+                for (route_strategies, *dimensions), first_feasible in searches()
+                for strategy in route_strategies
+            )
+            for strategy, dimensions, first_feasible in ordered_strategies:
+                direct_corridors, clearances, transport_orientations, staging_corridors, variants = dimensions
                 strategy_candidates = []
                 if strategy == "direct":
                     combinations = (
@@ -1536,6 +1570,8 @@ class IsaacPhaseMotion:
                                "corridor_order": corridor_order,
                                "axial_symmetry_angle_rad": symmetry_angle,
                                "motion_authorized": False, "world_change_started": False}
+                    if fallback_ref is not None:
+                        attempt["fallback_ref"] = fallback_ref
                     candidate_relation = np.linalg.inv(variant_desired) @ body
                     prefix_by_stage = {}
                     attempt_stage = "route"
@@ -1620,7 +1656,7 @@ class IsaacPhaseMotion:
                             corridor_order, symmetry_order, candidate, candidate_target, candidate_relation,
                         ))
                         progress("route", "available")
-                        if policy == "first_feasible":
+                        if first_feasible:
                             break
                     except PhaseMotionError as exc:
                         if exc.code == "route_search_timeout":
@@ -1656,6 +1692,7 @@ class IsaacPhaseMotion:
                     "pruned_count": pruned_count,
                     "variant_count": variant_count,
                     "failed_prefix_count": len(failed_prefixes),
+                    **({"fallback_ref": fallback_ref} if fallback_ref is not None else {}),
                     "motion_authorized": False,
                     "world_change_started": False,
                 }) from representative
@@ -1668,6 +1705,8 @@ class IsaacPhaseMotion:
                 acquire_route_pruned_count=pruned_count,
                 collider_profile_ref=collider_profile_ref,
             )
+            if fallback_ref is not None:
+                route["acquire_search_fallback_ref"] = fallback_ref
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})

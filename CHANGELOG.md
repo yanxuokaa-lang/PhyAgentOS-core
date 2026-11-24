@@ -50,6 +50,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.11 (2026-11-24 22:08) - codex
+
+- [eval] [fix] [完成] 修改 Isaac 抓取准备与相应测试。预选路线未通过全路径检查时，尝试已有的完整路线搜索，保留原运动检查和准备证据。21:18:30 轮的 R03 在当前关节姿态下多次出现转腕 IK 不连续，而预选模式提前裁掉了其他策略。 / In Isaac acquire preparation, let a rejected preselected route fall back to the existing full route search with the same qualification and evidence. The current replay repeatedly found wrist IK discontinuities for R03 while preselection excluded alternate strategies.
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1424–L1429、L1459–L1470、L1500–L1501、L1519–L1544、L1573–L1574、L1659、L1695、L1708–L1709。预选候选全部失败后，复用现有路径检查和失败前缀缓存，寻找配置中的首条合格路线。两次搜索共用超时，并在准备结果中记录进入备选搜索的证据。 / After the preselected candidates are exhausted, use the existing qualification and failed-prefix cache to find the first eligible configured route. Both passes share a deadline and link the fallback evidence.
+- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L973–L1028。覆盖预选成功、备选成功和共用超时导致拒绝准备。 / Cover preselected success, fallback success, and fail-closed expiration on the original deadline.
+
+```diff
+-            for strategy in strategies:
++            for strategy, dimensions, first_feasible in ordered_strategies:
+                  ...
+-                        if policy == "first_feasible":
++                        if first_feasible:
+                              break
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 234 项 Isaac 阶段运动测试通过。`git diff --check` 通过。21:18:30 轮 R05 已完成，R03 尚未发生动作。备选选择待复跑实测。 / All 234 Isaac phase-motion tests and the diff check passed. The 21:18:30 run completed R05 and reported no motion for R03. Simulation of alternative selection remains pending.
+
 ## v17.9.10 (2026-11-24 21:26) - codex
 
 - [eval] [fix] [完成] 在 Coordinator 的任务结算中识别一次已经安全收尾的失抓后来由相同动作义务成功补做的情况。保留失败与成功的原始回执，核对成功是同一个物体、目标和工艺请求，其他未知及未恢复的结果仍阻止结算为成功。 / In Coordinator task finalization, recognize a safely recovered failed acquire when a later measured success fulfills the same original Action obligation with the same object, destination and process request. Retain both receipts and continue blocking success for unresolved or unrecovered effects.
@@ -154,31 +176,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `e85b9628`，`feature/planning-loop`，2026-11-24 20:36:17 +0800。
-
-## v17.9.6 (2026-11-24 20:00) - codex
-
-- [eval] [fix] [完成] 修改 `phase_motion.py` 中已完成归位运输后的下降重验证，从实测关节和夹持姿态求解剩余下降、释放和后撤。上一轮高位重复修正遇腕限位，跳过已完成的运输段后 13 个实测回放路点通过碰撞和限位资格检查。 / Requalify the remaining descent, release and retreat from measured joints and attachment after return transport completes. The repeat high approach hit a wrist limit, while all 13 remaining waypoints passed simulator collision and limit qualification. (local)
-- [eval] [fix] [完成] 更新 `test_phase_motion.py` 以验证重验证的阶段范围和失败时保持夹持。 / Verify remaining-stage qualification and retained possession when qualification fails. (local)
-
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2622–L2632，运输结束后，从实测状态验证剩余三个阶段。 / After completed transport, qualify the remaining three stages from the measured state.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3310–L3327，验证重算顺序，保留碰撞拒绝后继续持瓶的断言。 / Assert remaining-stage order and retained grip upon collision rejection.
-- [docs] [docs] `.task/current.md` L740–L742，记录适配器与 AgentLoop 的职责及实测验收。 / Record adapter and AgentLoop ownership and measured acceptance criteria.
-
-```diff
-  waypoints = place_waypoints(supported_pose, relation, self.config)
-+ if last_stage == "transport":
-+     waypoints = waypoints[1:]
-  points = iter(self.qualify(waypoints, source, relation, operation, supported_pose,
-                             initial_joints=start)["steps"])
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 225 项阶段运动测试通过。历史实测腕部终态回放中，重复运输触及限位，剩余下降、释放、撤离的 13 个路点通过原有仿真碰撞和限位检查。 / All 225 phase-motion tests pass. In the measured-state replay, repeating transport hits the joint limit, and the 13 remaining descent, release and retreat waypoints pass the existing simulation collision and limit checks.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `005fc4be`，`feature/planning-loop`，2026-11-24 20:03:02 +0800。

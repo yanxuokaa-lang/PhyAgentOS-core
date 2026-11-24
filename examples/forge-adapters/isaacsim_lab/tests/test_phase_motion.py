@@ -970,6 +970,62 @@ def test_preselection_with_none_angle_falls_back():
     started = [value for kind, value in artifacts if kind == "acquire-search"
                and value.get("status") == "started"][0]
     assert started["variant_count"] == 1
+    assert "acquire_search_fallback_ref" not in route
+    assert not any(value.get("status") == "fallback" for _kind, value in artifacts)
+
+
+@pytest.mark.parametrize("timeout", [False, True], ids=["qualified-alternative", "shared-deadline"])
+def test_rejected_preselected_route_searches_configured_alternatives(monkeypatch, timeout):
+    import isaacsim_lab.phase_motion as phase_motion_module
+
+    model, arguments, artifacts = acquire_prefix_pruning_fixture(
+        acquire_route_selection="simulator_truth_preselected",
+        acquire_route_search_timeout_s=1.,
+        acquire_transport_orientation_candidates_xyzw=[[1., 0., 0., 0.], [0., 1., 0., 0.]],
+    )
+    clock = [10.]
+    monkeypatch.setattr(phase_motion_module.time, "monotonic", lambda: clock[0])
+    qualified = []
+
+    def qualify(waypoints, *_args, progress, **_kwargs):
+        transport = next(pose for pose, _hold, stage in waypoints if stage == "transit_orient")
+        qualified.append(transport[:3, :3].copy())
+        progress("transit_orient", "started")
+        if len(qualified) == 1:
+            clock[0] = 10.6
+            raise PhaseMotionError("ik_discontinuity", "transit_orient: preselected route rejected")
+        if timeout:
+            clock[0] = 11.1
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.1] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    if timeout:
+        with pytest.raises(PhaseMotionError) as captured:
+            model.prepare(arguments)
+        assert captured.value.code == "route_search_timeout"
+        assert captured.value.diagnostics["elapsed_s"] == pytest.approx(1.1)
+        assert not any(kind == "readiness" for kind, _value in artifacts)
+        assert artifacts[-1][1]["motion_authorized"] is False
+        fallback_ref = captured.value.diagnostics["fallback_ref"]
+    else:
+        route, _evidence = model.prepare(arguments)
+        assert route["acquire_route_selection"] == "simulator_truth_preselected"
+        assert route["acquire_transport_orientation_xyzw"] == [1., 0., 0., 0.]
+        assert route["acquire_route_attempted_count"] == 2
+        fallback_ref = route["acquire_search_fallback_ref"]
+
+    assert len(qualified) == 2
+    assert qualified[0] == pytest.approx(np.eye(3))
+    assert qualified[1] == pytest.approx(Rotation.from_quat([1., 0., 0., 0.]).as_matrix())
+    fallback_index, = (index for index, (kind, value) in enumerate(artifacts, start=1)
+                       if kind == "acquire-search" and value.get("status") == "fallback")
+    assert fallback_ref == f"artifact://acquire-search/{fallback_index}"
+    fallback = artifacts[fallback_index - 1][1]
+    assert fallback["variant_count"] == 4
+    assert fallback["attempted_count"] == 1
+    assert fallback["policy"] == "first_feasible"
+    assert fallback["motion_authorized"] is False
 
 
 def test_acquire_route_timeout_remains_fail_closed_for_unique_prefixes(monkeypatch):
