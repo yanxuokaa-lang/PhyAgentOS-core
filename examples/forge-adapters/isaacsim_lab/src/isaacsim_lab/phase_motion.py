@@ -2625,6 +2625,8 @@ class IsaacPhaseMotion:
                         # Approach the original support pose with the attachment
                         # measured at the end of transport.
                         waypoints = place_waypoints(supported_pose, relation, self.config)
+                        if last_stage == "transport":
+                            waypoints = waypoints[1:]
                         points = iter(self.qualify(waypoints, source, relation, operation, supported_pose,
                                                    initial_joints=start)["steps"])
                         continue

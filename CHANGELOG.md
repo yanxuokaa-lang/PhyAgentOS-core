@@ -50,6 +50,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.6 (2026-11-24 20:00) - codex
+
+- [eval] [fix] [完成] 修改 `phase_motion.py` 中已完成归位运输后的下降重验证，从实测关节和夹持姿态求解剩余下降、释放和后撤。上一轮高位重复修正遇腕限位，跳过已完成的运输段后 13 个实测回放路点通过碰撞和限位资格检查。 / Requalify the remaining descent, release and retreat from measured joints and attachment after return transport completes. The repeat high approach hit a wrist limit, while all 13 remaining waypoints passed simulator collision and limit qualification. (local)
+- [eval] [fix] [完成] 更新 `test_phase_motion.py` 以验证重验证的阶段范围和失败时保持夹持。 / Verify remaining-stage qualification and retained possession when qualification fails. (local)
+
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2622–L2632，运输结束后，从实测状态验证剩余三个阶段。 / After completed transport, qualify the remaining three stages from the measured state.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3310–L3327，验证重算顺序，保留碰撞拒绝后继续持瓶的断言。 / Assert remaining-stage order and retained grip upon collision rejection.
+- [docs] [docs] `.task/current.md` L740–L742，记录适配器与 AgentLoop 的职责及实测验收。 / Record adapter and AgentLoop ownership and measured acceptance criteria.
+
+```diff
+  waypoints = place_waypoints(supported_pose, relation, self.config)
++ if last_stage == "transport":
++     waypoints = waypoints[1:]
+  points = iter(self.qualify(waypoints, source, relation, operation, supported_pose,
+                             initial_joints=start)["steps"])
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 225 项阶段运动测试通过。历史实测腕部终态回放中，重复运输触及限位，剩余下降、释放、撤离的 13 个路点通过原有仿真碰撞和限位检查。 / All 225 phase-motion tests pass. In the measured-state replay, repeating transport hits the joint limit, and the 13 remaining descent, release and retreat waypoints pass the existing simulation collision and limit checks.
+
 ## v17.9.5 (2026-11-22 17:28) - codex
 
 - [eval] [exp] v17.9.4 复跑中 R03 实测 0.996807 rad、连续 2.800 s，末端补偿将瓶口误差从 3.419 降至 0.188 mm，瓶轴误差从 0.14755 降至 0.00371 rad。倾倒成功，随后的原位放回准备在 transport 报 `joint_limit_violation`，未归位或启动 R05。回执位于 `out/labutopia-elevated-20261122/v17.9.4-r03-r05-agent-controller-165606`。 / R03 completed the qualified pour. Terminal correction reduced tip error from 3.419 to 0.188 mm and axis error from 0.14755 to 0.00371 rad. Place preparation reported a joint-limit violation in transport and R05 remained pending.
@@ -158,11 +182,3 @@
 - [eval] [exp] 4 mm 预紧完成 R03 抬升和倾倒保持（峰值 1.0002 rad，持续 2.90 s），抬升及倾倒过程峰值相对位移 8.58 mm 和 5.51 mm。后撤阶段实测姿态修正逆解不可达，未归位。 / With 4 mm preload, R03 lifted and reached the pour goal (1.0002 rad, 2.90 s). Peak relative displacement was 8.58 mm in lift and 5.51 mm in the pour stage. The measured exit correction was unreachable, so return did not run.
 
 - [eval] [exp] 将倾倒进出间隙从 0.18 m 改为 0.14 m 后，R03 峰值 0.9968 rad，连续保持 2.80 s。撤离修正需跳变 1.01936 rad，超过 0.5 rad 上限，未归位或启动 R05。 / Reducing the process distance from 0.18 m to 0.14 m yielded 0.9968 rad peak tilt and 2.80 s qualified hold. An exit correction required 1.01936 rad versus a 0.5 rad limit. R03 did not return and R05 did not start. (local)
-
-## v17.9.1 (2026-11-22 14:25) - codex
-
-- [eval] [exp] R05 的 Isaac 抓取、倾倒和归位均成功。倾倒峰值 1.0103 rad，对准连续保持 2.85 s。倾倒阶段滑移最大 2.65 mm，610/610 采样双侧接触。松夹后撤后归位误差 0.736 mm、0.00275 rad。 / R05 passed acquisition, pour and placement. Peak tilt was 1.0103 rad, continuous aligned hold 2.85 s, and peak slip during the tilt phase 2.65 mm with bilateral contact in all 610 samples. After release and retreat, return errors were 0.736 mm and 0.00275 rad.
-- [eval] [exp] 原双瓶任务在 R05 归位后继续准备 R06。28 个通过几何筛选的候选因场景观测过期而被拒绝，未启动 R06 运动。终态回执、抓取漏斗和三段可播放录像保存在 `out/labutopia-elevated-20261122/v17.8.16-r05-r06-qualified-135042`。 / The original two-bottle task advanced to R06 planning after R05 returned. Its 28 geometry-qualified candidates were rejected because their scene observation was stale, before R06 motion. The run directory contains the terminal receipt, qualification funnel, and three playable videos.
-- [eval] [exp] 已启动同一 Isaac 场景内的顺序复跑，由两个独立任务在各自启动时取像，见 `out/labutopia-elevated-20261122/v17.9.0-r05-r06-fresh-142453`。 / Started a sequential replay in one Isaac scene with separate, freshly observed tasks. The replay directory contains the launcher and run output.
-
-- [docs] [docs] `CHANGELOG.md` L53–L61；`changelog/2026-11_part3.md` L905–L913。本次只追加仿真证据。 / Added simulation evidence only.

@@ -3311,6 +3311,7 @@ def test_place_qualifies_descent_again_only_after_measured_drift(monkeypatch, dr
         assert supported_pose == pytest.approx(rest)
         assert relation == pytest.approx(shifted)
         assert kwargs["initial_joints"] == pytest.approx(above)
+        assert [stage for _, _, stage in waypoints] == ["lower", "release", "retreat"]
         qualification_calls.append(waypoints)
         if reject:
             raise PhaseMotionError("payload_collision", "requalified lower hits the support")
