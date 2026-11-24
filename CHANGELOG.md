@@ -50,6 +50,47 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.13 (2026-11-24 23:33) - codex
+
+- [eval] [fix] [完成] 失抓后可沿已执行路线退回本次安全起点。R05 归位后从退让姿态接续 R03 时，Adapter 可在满足原有卸载和支撑条件后恢复。 / Recover from a failed acquire by reversing the route to its qualified start. The Adapter can recover R03 after R05's retreat when the existing unloading and support checks pass.
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L807–L817、L2380–L2418、L2434–L2464、L2568–L2583、L2627–L2633、L2994–L3012、L3055、L3074–L3077、L3108–L3110。进场记录已张开且无对应瓶身接触的夹爪与经过碰撞验证的路线起点。反馈区分固定观察原点和本次抓取起点。 / Capture an open gripper, fresh source-clear frames, and a collision-checked route start before motion. Keep observation home and the current route start distinct in feedback.
+- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2601–L2602、L2613–L2683。验证非原点回撤、过期或缺失读数、闭夹、接触和起终点碰撞。 / Cover non-home retreat and rejection for stale or missing readings, closed fingers, body contact, or blocked endpoints.
+
+```diff
+@@ -2411,5 +2455,5 @@ class IsaacPhaseMotion:
+-        if (
+-            route_start.shape != initial_arm.shape
+-            or np.max(np.abs(route_start - initial_arm))
+-            > self.config["joint_tracking_tolerance_rad"]
+-        ):
++        joint_tolerance = self.config["joint_tracking_tolerance_rad"]
++        if route_start.shape != initial_arm.shape or not np.isfinite(route_start).all():
++            raise PhaseMotionError("acquire_recovery_start_not_safe_pose", "qualified route start is invalid")
++        at_home = np.max(np.abs(route_start - initial_arm)) <= joint_tolerance
++        if not at_home and (qualified_start is None or qualified_start["joints_rad"] != route_start.tolist()):
+@@ -2418 +2462 @@ class IsaacPhaseMotion:
+-                "automatic recovery requires the qualified route to start at observation home",
++                "non-home recovery requires open fingers, fresh clear contact frames and collision clearance at route start",
+@@ -2419,0 +2464 @@ class IsaacPhaseMotion:
++        recovery_target = initial_arm if at_home else route_start
+@@ -2523,2 +2568,2 @@ class IsaacPhaseMotion:
+-        home_error = float(np.max(np.abs(self.joints() - initial_arm)))
+-        if home_error > self.config["joint_tracking_tolerance_rad"]:
++        endpoint_error = float(np.max(np.abs(self.joints() - recovery_target)))
++        if not math.isfinite(endpoint_error) or endpoint_error > joint_tolerance:
+@@ -2528,0 +2574,3 @@ class IsaacPhaseMotion:
++        if not at_home:
++            self._collisions(self.joints(), source, False, False,
++                             np.linalg.inv(self.tcp()) @ self.observed_pose(source), held_fingers=False)
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 240 项阶段动作测试及 `git diff --check` 通过。下一轮 Isaac 实跑沿用 R05→R03 任务和原有物理配置，并从抓取角候选移除 R03 上次失抓的 −π/2。 / All 240 phase motion tests and the diff check passed. The next Isaac run keeps the R05→R03 task and the prior physics profile, omitting the −π/2 angle used by the failed R03 grasp.
+
 ## v17.9.12 (2026-11-24 22:34) - codex
 
 - [eval] [fix] [完成] Isaac 宿主接入现有 Agent Provider 重试预算及间隔配置。22:12:23 轮失抓后已通过新观察，但短时上游故障耗尽宿主默认重试并关闭仿真，使同一任务无法重抓。保持 Coordinator 对原节点、场景与重试权限的判定。 / Wire the existing Agent Provider retry budget and delay into the Isaac host. The 22:12:23 run obtained a fresh observation after grasp recovery, but an upstream outage exhausted the host defaults and closed the simulation before reacquisition. Preserve the Coordinator's node, scene and retry authorization checks.
@@ -151,25 +192,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `bc841612`，`feature/planning-loop`，2026-11-24 21:37:20 +0800。
-
-## v17.9.8 (2026-11-24 20:55) - codex
-
-- [eval] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` 与宿主测试。预先绑定同运行时已有的语义抓取发现查询，让任务恢复可以在新观测上获取理解、候选与能力回执。补充宿主计划指引，使用当前场景发现证据，保持已完成动作及原有动作准入。 / Enroll existing semantic discovery Queries so a task can collect understanding, candidates and capabilities from a fresh observation. Guide the host to keep settled effects and use current scene evidence before preparing the next bottle. (local)
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L50–L54、L124。登记四个语义发现查询，说明恢复后重新获取当前观测与候选。 / Enroll all four semantic discovery queries and describe the current observation and candidate requirements for recovery.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L62–L63、L178–L182。验证真实运行时查询绑定和计划指引。 / Check real Runtime Query bindings and host guidance.
-
-```diff
--        ("scene.observe", "query"),
-+        *((tool_id, "query") for tool_id in PerceptionBindingAdapter._QUERY_SPECS),
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 12 项宿主测试通过。21:01:49 启动复跑，R05 和 R03 同任务完成及恢复后重抓仍待实测。 / All 12 host tests passed. The 21:01:49 replay is running, with same-task completion and reacquisition still to verify.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `c0ca2529`，`feature/planning-loop`，2026-11-24 21:06:09 +0800。

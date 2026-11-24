@@ -2598,7 +2598,8 @@ def test_recovery_never_invents_unqualified_path_from_route_start_to_home(monkey
             "body1": "/World/Franka/finger",
             "impulse": [1., 0., 0.],
         }] if arm_at_grasp and fingers_closed else [])
-        return {"time": model.world.current_time, "contacts": contacts}
+        timestamp = model.world.current_time if commands else model.world.current_time - model.dt * 3
+        return {"time": timestamp, "contacts": contacts}
 
     model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
     result = model.execute(arguments, Event())
@@ -2607,6 +2608,77 @@ def test_recovery_never_invents_unqualified_path_from_route_start_to_home(monkey
     assert result["possession_state"] == "uncertain"
     assert artifacts[-1][1]["recovery_failure_code"] == "acquire_recovery_start_not_safe_pose"
     assert not any(command[0] == pytest.approx(.5) for command in commands)
+
+
+@pytest.mark.parametrize("entry_state", ["clear", "closed", "source_contact", "missing_raw",
+                                         "start_collision", "return_collision"])
+def test_recovery_uses_only_the_acquire_routes_measured_non_home_start(monkeypatch, entry_state):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    start, grasp, lift = .12, .14, .20
+    positions = model._test_positions_ref
+    positions[0] = start
+    if entry_state == "closed":
+        positions[7:] = .03
+    route = arguments["phase_route"]
+    route["start_joints"][0] = start
+    route["steps"][0]["joints"][0] = grasp
+    route["steps"][1]["joints"][0] = lift
+    route["steps"].insert(0, {**route["steps"][0], "stage": "open", "allow_contact": False,
+                              "joints": route["start_joints"], "hold_s": 0.})
+    model.world.current_time = 1.
+    collision_checks = []
+
+    def collide(joints, _source, allow_contact, attached, *_args, **_kwargs):
+        if joints[0] == pytest.approx(start) and not allow_contact and not attached:
+            first_check = not collision_checks
+            collision_checks.append(len(commands))
+            if ((entry_state == "start_collision" and first_check)
+                    or (entry_state == "return_collision" and any(command[0] > grasp for command in commands))):
+                raise PhaseMotionError("route_collision", "route-start collision fixture")
+
+    def contact_frame():
+        at_entry = not commands
+        if at_entry and entry_state == "missing_raw":
+            return {"time": model.world.current_time}
+        contacts = [{
+            "body0": "/World/source/mesh",
+            "body1": "/World/Franka/finger",
+            "impulse": [0. if at_entry else 1., 0., 0.],
+        }] if (
+            at_entry and entry_state == "source_contact"
+            or abs(positions[0] - grasp) < 1e-6 and np.min(positions[7:]) < .035
+        ) else []
+        return {"time": model.world.current_time - (model.dt / 2 if at_entry else 0.),
+                "contacts": contacts, "in_contact": bool(contacts)}
+
+    model._collisions = collide
+    model.sensors = [SimpleNamespace(get_current_frame=contact_frame)] * 2
+    result = model.execute(arguments, Event())
+
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert any(command[0] > grasp for command in commands)
+    assert all(command[0] >= start - 1e-9 for command in commands)
+    feedback = artifacts[-1][1]
+    if entry_state == "clear":
+        assert result["status"] == "failed"
+        assert result["outcome_known"] and result["observation_ready"]
+        assert result["possession_state"] == "empty"
+        assert positions[0] == pytest.approx(start)
+        assert positions[7:] == pytest.approx([.04, .04])
+        assert feedback["recovery_endpoint"] == "qualified_route_start"
+        assert feedback["recovery_start_evidence"]["joints_rad"] == route["start_joints"]
+        assert feedback["recovery_start_evidence"]["contact_frame_timestamps_s"] == [.995, .995]
+        assert feedback["recovery_start_evidence"]["collision_check"] == "pass"
+        assert "recovery_home_joint_error_rad" not in result["measurements"]
+        assert result["measurements"]["recovery_route_start_joint_error_rad"] == pytest.approx(0.)
+        assert collision_checks[-1] == len(commands)
+    else:
+        assert result["status"] == "unknown"
+        assert not result["outcome_known"] and not result.get("observation_ready")
+        assert feedback["recovery_failure_code"] == (
+            "route_collision" if entry_state == "return_collision" else "acquire_recovery_start_not_safe_pose"
+        )
+        assert bool(feedback["recovery_start_evidence"]) == (entry_state == "return_collision")
 
 
 def test_measured_holding_failure_never_opens_or_retreats(monkeypatch):

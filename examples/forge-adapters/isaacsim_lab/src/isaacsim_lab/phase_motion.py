@@ -804,12 +804,16 @@ class GripContactWindow:
         self.latest = [None for _ in self.sensors]
         self.error = None
 
-    def capture(self, _step_size=None):
+    def capture(self, _step_size=None, *, require_raw_frame=False):
         # PhysX invokes callbacks outside the caller's exception stack. Preserve
         # errors for the motion loop instead of allowing stale evidence through.
         try:
             for index, sensor in enumerate(self.sensors):
                 frame = sensor.get_current_frame()
+                if require_raw_frame and (
+                    not isinstance(frame.get("contacts"), (list, tuple)) or "in_contact" not in frame
+                ):
+                    raise ValueError("raw contact data is unavailable")
                 timestamp = float(frame.get("time", -1.))
                 contacts = [item for item in frame.get("contacts", [])
                             if self.body_path in (item["body0"], item["body1"])]
@@ -2373,6 +2377,45 @@ class IsaacPhaseMotion:
         finally:
             self.world.remove_physics_callback(callback_name)
 
+    def _qualify_acquire_recovery_start(self, route_start, source, finger_indices, relation, contact_window):
+        """Measure whether the current acquire can recover to its own route start."""
+        home = np.asarray(self.scene.get("initial_joint_positions"), dtype=float)
+        if (
+            route_start.shape != (len(self.joint_indices),)
+            or not np.isfinite(route_start).all()
+            or np.any(route_start < self.limits[:, 0])
+            or np.any(route_start > self.limits[:, 1])
+            or (home.shape == route_start.shape
+                and np.max(np.abs(route_start - home)) <= self.config["joint_tracking_tolerance_rad"])
+        ):
+            return None
+        fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
+        if not np.isfinite(fingers).all() or np.min(fingers) < .035:
+            return None
+        # Isaac contact frames can lag the current render time by a physics
+        # substep. Allow the same age as live grip feedback, without stepping.
+        # Capture separately so missing entry evidence cannot poison live sampling.
+        entry = GripContactWindow(self.world, contact_window.sensors, contact_window.body_path, self.dt)
+        entry.capture(require_raw_frame=True)
+        now = float(self.world.current_time)
+        if entry.error is not None or len(entry.latest) != 2 or not all(
+            frame is not None and 0. <= now - frame[0] <= self.dt * 2 and not frame[1]
+            for frame in entry.latest
+        ):
+            return None
+        try:
+            self._collisions(route_start, source, False, False, relation, held_fingers=False)
+        except PhaseMotionError:
+            return None
+        return {
+            "joints_rad": route_start.tolist(),
+            "finger_positions_m": fingers.tolist(),
+            "timestamp_s": now,
+            "contact_frame_timestamps_s": [frame[0] for frame in entry.latest],
+            "selected_body_contact": False,
+            "collision_check": "pass",
+        }
+
     def _recover_failed_acquire(
         self,
         *,
@@ -2388,6 +2431,7 @@ class IsaacPhaseMotion:
         record,
         contact_window,
         articulation_action,
+        qualified_start,
     ):
         """Open at a fixed arm pose, then reverse the qualified path once clear."""
         if failure not in acquire_failure_recovery_codes(self.config):
@@ -2408,15 +2452,16 @@ class IsaacPhaseMotion:
                 "configured observation posture and open gripper state are required",
             )
         route_start = np.asarray(executed_path[0].get("joints"), dtype=float)
-        if (
-            route_start.shape != initial_arm.shape
-            or np.max(np.abs(route_start - initial_arm))
-            > self.config["joint_tracking_tolerance_rad"]
-        ):
+        joint_tolerance = self.config["joint_tracking_tolerance_rad"]
+        if route_start.shape != initial_arm.shape or not np.isfinite(route_start).all():
+            raise PhaseMotionError("acquire_recovery_start_not_safe_pose", "qualified route start is invalid")
+        at_home = np.max(np.abs(route_start - initial_arm)) <= joint_tolerance
+        if not at_home and (qualified_start is None or qualified_start["joints_rad"] != route_start.tolist()):
             raise PhaseMotionError(
                 "acquire_recovery_start_not_safe_pose",
-                "automatic recovery requires the qualified route to start at observation home",
+                "non-home recovery requires open fingers, fresh clear contact frames and collision clearance at route start",
             )
+        recovery_target = initial_arm if at_home else route_start
 
         tolerance = self.config["placement_tolerance_m"]
 
@@ -2520,19 +2565,22 @@ class IsaacPhaseMotion:
             current = goal
 
         final_return_error, final_rotation_error = verify_empty("recovery_complete")
-        home_error = float(np.max(np.abs(self.joints() - initial_arm)))
-        if home_error > self.config["joint_tracking_tolerance_rad"]:
+        endpoint_error = float(np.max(np.abs(self.joints() - recovery_target)))
+        if not math.isfinite(endpoint_error) or endpoint_error > joint_tolerance:
             raise PhaseMotionError(
                 "acquire_recovery_postcondition_failed",
                 "safe acquire recovery did not establish empty observation readiness",
             )
+        if not at_home:
+            self._collisions(self.joints(), source, False, False,
+                             np.linalg.inv(self.tcp()) @ self.observed_pose(source), held_fingers=False)
         return {
             "step_count": step_count,
-            "initial_arm": initial_arm,
-            "initial_gripper": initial_gripper,
+            "target_joints": recovery_target,
+            "endpoint": "observation_home" if at_home else "qualified_route_start",
             "return_error_m": final_return_error,
             "return_rotation_error_rad": final_rotation_error,
-            "home_joint_error_rad": home_error,
+            "endpoint_joint_error_rad": endpoint_error,
         }
 
     def _execute_motion(self, arguments, cancel, record_frame, contact_window):
@@ -2576,6 +2624,13 @@ class IsaacPhaseMotion:
         failure_detail = None
         status = "succeeded"
         finger_indices = [self.robot.get_dof_index(name) for name in ("panda_finger_joint1", "panda_finger_joint2")]
+        qualified_recovery_start = (
+            self._qualify_acquire_recovery_start(
+                np.asarray(route["start_joints"], dtype=float), source, finger_indices, grasp_relation, contact_window,
+            )
+            if operation == "acquire" and acquire_failure_recovery_codes(self.config)
+            else None
+        )
         finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
             self.robot.get_joint_positions())[finger_indices].copy()
         if operation in {"pour", "place", "stir"} and self.config.get("finger_hold_follow", False):
@@ -2936,9 +2991,10 @@ class IsaacPhaseMotion:
                         record=record,
                         contact_window=contact_window,
                         articulation_action=ArticulationAction,
+                        qualified_start=qualified_recovery_start,
                     )
                     step_count = recovery["step_count"]
-                    last_goal = recovery["initial_arm"]
+                    last_goal = recovery["target_joints"]
                     last_stage = "recovery_complete"
                 except Exception as recovery_exc:
                     reference = self._artifact("phase-feedback", {
@@ -2953,6 +3009,7 @@ class IsaacPhaseMotion:
                             recovery_exc, "code", type(recovery_exc).__name__
                         ),
                         "recovery_failure_detail": str(recovery_exc),
+                        "recovery_start_evidence": qualified_recovery_start,
                     })
                     return {
                         "status": "unknown",
@@ -2995,7 +3052,7 @@ class IsaacPhaseMotion:
             return_error = float(np.linalg.norm(physical_body[:3, 3] - original[:3, 3]))
             return_rotation_error = grasp_pose_errors(original, physical_body, axial_symmetry)[1]
             finish = self.tcp(
-                recovery["initial_arm"]
+                recovery["target_joints"]
                 if recovery is not None
                 else last_goal
                 if (track_stir or operation in {"pour", "place"}) and status == "succeeded"
@@ -3014,8 +3071,10 @@ class IsaacPhaseMotion:
                             "full_return_rotation_error_rad": float(Rotation.from_matrix(original[:3, :3].T @ physical_body[:3, :3]).magnitude()),
                             "final_tcp_position_error_m": final_position_error, "final_tcp_rotation_error_rad": final_rotation_error}
             if recovery is not None:
+                at_home = recovery["endpoint"] == "observation_home"
+                joint_error_name = "recovery_home_joint_error_rad" if at_home else "recovery_route_start_joint_error_rad"
+                measurements[joint_error_name] = recovery["endpoint_joint_error_rad"]
                 measurements.update(
-                    recovery_home_joint_error_rad=recovery["home_joint_error_rad"],
                     recovery_return_error_m=recovery["return_error_m"],
                     recovery_return_rotation_error_rad=recovery["return_rotation_error_rad"],
                 )
@@ -3046,6 +3105,9 @@ class IsaacPhaseMotion:
                                       "scene_revision": arguments["scene_revision"], "samples": samples,
                                       "measurements": measurements, "status": status, "failure_code": failure,
                                       "failure_detail": failure_detail,
+                                      **({"recovery_endpoint": recovery["endpoint"],
+                                          "recovery_start_evidence": qualified_recovery_start}
+                                         if recovery is not None else {}),
                                       **({"terminal_exit_correction": terminal_exit_correction}
                                          if terminal_exit_correction is not None else {}),
                                       "returned_to_safe_pose": safely_recovered,
