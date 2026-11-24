@@ -70,6 +70,10 @@
 
 - [eval] [exp] 定向测试 30 项通过，从已保存的仿真记录核对过真实失抓与成功回执。扩大测试 86 项通过，另 1 项缺少 `planning_selections` 的测试数据错误已在修改前重现。 / All 30 focused tests passed. Existing simulation ledgers supplied real failure and success receipts. The wider suite had 86 passes and one fixture failure for missing `planning_selections`, reproduced before the change.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `71ad9d7b`，`feature/planning-loop`，2026-11-24 21:41:50 +0800。
+
 ## v17.9.9 (2026-11-24 21:06) - codex
 
 - [eval] [fix] [完成] 修改 Isaac 宿主的续接计划和测试。用 Coordinator 已持久化的当前场景查询及原始子任务语义编译新的准备段，失败恢复后从新观测继续，保留已经完成的动作，并在发现准备节点引用旧场景时先重规划观察。 / Use Coordinator-persisted current-scene queries and the original subtask semantics to compile fresh preparation after recovery. Preserve completed actions and refresh the scene when preparation is bound to an earlier revision.
