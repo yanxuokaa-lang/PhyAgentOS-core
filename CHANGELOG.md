@@ -72,6 +72,10 @@
 
 - [eval] [exp] 17 项宿主和续接测试通过。21:18:30 轮已实测 R05 抓取抬升 58.01 mm，倾倒和第二瓶结果待该轮结算。 / All 17 host and continuation tests passed. The 21:18:30 replay measured a successful 58.01 mm R05 lift. The pour and second bottle remain in progress.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `bc841612`，`feature/planning-loop`，2026-11-24 21:37:20 +0800。
+
 ## v17.9.8 (2026-11-24 20:55) - codex
 
 - [eval] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` 与宿主测试。预先绑定同运行时已有的语义抓取发现查询，让任务恢复可以在新观测上获取理解、候选与能力回执。补充宿主计划指引，使用当前场景发现证据，保持已完成动作及原有动作准入。 / Enroll existing semantic discovery Queries so a task can collect understanding, candidates and capabilities from a fresh observation. Guide the host to keep settled effects and use current scene evidence before preparing the next bottle. (local)
