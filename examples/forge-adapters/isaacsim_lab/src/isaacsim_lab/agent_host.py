@@ -96,7 +96,9 @@ class LabPlanningContext:
 def environment_guidance(sensor_ref, execute):
     mode = "Simulated motion is authorized." if execute else "Read-only qualification; motion is disabled."
     handoff = (
-        "After task creation, use existing planning tools to select and execute ready nodes. "
+        "After successful semantic task creation, end the foreground turn so the background "
+        "controller can advance the persisted plan. When assigned a ready node, use existing "
+        "planning tools to select and execute that node. "
         "A successful grasp-affordance preparation is not task completion: select the ready "
         "manipulation.execute_subtask Action using its direct-predecessor qualified opaque references, "
         "then invoke the existing Action wrapper with the persisted selection. "

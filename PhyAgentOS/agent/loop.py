@@ -1810,7 +1810,9 @@ class AgentLoop:
                     logger.info("Agent tool start session={} iteration={} call_id={} tool={}",
                                 experience_session_key, iteration, tool_call.id, tool_call.name)
                     try:
-                        if tool_call.name in yield_after_tools and tool_call.name != "forge_plan_select":
+                        if tool_call.name in yield_after_tools and tool_call.name not in {
+                            "forge_plan_select", "forge_task_create",
+                        }:
                             # A governed execution has its own Tool budget and is
                             # reconciled from durable facts by the node executor.
                             if decision_deadline is not None and monotonic() >= decision_deadline:
@@ -2121,6 +2123,10 @@ class AgentLoop:
                         break
                     if (
                         tool_call.name in yield_after_tools
+                        and (
+                            tool_call.name != "forge_task_create"
+                            or tool_call.arguments.get("semantic_subtasks")
+                        )
                         and self._tool_result_succeeded(result)
                     ):
                         for deferred in response.tool_calls[call_index + 1 :]:
@@ -3274,7 +3280,7 @@ class AgentLoop:
                 on_progress=on_progress or _bus_progress,
                 experience_session_key=key,
                 yield_after_tools=(
-                    frozenset({"forge_task_materialize_plan"})
+                    frozenset({"forge_task_materialize_plan", "forge_task_create"})
                     if self.long_horizon_controller is not None
                     else frozenset()
                 ),

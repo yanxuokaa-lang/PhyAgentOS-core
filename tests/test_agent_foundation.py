@@ -67,6 +67,7 @@ from PhyAgentOS.planning import (
     build_replan_delta,
     plan_node_digest,
 )
+from PhyAgentOS.planning.contracts import plan_graph_digest
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from PhyAgentOS.session.manager import Session
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -1416,6 +1417,73 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
             for message in correction_context
         )
         assert loop.tools.execute.await_count == 2
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("case", ["semantic", "ordinary", "no_controller", "failed_semantic"])
+def test_foreground_semantic_create_hands_off_only_a_successful_plan(tmp_path, case):
+    async def exercise():
+        session_key = "cli:semantic-handoff"
+        coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+        graph = {
+            "task_id": "semantic-task",
+            "revision_id": "semantic-revision",
+            "planner_decision_digest": "a" * 64,
+            "policy_snapshot_digest": "b" * 64,
+            "nodes": [PlanNode(node_id="observe", obligation_id="observe", capability="scene.observe")
+                      .model_dump(mode="json")],
+        }
+        graph["graph_digest"] = plan_graph_digest(graph)
+        builder = SimpleNamespace(build=AsyncMock(return_value=graph))
+        if case == "failed_semantic":
+            builder.build.side_effect = ValueError("cannot bind the requested entities")
+        arguments = {"task_description": "Inspect the reagent", "verification": {"mode": "off"}}
+        if case != "ordinary":
+            arguments["semantic_subtasks"] = [{
+                "subtask_id": "pour", "operation": "pour", "source_category": "reagent_bottle",
+                "destination_category": "mixing_vessel", "sensor_refs": ["sensor://front"],
+                "max_age_ms": 1000,
+            }]
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[
+                ToolCallRequest("create", "forge_task_create", arguments),
+                ToolCallRequest("later", "list_dir", {"path": str(tmp_path)}),
+            ]),
+            LLMResponse(content="Foreground continued."),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=coordinator, semantic_plan_builder=builder,
+                         max_iterations=1 if case == "semantic" else 2)
+        controller = Mock()
+        loop.long_horizon_controller = None if case == "no_controller" else controller
+        list_dir = loop.tools.get("list_dir")
+        list_dir.execute = AsyncMock(return_value="Foreground tool ran.")
+
+        response = await loop.process_direct("Inspect the reagent", session_key=session_key)
+        tasks = coordinator.store.find_by_origin_session_key(session_key)
+        if case == "semantic":
+            assert len(provider.requests) == 1
+            assert "persisted long-horizon planning loop" in response
+            list_dir.execute.assert_not_awaited()
+            assert len(tasks) == 1 and tasks[0].active_revision.plan_graph is not None
+            assert not tasks[0].terminal
+            controller.start.assert_called_once_with(tasks[0].task_id)
+            messages = loop.sessions.get_or_create(session_key).messages
+            deferred = next(message for message in messages if message.get("tool_call_id") == "later")
+            assert json.loads(deferred["content"])["status"] == "deferred_to_long_horizon"
+        else:
+            assert len(provider.requests) == 2
+            assert response == "Foreground continued."
+            list_dir.execute.assert_awaited_once()
+            controller.start.assert_not_called()
+            if case == "ordinary":
+                assert len(tasks) == 1 and tasks[0].active_revision.plan_graph is None
+                builder.build.assert_not_awaited()
+            elif case == "failed_semantic":
+                assert not tasks
+            else:
+                assert len(tasks) == 1 and tasks[0].active_revision.plan_graph is not None
 
     asyncio.run(exercise())
 

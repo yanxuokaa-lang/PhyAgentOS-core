@@ -54,6 +54,8 @@ def test_host_guidance_distinguishes_query_qualification_from_action_handoff():
     assert 'Only select and execute read-only Query nodes' in readonly
     assert 'report that execution is disabled' in readonly
     assert 'then invoke the existing Action wrapper' not in readonly
+    assert 'background controller can advance the persisted plan' in executable
+    assert 'When assigned a ready node' in executable
     assert 'direct-predecessor qualified opaque references' in executable
     assert 'persisted selection' in executable
     assert 'complete route before any controller motion' in executable
