@@ -56,6 +56,7 @@ def test_bad_runtime_mass_or_inertia_cannot_be_reported_as_success(mass, inertia
 
 def usd_fixture():
     pytest.importorskip("pxr.Usd")
+    pytest.importorskip("pxr.PhysxSchema")
     from pxr import Sdf, Usd, UsdGeom, UsdPhysics
     stage = Usd.Stage.CreateInMemory()
     UsdGeom.SetStageMetersPerUnit(stage, 1.)
@@ -78,15 +79,16 @@ def usd_fixture():
 
 
 def test_physics_applies_to_alternative_usd_paths_in_session_layer_only():
-    from_px = pytest.importorskip("pxr.UsdPhysics")
-    from pxr import UsdShade
     stage, config = usd_fixture()
+    from pxr import PhysxSchema, UsdPhysics, UsdShade
     original = stage.GetRootLayer().ExportToString()
     report = apply_scene_physics(stage, config)
     assert stage.GetRootLayer().ExportToString() == original
     body = stage.GetPrimAtPath("/World/AlternativeVessel/Body")
-    assert from_px.MassAPI(body).GetMassAttr().Get() == pytest.approx(.1)
-    assert from_px.MassAPI(body).GetDensityAttr().Get() == 0
+    assert body.HasAPI(PhysxSchema.PhysxContactReportAPI)
+    assert PhysxSchema.PhysxContactReportAPI(body).GetThresholdAttr().Get() == 0.
+    assert UsdPhysics.MassAPI(body).GetMassAttr().Get() == pytest.approx(.1)
+    assert UsdPhysics.MassAPI(body).GetDensityAttr().Get() == 0
     for path in ("/World/OtherRobot/Finger", "/World/OtherRobot/Finger/subset"):
         material, _ = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(path)).ComputeBoundMaterial("physics")
         assert str(material.GetPath()) == "/World/PAOSPhysics/finger"

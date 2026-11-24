@@ -865,6 +865,11 @@ class GripContactWindow:
             for latest, frames in zip(self.latest, self.frames, strict=True)
         )
 
+    def has_unilateral_load(self):
+        return self.has_current_feedback(after=self.start) and sum(
+            all(impulse == 0. for impulse in frames.values()) for frames in self.frames
+        ) == 1
+
     def evidence(self):
         return {"contact_window_start_s": self.start,
                 "contact_window_end_s": float(self.world.current_time),
@@ -2423,6 +2428,59 @@ class IsaacPhaseMotion:
             "collision_check": "pass",
         }
 
+    def _acquire_support_reader(self, source):
+        """Bind normal-force readback for the selected body and exact support colliders."""
+        from isaacsim.core.api.sensors import RigidContactView
+        from pxr import PhysxSchema, Usd, UsdPhysics
+
+        body = self.body(source)
+        prim = self.stage.GetPrimAtPath(body.prim_path)
+        if not prim.HasAPI(PhysxSchema.PhysxContactReportAPI):
+            return None
+        paths = []
+        for root_path in self.config.get("support_collision_paths", ()):
+            root = self.stage.GetPrimAtPath(root_path)
+            if root.IsValid():
+                paths.extend(str(item.GetPath()) for item in Usd.PrimRange(root)
+                             if item.HasAPI(UsdPhysics.CollisionAPI)
+                             and UsdPhysics.CollisionAPI(item).GetCollisionEnabledAttr().Get()
+                             and not prim_path_is_within(str(item.GetPath()), body.prim_path))
+        paths = tuple(dict.fromkeys(paths))
+        if not paths:
+            return None
+        direction, magnitude = self.world.get_physics_context().get_gravity()
+        weight = float(body.get_mass()) * float(magnitude)
+        physics_dt = self.world.get_physics_dt()
+        if (not np.allclose(direction, [0., 0., -1.]) or not math.isfinite(weight) or weight <= 0.
+                or not math.isfinite(physics_dt) or physics_dt <= 0.):
+            return None
+        view = RigidContactView(
+            prim_paths_expr=body.prim_path, filter_paths_expr=list(paths),
+            prepare_contact_sensors=False, disable_stablization=False,
+        )
+        view.initialize(self.world.physics_sim_view)
+        if (view.num_shapes, view.num_filters) != (1, len(paths)):
+            return None
+
+        def read(after):
+            now = float(self.world.current_time)
+            if not after < now or not view.is_physics_handle_valid():
+                return None
+            forces = np.asarray(view.get_contact_force_matrix(dt=physics_dt), dtype=float)
+            if forces.shape != (1, len(paths), 3) or not np.isfinite(forces).all():
+                return None
+            upward = forces[0, :, 2]
+            return {
+                "body_path": body.prim_path,
+                "support_paths": list(paths),
+                "timestamp_s": now,
+                "normal_force_world_n": forces[0].tolist(),
+                "upward_force_n": float(upward.sum()),
+                "weight_n": weight,
+            }
+
+        return read
+
     def _recover_failed_acquire(
         self,
         *,
@@ -2490,9 +2548,21 @@ class IsaacPhaseMotion:
                 failure == "physical_grasp_lost" and in_support_band(pose) and contact_window.current_unloaded()
             )
 
+        support_reader = None
+
+        def read_support():
+            if support_reader is None:
+                return None
+            evidence = support_reader(contact_window.start)
+            if (evidence is None
+                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)
+                    or evidence["upward_force_n"] < .9 * evidence["weight_n"]):
+                return None
+            return evidence
+
         controller = self.robot.get_articulation_controller()
 
-        def command(arm, fingers, stage, allow_contact):
+        def command(arm, fingers, stage, allow_contact, *, measure_support_load=False):
             nonlocal step_count
             if cancel.is_set():
                 raise PhaseMotionError("cancelled", "recovery was cancelled")
@@ -2529,20 +2599,28 @@ class IsaacPhaseMotion:
             self.world.step(render=True)
             step_count += 1
             record_frame(stage)
-            feedback = record(stage, commanded_fingers=fingers)
+            evidence = read_support() if measure_support_load else None
+            held, pose = record(stage, commanded_fingers=fingers, support_evidence=evidence)
             if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
                 raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
-            return feedback
+            return held, pose, evidence
 
         held, physical_body = record("recovery_check")
         supported, _, _ = measure_support(physical_body)
         can_open = not held and supported and safe_to_open(physical_body)
+        require_supported_opening = False
+
         if (not can_open and failure == "physical_grasp_lost" and not held and supported
                 and in_support_band(physical_body) and contact_window.has_current_feedback()):
             hold_arm = self.joints()
             hold_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
-            for _ in range(math.ceil(self.config.get("settle_s", 0.) / self.dt)):
-                held, physical_body = command(hold_arm, hold_fingers, "recovery_settle", True)
+            settle_steps = math.ceil(self.config.get("settle_s", 0.) / self.dt)
+            for index in range(settle_steps):
+                if index == settle_steps - 1 and contact_window.has_unilateral_load():
+                    support_reader = self._acquire_support_reader(source)
+                held, physical_body, evidence = command(
+                    hold_arm, hold_fingers, "recovery_settle", True, measure_support_load=True,
+                )
                 supported, _, _ = measure_support(physical_body)
                 if (held or not supported or not in_support_band(physical_body)
                         or not contact_window.has_current_feedback(after=contact_window.start)):
@@ -2550,6 +2628,9 @@ class IsaacPhaseMotion:
                 if safe_to_open(physical_body):
                     can_open = True
                     break
+            else:
+                if settle_steps and evidence is not None and contact_window.has_unilateral_load():
+                    require_supported_opening = can_open = True
         if not can_open:
             raise PhaseMotionError(
                 "acquire_recovery_possession_uncertain",
@@ -2565,7 +2646,19 @@ class IsaacPhaseMotion:
             self.config.get("finger_velocity_m_s", .015),
             self.config.get("finger_acceleration_m_s2", .15),
         ):
-            command(opening_arm, fingers, "recovery_open", True)
+            held, physical_body, evidence = command(
+                opening_arm, fingers, "recovery_open", True,
+                measure_support_load=require_supported_opening,
+            )
+            if require_supported_opening:
+                supported, _, _ = measure_support(physical_body)
+                if (held or not supported or not in_support_band(physical_body) or evidence is None
+                        or not contact_window.has_current_feedback(after=contact_window.start)
+                        or not (safe_to_open(physical_body) or contact_window.has_unilateral_load())):
+                    raise PhaseMotionError(
+                        "acquire_recovery_support_lost",
+                        "opening requires the bottle to remain stable on the measured support",
+                    )
 
         def verify_empty(stage):
             held, physical_body = record(stage)
@@ -2676,7 +2769,7 @@ class IsaacPhaseMotion:
         def contacts():
             return contact_window.valid()
 
-        def record(stage, *, commanded_fingers=None):
+        def record(stage, *, commanded_fingers=None, support_evidence=None):
             nonlocal finger_target
             if commanded_fingers is not None:
                 finger_target = commanded_fingers
@@ -2703,6 +2796,8 @@ class IsaacPhaseMotion:
                       "full_attachment_rotation_error_rad": float(Rotation.from_matrix(grasp_relation[:3, :3].T @ relation[:3, :3]).magnitude()),
                       "object_origin_position_error_m": float(np.linalg.norm(relation[:3, 3] - grasp_relation[:3, 3])),
                       **contact_window.evidence()}
+            if support_evidence is not None:
+                sample["support_contact"] = support_evidence
             if operation in {"pour", "stir"}:
                 target = route["target"]
                 tip = physical_body[:3, 3] + physical_body[:3, :3] @ np.asarray(target["tool_frame"]["tip_offset_m"])

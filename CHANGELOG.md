@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-11_part4](changelog/2026-11_part4.md)
 - [2026-11_part3](changelog/2026-11_part3.md)
 - [2026-11_part2](changelog/2026-11_part2.md)
 - [2026-11](changelog/2026-11.md)
@@ -49,6 +50,160 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v17.10.0 (2026-11-25 02:17) - codex
+
+- [env] [fix] 已判定失抓且固定等待后，若仍有单侧指爪载荷，只有测得瓶体由现场配置的支撑面承重才允许固定臂位开爪，随后按原有空夹确认和回撤流程恢复。 / After a confirmed grasp failure and a stationary wait, open the fingers at a fixed arm pose only if configured support is measured bearing the bottle's weight when unilateral finger load persists. Then use existing empty-gripper verification and retreat.
+- [env] [fix] 仅在 Isaac 场景会话层、物理重置之前为配置的瓶体启用 PhysX 接触报告。 / Enable PhysX contact reports for configured vessels in the Isaac scene session layer before physics reset.
+- [env] [exp] 覆盖过滤支撑碰撞体、单侧载荷恢复、过期反馈、开爪时支撑消失、两侧有载荷及瓶体移动。 / Cover support collider filtering, recovery with unilateral load, stale feedback, loss of support while opening, bilateral load and vessel motion.
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L868–L872、L2431–L2483、L2551–L2661、L2772–L2800。原位等待结束时增加真实承重判断，仅从本步测得的矩阵读取选中瓶体和明确配置的外部支撑碰撞体间的世界坐标系法向载荷。开爪期间逐步复核姿态、台面承重和两侧最新反馈，并将证据保存在对应动作采样中。 / At the end of the stationary wait, check the measured world-frame normal load between the selected vessel and configured external support colliders. Recheck pose, support and current feedback from both fingers during opening and attach evidence to the matching motion sample.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py` L104–L105。 / Author contact reporting before reset.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L1、L2326、L2543–L2687。 / Exercise the reader and recovery behavior with replacement plant feedback.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_scene_physics.py` L58–L60、L82–L91。 / Assert native PhysX contact report setup in the session layer.
+
+```diff
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+index 53022c10..3abc51fc 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+@@ -867,0 +868,5 @@ class GripContactWindow:
++    def has_unilateral_load(self):
++        return self.has_current_feedback(after=self.start) and sum(
++            all(impulse == 0. for impulse in frames.values()) for frames in self.frames
++        ) == 1
++
+@@ -2425,0 +2431,53 @@ class IsaacPhaseMotion:
++    def _acquire_support_reader(self, source):
++        """Bind normal-force readback for the selected body and exact support colliders."""
++        from isaacsim.core.api.sensors import RigidContactView
++        from pxr import PhysxSchema, Usd, UsdPhysics
++
++        body = self.body(source)
++        prim = self.stage.GetPrimAtPath(body.prim_path)
++        if not prim.HasAPI(PhysxSchema.PhysxContactReportAPI):
++            return None
++        paths = []
++        for root_path in self.config.get("support_collision_paths", ()):
++            root = self.stage.GetPrimAtPath(root_path)
++            if root.IsValid():
++                paths.extend(str(item.GetPath()) for item in Usd.PrimRange(root)
++                             if item.HasAPI(UsdPhysics.CollisionAPI)
++                             and UsdPhysics.CollisionAPI(item).GetCollisionEnabledAttr().Get()
++                             and not prim_path_is_within(str(item.GetPath()), body.prim_path))
++        paths = tuple(dict.fromkeys(paths))
++        if not paths:
++            return None
++        direction, magnitude = self.world.get_physics_context().get_gravity()
++        weight = float(body.get_mass()) * float(magnitude)
++        physics_dt = self.world.get_physics_dt()
++        if (not np.allclose(direction, [0., 0., -1.]) or not math.isfinite(weight) or weight <= 0.
++                or not math.isfinite(physics_dt) or physics_dt <= 0.):
++            return None
++        view = RigidContactView(
++            prim_paths_expr=body.prim_path, filter_paths_expr=list(paths),
++            prepare_contact_sensors=False, disable_stablization=False,
++        )
++        view.initialize(self.world.physics_sim_view)
++        if (view.num_shapes, view.num_filters) != (1, len(paths)):
++            return None
++
++        def read(after):
++            now = float(self.world.current_time)
++            if not after < now or not view.is_physics_handle_valid():
++                return None
++            forces = np.asarray(view.get_contact_force_matrix(dt=physics_dt), dtype=float)
++            if forces.shape != (1, len(paths), 3) or not np.isfinite(forces).all():
++                return None
++            upward = forces[0, :, 2]
++            return {
++                "body_path": body.prim_path,
++                "support_paths": list(paths),
++                "timestamp_s": now,
++                "normal_force_world_n": forces[0].tolist(),
++                "upward_force_n": float(upward.sum()),
++                "weight_n": weight,
++            }
++
++        return read
++
+@@ -2492,0 +2551,12 @@ class IsaacPhaseMotion:
++        support_reader = None
++
++        def read_support():
++            if support_reader is None:
++                return None
++            evidence = support_reader(contact_window.start)
++            if (evidence is None
++                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)
++                    or evidence["upward_force_n"] < .9 * evidence["weight_n"]):
++                return None
++            return evidence
++
+@@ -2495 +2565 @@ class IsaacPhaseMotion:
+-        def command(arm, fingers, stage, allow_contact):
++        def command(arm, fingers, stage, allow_contact, *, measure_support_load=False):
+@@ -2532 +2602,2 @@ class IsaacPhaseMotion:
+-            feedback = record(stage, commanded_fingers=fingers)
++            evidence = read_support() if measure_support_load else None
++            held, pose = record(stage, commanded_fingers=fingers, support_evidence=evidence)
+@@ -2535 +2606 @@ class IsaacPhaseMotion:
+-            return feedback
++            return held, pose, evidence
+@@ -2539,0 +2611,2 @@ class IsaacPhaseMotion:
++        require_supported_opening = False
++
+@@ -2544,2 +2617,7 @@ class IsaacPhaseMotion:
+-            for _ in range(math.ceil(self.config.get("settle_s", 0.) / self.dt)):
+-                held, physical_body = command(hold_arm, hold_fingers, "recovery_settle", True)
++            settle_steps = math.ceil(self.config.get("settle_s", 0.) / self.dt)
++            for index in range(settle_steps):
++                if index == settle_steps - 1 and contact_window.has_unilateral_load():
++                    support_reader = self._acquire_support_reader(source)
++                held, physical_body, evidence = command(
++                    hold_arm, hold_fingers, "recovery_settle", True, measure_support_load=True,
++                )
+@@ -2552,0 +2631,3 @@ class IsaacPhaseMotion:
++            else:
++                if settle_steps and evidence is not None and contact_window.has_unilateral_load():
++                    require_supported_opening = can_open = True
+@@ -2568 +2649,13 @@ class IsaacPhaseMotion:
+-            command(opening_arm, fingers, "recovery_open", True)
++            held, physical_body, evidence = command(
++                opening_arm, fingers, "recovery_open", True,
++                measure_support_load=require_supported_opening,
++            )
++            if require_supported_opening:
++                supported, _, _ = measure_support(physical_body)
++                if (held or not supported or not in_support_band(physical_body) or evidence is None
++                        or not contact_window.has_current_feedback(after=contact_window.start)
++                        or not (safe_to_open(physical_body) or contact_window.has_unilateral_load())):
++                    raise PhaseMotionError(
++                        "acquire_recovery_support_lost",
++                        "opening requires the bottle to remain stable on the measured support",
++                    )
+@@ -2679 +2772 @@ class IsaacPhaseMotion:
+-        def record(stage, *, commanded_fingers=None):
++        def record(stage, *, commanded_fingers=None, support_evidence=None):
+@@ -2705,0 +2799,2 @@ class IsaacPhaseMotion:
++            if support_evidence is not None:
++                sample["support_contact"] = support_evidence
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py
+index 57044f43..68916aed 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py
+@@ -103,0 +104,2 @@ def apply_scene_physics(stage, config):
++            # PhysX instantiates contact reporting as the simulation scene loads.
++            PhysxSchema.PhysxContactReportAPI.Apply(rigid).CreateThresholdAttr(0.)
+```
+
+### 验证 / Validation
+
+- [env] [exp] 本地阶段动作、接触时序及场景物理测试 290 项通过，2 项原生 USD 测试因本地只安装 usd-core 而跳过。 / Phase motion, contact timing and scene physics tests passed with 290 passed and 2 skips for native USD checks requiring the PhysX schema.
+- [env] [exp] Isaac 原生传感器烟测 `out/labutopia-elevated-20261124/support-contact-smoke/probe_adapter_reader.json` 中，物理步开始前没有新样本，R03 六个控制步的台面向上载荷为 0.957–0.990 N，重量为 0.981 N，试管架反馈为 0 N。 / In the native Isaac reader smoke, no fresh sample existed before stepping physics. Six R03 control steps measured 0.957–0.990 N from the table against 0.981 N of vessel weight and zero force from the rack.
+- [policy] [exp] Agent Host 子任务续接、PlanningLoop、长流程控制和恢复判定共 244 项通过。 / All 244 Agent Host subtask continuation, PlanningLoop, long-horizon control and recovery decision tests passed.
 
 ## v17.9.15 (2026-11-25 01:19) - codex
 
@@ -334,29 +489,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `36af57c9`，`feature/planning-loop`，2026-11-24 22:36:07 +0800。
-
-## v17.9.11 (2026-11-24 22:08) - codex
-
-- [eval] [fix] [完成] 修改 Isaac 抓取准备与相应测试。预选路线未通过全路径检查时，尝试已有的完整路线搜索，保留原运动检查和准备证据。21:18:30 轮的 R03 在当前关节姿态下多次出现转腕 IK 不连续，而预选模式提前裁掉了其他策略。 / In Isaac acquire preparation, let a rejected preselected route fall back to the existing full route search with the same qualification and evidence. The current replay repeatedly found wrist IK discontinuities for R03 while preselection excluded alternate strategies.
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1424–L1429、L1459–L1470、L1500–L1501、L1519–L1544、L1573–L1574、L1659、L1695、L1708–L1709。预选候选全部失败后，复用现有路径检查和失败前缀缓存，寻找配置中的首条合格路线。两次搜索共用超时，并在准备结果中记录进入备选搜索的证据。 / After the preselected candidates are exhausted, use the existing qualification and failed-prefix cache to find the first eligible configured route. Both passes share a deadline and link the fallback evidence.
-- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L973–L1028。覆盖预选成功、备选成功和共用超时导致拒绝准备。 / Cover preselected success, fallback success, and fail-closed expiration on the original deadline.
-
-```diff
--            for strategy in strategies:
-+            for strategy, dimensions, first_feasible in ordered_strategies:
-                  ...
--                        if policy == "first_feasible":
-+                        if first_feasible:
-                              break
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 234 项 Isaac 阶段运动测试通过。`git diff --check` 通过。21:18:30 轮 R05 已完成，R03 尚未发生动作。备选选择待复跑实测。 / All 234 Isaac phase-motion tests and the diff check passed. The 21:18:30 run completed R05 and reported no motion for R03. Simulation of alternative selection remains pending.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `af2ea7ee`，`feature/planning-loop`，2026-11-24 22:14:18 +0800。

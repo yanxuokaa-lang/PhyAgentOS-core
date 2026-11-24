@@ -1,3 +1,4 @@
+import sys
 from copy import deepcopy
 from pathlib import Path
 from threading import Event
@@ -2279,8 +2280,6 @@ def test_dense_collision_sampling_does_not_add_execution_stops():
 
 
 def execution_fixture(monkeypatch):
-    import sys
-
     monkeypatch.setitem(sys.modules, "isaacsim.core.utils.types", SimpleNamespace(
         ArticulationAction=lambda **value: SimpleNamespace(**value)))
     model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
@@ -2324,6 +2323,7 @@ def execution_fixture(monkeypatch):
     model._collisions = lambda *_, **__: None
     model.body_pose = lambda _: body.copy()
     model.body = lambda _: SimpleNamespace(prim_path="/World/source/mesh", get_linear_velocity=lambda: np.zeros(3))
+    model._acquire_support_reader = lambda _: None
     # The fingers contact another object; this must not establish possession.
     model.sensors = [SimpleNamespace(get_current_frame=lambda: {
         "time": world.current_time, "contacts": [{"body0": "/World/wrong/mesh", "body1": "/World/Franka/finger", "impulse": [1., 0., 0.]}]})] * 2
@@ -2538,6 +2538,151 @@ def test_failed_lift_samples_unload_before_opening_at_fixed_pose(monkeypatch, ou
         assert feedback["recovery_failure_code"] == {
             "collision": "route_collision", "cancelled": "cancelled",
         }.get(outcome, "acquire_recovery_possession_uncertain")
+
+
+def test_acquire_support_reader_measures_only_enabled_external_support_colliders(monkeypatch):
+    report_api = object()
+
+    class CollisionAPI:
+        def __new__(cls, item):
+            return item
+
+    def prim(path, *apis, valid=True, enabled=True):
+        return SimpleNamespace(
+            GetPath=lambda: path, HasAPI=apis.__contains__, IsValid=lambda: valid,
+            GetCollisionEnabledAttr=lambda: SimpleNamespace(Get=lambda: enabled),
+        )
+
+    body = prim("/World/source/mesh", report_api, CollisionAPI)
+    table = prim("/World/table")
+    table.children = [
+        table, prim("/World/table/shape", CollisionAPI),
+        prim("/World/table/disabled", CollisionAPI, enabled=False),
+        prim("/World/table/noncollider"),
+    ]
+    body.children = [body, prim("/World/source/mesh/body_shape", CollisionAPI)]
+    prims = {item.GetPath(): item for item in [*table.children, *body.children]}
+    monkeypatch.setitem(sys.modules, "pxr", SimpleNamespace(
+        PhysxSchema=SimpleNamespace(PhysxContactReportAPI=report_api),
+        Usd=SimpleNamespace(PrimRange=lambda root: root.children),
+        UsdPhysics=SimpleNamespace(CollisionAPI=CollisionAPI),
+    ))
+    view = SimpleNamespace(num_shapes=1, num_filters=1, forces=[[[.1, .2, .98]]],
+                           initialize=lambda _simulation_view: None)
+    view.is_physics_handle_valid = lambda: view.valid
+    view.valid = True
+    force_calls = []
+
+    def matrix(*, dt):
+        force_calls.append(dt)
+        return view.forces
+
+    view.get_contact_force_matrix = matrix
+    view_options = []
+
+    def bind(**kwargs):
+        view_options.append(kwargs)
+        return view
+
+    monkeypatch.setitem(sys.modules, "isaacsim.core.api.sensors", SimpleNamespace(RigidContactView=bind))
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.body = lambda _: SimpleNamespace(prim_path=body.GetPath(), get_mass=lambda: .1)
+    model.stage = SimpleNamespace(GetPrimAtPath=lambda path: prims.get(path, prim(path, valid=False)))
+    model.config = {"support_collision_paths": [table.GetPath(), body.GetPath(), "/World/missing"]}
+    model.world = SimpleNamespace(
+        current_time=1., physics_sim_view=object(), get_physics_dt=lambda: .01,
+        get_physics_context=lambda: SimpleNamespace(get_gravity=lambda: ([0., 0., -1.], 9.81)),
+    )
+    read = model._acquire_support_reader("/World/source")
+    assert view_options == [{
+        "prim_paths_expr": "/World/source/mesh", "filter_paths_expr": ["/World/table/shape"],
+        "prepare_contact_sensors": False, "disable_stablization": False,
+    }]
+    assert read(1.) is None
+    assert not force_calls
+    sample = read(.99)
+    assert sample["support_paths"] == ["/World/table/shape"]
+    assert sample["upward_force_n"] == pytest.approx(.98)
+    assert sample["weight_n"] == pytest.approx(.981)
+    assert force_calls == [.01]
+    view.forces = [[[.1, .2, float("nan")]]]
+    assert read(.99) is None
+    view.forces = [[0., 0., .98]]
+    assert read(.99) is None
+    view.valid = False
+    assert read(.99) is None
+
+
+@pytest.mark.parametrize("case", [
+    "supported", "zero", "grazing", "stale", "moving", "bilateral", "support_lost", "stale_open_finger",
+])
+def test_persistent_grasp_loss_requires_bottle_weight_on_verified_support(monkeypatch, case):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    model.config["settle_s"] = 3 * model.dt
+    positions = model._test_positions_ref
+    model.tcp = lambda *_: pose_matrix([.1 + positions[0], 0., 1.], [0., 0., 0., 1.])
+    stopped_fingers = None
+    apply_action = model.robot.apply_action
+
+    def capture_stop(action):
+        nonlocal stopped_fingers
+        if stopped_fingers is None and positions[0] > .008 and np.array_equal(action.joint_positions, positions):
+            stopped_fingers = positions[7:].copy()
+        apply_action(action)
+
+    def contact_frame(index):
+        contacts = []
+        timestamp = model.world.current_time
+        if case == "stale_open_finger" and stopped_fingers is not None and any(positions[7:] > stopped_fingers):
+            return {"time": timestamp - model.dt if index else timestamp, "contacts": []}
+        if min(positions[7:]) < .035:
+            loaded = positions[0] <= 1e-9 or (positions[0] > .008 and (
+                index == 0 or (case == "bilateral" and stopped_fingers is not None)
+            ))
+            contacts = [{"body0": "/World/source/mesh", "body1": "/World/Franka/finger",
+                         "impulse": [.005 if loaded else 0., 0., 0.]}]
+        return {"time": timestamp, "contacts": contacts}
+
+    source_body = model.body("/World/source")
+    source_body.get_linear_velocity = lambda: np.array([
+        0., 0., .04 if case == "moving" and stopped_fingers is not None else 0.,
+    ])
+    model.body = lambda _: source_body
+    model.robot.apply_action = capture_stop
+    model.sensors = [SimpleNamespace(get_current_frame=lambda index=index: contact_frame(index))
+                     for index in range(2)]
+    support_reads = []
+
+    def read(after):
+        upward = {"grazing": .2, "zero": 0.}.get(case, .98)
+        if case == "support_lost" and any(commands[-1][7:] > stopped_fingers):
+            upward = 0.
+        support_reads.append(upward)
+        return {"upward_force_n": upward, "weight_n": .981,
+                "timestamp_s": after if case == "stale" else model.world.current_time}
+
+    model._acquire_support_reader = lambda source: read
+    result = model.execute(arguments, Event())
+    feedback = artifacts[-1][1]
+    samples = feedback["samples"]
+    opened = [sample for sample in samples if sample["stage"] == "recovery_open"]
+    retreated = [sample for sample in samples if sample["stage"] == "recovery_retreat"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    if case == "supported":
+        assert opened and retreated
+        assert result["outcome_known"] and result["returned_to_safe_pose"]
+        assert result["possession_state"] == "empty"
+        assert all(sample["support_contact"]["upward_force_n"] == .98 for sample in opened)
+        assert len(support_reads) == len(opened) + 1
+    else:
+        assert not retreated
+        assert result["status"] == "unknown" and result["possession_state"] == "uncertain"
+        if case in {"support_lost", "stale_open_finger"}:
+            assert len(opened) == 1
+            assert feedback["recovery_failure_code"] == "acquire_recovery_support_lost"
+        else:
+            assert not opened
+            assert feedback["recovery_failure_code"] == "acquire_recovery_possession_uncertain"
 
 
 def test_closure_settling_walk_is_judged_at_lift_entry_not_per_frame(monkeypatch):

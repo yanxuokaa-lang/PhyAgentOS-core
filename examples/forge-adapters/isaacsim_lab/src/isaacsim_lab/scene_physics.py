@@ -101,6 +101,8 @@ def apply_scene_physics(stage, config):
                         materialPurpose="physics")
 
         for rigid, shapes, spec in bodies:
+            # PhysX instantiates contact reporting as the simulation scene loads.
+            PhysxSchema.PhysxContactReportAPI.Apply(rigid).CreateThresholdAttr(0.)
             before = {name: rigid.GetAttribute("physics:" + name).Get() for name in ("mass", "density")}
             mass = UsdPhysics.MassAPI.Apply(rigid)
             mass.CreateMassAttr(spec["mass_kg"])
