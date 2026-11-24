@@ -72,6 +72,10 @@
 
 - [eval] [exp] 17 项宿主和续接测试通过，`git diff --check` 通过。上游已恢复响应，实跑使用单次复跑配置来延长重试等待。 / All 17 host and continuation tests and the diff check passed. The upstream provider is responding. The simulation replay uses a run-specific configuration to allow longer retries.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `36af57c9`，`feature/planning-loop`，2026-11-24 22:36:07 +0800。
+
 ## v17.9.11 (2026-11-24 22:08) - codex
 
 - [eval] [fix] [完成] 修改 Isaac 抓取准备与相应测试。预选路线未通过全路径检查时，尝试已有的完整路线搜索，保留原运动检查和准备证据。21:18:30 轮的 R03 在当前关节姿态下多次出现转腕 IK 不连续，而预选模式提前裁掉了其他策略。 / In Isaac acquire preparation, let a rejected preselected route fall back to the existing full route search with the same qualification and evidence. The current replay repeatedly found wrist IK discontinuities for R03 while preselection excluded alternate strategies.
