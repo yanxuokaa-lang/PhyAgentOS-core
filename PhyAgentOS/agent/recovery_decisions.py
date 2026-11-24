@@ -14,6 +14,7 @@ from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE, compile_task_plan
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.forge.manipulation import is_recovered_subtask_acquire
 from PhyAgentOS.planning import (
     PlanNode,
     reconcile_replan_delta,
@@ -177,19 +178,6 @@ def _fresh_observation_recovery_record(task, graph, settlement):
     if not records:
         return None
     record = records[-1]
-    facts = response_facts(getattr(record, "response", None))
-    receipts = _subtask_receipts(record)
-    if not receipts:
-        return None
-    response = receipts[-1].get("response")
-    if not isinstance(response, Mapping):
-        return None
-    summary = response.get("capability_outcome_summary")
-    action_facts = {**response, **summary} if isinstance(summary, Mapping) else response
-    arguments = getattr(record, "arguments", {})
-    binding = arguments.get("binding") if isinstance(arguments, Mapping) else None
-    source_revision = binding.get("scene_revision") if isinstance(binding, Mapping) else None
-    new_revision = facts.get("new_scene_revision")
     if (
         record.status == "failed"
         and getattr(record, "tool_id", None) == "manipulation.execute_subtask"
@@ -197,31 +185,10 @@ def _fresh_observation_recovery_record(task, graph, settlement):
         and getattr(settlement, "outcome_known", None) is True
         and getattr(settlement, "world_change_started", None) is True
         and getattr(settlement, "requires_replan", None) is True
-        and facts.get("status") == "failed"
-        and facts.get("outcome_known") is True
-        and facts.get("world_change_started") is True
-        and facts.get("failure_owner") == "execution"
-        and facts.get("requires_replan") is True
-        and facts.get("recommended_action") == "refresh_perception_before_motion"
-        and facts.get("possession_state") == "empty"
-        and facts.get("object_support_state") == "on_support"
-        and facts.get("returned_to_safe_pose") is True
-        and facts.get("observation_ready") is True
-        and receipts[-1].get("tool_id") == "object.acquire"
-        and receipts[-1].get("phase") == "acquire"
-        and receipts[-1].get("outcome_known") is True
-        and action_facts.get("status") == "failed"
-        and action_facts.get("failure_owner") == "execution"
-        and action_facts.get("possession_state") == "empty"
-        and action_facts.get("object_support_state") == "on_support"
-        and action_facts.get("returned_to_safe_pose") is True
-        and action_facts.get("observation_ready") is True
-        and action_facts.get("requires_replan") is True
-        and action_facts.get("retryable_in_revision") is False
-        and action_facts.get("recommended_action") == "refresh_perception_before_motion"
-        and isinstance(source_revision, str)
-        and isinstance(new_revision, str)
-        and new_revision != source_revision
+        and is_recovered_subtask_acquire(
+            response_facts(getattr(record, "response", None)),
+            getattr(record, "arguments", {}),
+        )
     ):
         return record
     return None

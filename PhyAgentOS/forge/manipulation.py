@@ -23,6 +23,50 @@ class ManipulationPlanningError(ValueError):
     """An adapter planning projection is invalid."""
 
 
+def is_recovered_subtask_acquire(facts: Mapping[str, object], arguments: object) -> bool:
+    """Recognize an acquire failure that restored a supported object and an empty gripper."""
+    result = facts.get("subtask_result")
+    receipts = result.get("receipts") if isinstance(result, Mapping) else None
+    if not isinstance(receipts, list) or not receipts or not isinstance(receipts[-1], Mapping):
+        return False
+    acquire = receipts[-1]
+    response = acquire.get("response")
+    if not isinstance(response, Mapping):
+        return False
+    summary = response.get("capability_outcome_summary")
+    action_facts = {**response, **summary} if isinstance(summary, Mapping) else response
+    binding = arguments.get("binding") if isinstance(arguments, Mapping) else None
+    source_revision = binding.get("scene_revision") if isinstance(binding, Mapping) else None
+    new_revision = facts.get("new_scene_revision")
+    return (
+        facts.get("status") == "failed"
+        and facts.get("outcome_known") is True
+        and facts.get("world_change_started") is True
+        and facts.get("failure_owner") == "execution"
+        and facts.get("requires_replan") is True
+        and facts.get("recommended_action") == "refresh_perception_before_motion"
+        and facts.get("possession_state") == "empty"
+        and facts.get("object_support_state") == "on_support"
+        and facts.get("returned_to_safe_pose") is True
+        and facts.get("observation_ready") is True
+        and acquire.get("tool_id") == "object.acquire"
+        and acquire.get("phase") == "acquire"
+        and acquire.get("outcome_known") is True
+        and action_facts.get("status") == "failed"
+        and action_facts.get("failure_owner") == "execution"
+        and action_facts.get("possession_state") == "empty"
+        and action_facts.get("object_support_state") == "on_support"
+        and action_facts.get("returned_to_safe_pose") is True
+        and action_facts.get("observation_ready") is True
+        and action_facts.get("requires_replan") is True
+        and action_facts.get("retryable_in_revision") is False
+        and action_facts.get("recommended_action") == "refresh_perception_before_motion"
+        and isinstance(source_revision, str)
+        and isinstance(new_revision, str)
+        and new_revision != source_revision
+    )
+
+
 class CoordinationMode(StrEnum):
     SINGLE_ARM = "single_arm"
     ALTERNATIVE_ARM = "alternative_arm"

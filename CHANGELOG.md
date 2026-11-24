@@ -50,6 +50,26 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.10 (2026-11-24 21:26) - codex
+
+- [eval] [fix] [完成] 在 Coordinator 的任务结算中识别一次已经安全收尾的失抓后来由相同动作义务成功补做的情况。保留失败与成功的原始回执，核对成功是同一个物体、目标和工艺请求，其他未知及未恢复的结果仍阻止结算为成功。 / In Coordinator task finalization, recognize a safely recovered failed acquire when a later measured success fulfills the same original Action obligation with the same object, destination and process request. Retain both receipts and continue blocking success for unresolved or unrecovered effects.
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `PhyAgentOS/forge/task.py` L33–L37、L5118–L5253。结算时核对失败回撤、后续修订的同义务动作、物体与目标、归位要求和各阶段已知结果。 / Finalization links a proven failed-acquire recovery to a later known completion of the same obligation, objects, return request, and phases.
+- [eval] [refactor] `PhyAgentOS/forge/manipulation.py` L26–L67 与 `PhyAgentOS/agent/recovery_decisions.py` L17、L167–L194。复用同一回执判定识别空夹、安全回撤和支撑面上的物体。 / Share recognition of known support, empty gripper, and safe retreat between recovery and finalization.
+- [eval] [exp] `tests/test_subtask_finalization.py` L1–L179。以持久化任务验证补做成功、参数不匹配和不安全或未知结果。 / Exercise successful replacement, changed request semantics, and unknown or unsafe outcomes with persisted tasks.
+
+```diff
+-        for item in task.execution_records
++        or _subtask_failure_was_replaced(task, item)
++        for item in task.execution_records
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 定向测试 30 项通过，从已保存的仿真记录核对过真实失抓与成功回执。扩大测试 86 项通过，另 1 项缺少 `planning_selections` 的测试数据错误已在修改前重现。 / All 30 focused tests passed. Existing simulation ledgers supplied real failure and success receipts. The wider suite had 86 passes and one fixture failure for missing `planning_selections`, reproduced before the change.
+
 ## v17.9.9 (2026-11-24 21:06) - codex
 
 - [eval] [fix] [完成] 修改 Isaac 宿主的续接计划和测试。用 Coordinator 已持久化的当前场景查询及原始子任务语义编译新的准备段，失败恢复后从新观测继续，保留已经完成的动作，并在发现准备节点引用旧场景时先重规划观察。 / Use Coordinator-persisted current-scene queries and the original subtask semantics to compile fresh preparation after recovery. Preserve completed actions and refresh the scene when preparation is bound to an earlier revision.
@@ -158,25 +178,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `005fc4be`，`feature/planning-loop`，2026-11-24 20:03:02 +0800。
-
-## v17.9.5 (2026-11-22 17:28) - codex
-
-- [eval] [exp] v17.9.4 复跑中 R03 实测 0.996807 rad、连续 2.800 s，末端补偿将瓶口误差从 3.419 降至 0.188 mm，瓶轴误差从 0.14755 降至 0.00371 rad。倾倒成功，随后的原位放回准备在 transport 报 `joint_limit_violation`，未归位或启动 R05。回执位于 `out/labutopia-elevated-20261122/v17.9.4-r03-r05-agent-controller-165606`。 / R03 completed the qualified pour. Terminal correction reduced tip error from 3.419 to 0.188 mm and axis error from 0.14755 to 0.00371 rad. Place preparation reported a joint-limit violation in transport and R05 remained pending.
-- [eval] [fix] 在 `phase_motion.py` 的既有路线资格验证中，主逆解越界时尝试原有有界局部逆解。适配器负责关节解与碰撞，Agent 继续负责双瓶顺序和任务恢复。新增测试覆盖首解越界且局部解通过或同样不可用。 / Try the existing bounded local IK if the primary solution falls outside limits. The Adapter owns kinematics and collision, and the Agent owns task sequencing and recovery.
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L1832–1844 及 `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2145–2197。 / Test an in-bounds fallback, rejection of an unusable fallback, and collision after fallback.
-
-```diff
-- if not primary_success or primary_delta > maximum_delta or force_local:
-+ if not primary_success or primary_delta > maximum_delta or force_local or place_limit_failure:
-      local_goal, local_success = local_inverse_kinematics(...)
-+     # Retain the joint-limit failure if the nearby solution is unusable.
-```
-
-- [eval] [exp] 225 项阶段运动测试通过。用历史实测终态回放找到 73 个满足关节约束的回程路点。此回放用于逆解诊断，完整场景复跑保存在 `out/labutopia-elevated-20261122/v17.9.5-r03-r05-agent-controller-173044`。 / Passed 225 motion tests. Kinematic replay from the historical measured pose found 73 in-limit return waypoints. The listed directory preserves the full simulation run.
-
-- [eval] [exp] 在独立 Isaac 仿真中用历史终态关节、夹爪开度、瓶姿和点云回放，通过 73 个放回路点的碰撞验证。实际执行结果以完整复跑回执为准。 / A separate Isaac scene replayed the measured joints, finger openings, bottle pose and point cloud and passed all 73 placement waypoints. Full execution is tracked by the live simulation receipts.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `fcf879e7`，2026-11-22 17:31:09 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.

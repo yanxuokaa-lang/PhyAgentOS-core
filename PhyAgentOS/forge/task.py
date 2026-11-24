@@ -30,7 +30,11 @@ from PhyAgentOS.forge.binding import (
     query_record_retryable,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
-from PhyAgentOS.forge.manipulation import MANIPULATION_INTENT_SEMANTIC_KEYS, ManipulationIntent
+from PhyAgentOS.forge.manipulation import (
+    MANIPULATION_INTENT_SEMANTIC_KEYS,
+    ManipulationIntent,
+    is_recovered_subtask_acquire,
+)
 from PhyAgentOS.forge.observation import ForgeObservationCollector
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 from PhyAgentOS.planning import (
@@ -5124,8 +5128,127 @@ def _execution_facts_succeeded(task: AgentTaskRecord) -> bool:
                 )
             )
         )
+        or _subtask_failure_was_replaced(task, item)
         for item in task.execution_records
     )
+
+
+def _subtask_failure_was_replaced(task: AgentTaskRecord, failed: ToolExecutionRecord) -> bool:
+    if (
+        failed.tool_id != "manipulation.execute_subtask"
+        or failed.semantics != "action"
+        or failed.status != "failed"
+        or not all((failed.invocation_id, failed.node_id, failed.obligation_id))
+    ):
+        return False
+    facts = _planning_response_facts(failed.response)
+    if not is_recovered_subtask_acquire(facts, failed.arguments):
+        return False
+    result = facts["subtask_result"]
+    receipts = result["receipts"]
+    if (
+        result.get("failed_phase") != "acquire"
+        or result.get("completed_tool_ids") != ["manipulation.prepare"]
+        or len(receipts) != 2
+        or not isinstance(receipts[0], Mapping)
+        or receipts[0].get("tool_id") != "manipulation.prepare"
+        or receipts[0].get("phase") != "prepare"
+        or receipts[0].get("status") != "available"
+        or receipts[0].get("outcome_known") is not True
+        or receipts[1].get("status") != "failed"
+    ):
+        return False
+    previous = next(revision for revision in task.revisions if revision.revision_id == failed.revision_id)
+    if not any(
+        settlement.node_id == failed.node_id
+        and settlement.invocation_id == failed.invocation_id
+        and settlement.status == "failed"
+        and settlement.outcome_known is True
+        and settlement.world_change_started is True
+        and settlement.requires_replan is True
+        for settlement in previous.node_settlements
+    ):
+        return False
+    return any(
+        successor.tool_id == failed.tool_id
+        and successor.semantics == "action"
+        and successor.status == "succeeded"
+        and successor.invocation_id
+        and successor.invocation_id != failed.invocation_id
+        and successor.node_id == failed.node_id
+        and successor.obligation_id == failed.obligation_id
+        and any(
+            settlement.node_id == successor.node_id
+            and settlement.invocation_id == successor.invocation_id
+            and settlement.status == "completed"
+            and settlement.outcome_known is True
+            for settlement in revision.node_settlements
+        )
+        and _same_subtask_request(failed.arguments, successor.arguments)
+        and _completed_subtask_phases(successor)
+        for revision in task.revisions
+        if revision.number > previous.number
+        for successor in revision.execution_records
+    )
+
+
+def _same_subtask_request(previous: dict[str, Any], current: dict[str, Any]) -> bool:
+    if any(previous.get(key) != current.get(key) for key in (
+        "subtask_id", "operation", "parameters", "return_destination_ref", "tool_sequence",
+    )):
+        return False
+    previous_binding, current_binding = previous.get("binding"), current.get("binding")
+    if not isinstance(previous_binding, Mapping) or not isinstance(current_binding, Mapping):
+        return False
+    if any(not previous_binding.get(key) or previous_binding[key] != current_binding.get(key)
+           for key in ("category", "destination_category")):
+        return False
+    for label_key, ref_key in (
+        ("semantic_label", "entity_ref"), ("destination_semantic_label", "destination_ref"),
+    ):
+        key = label_key if previous_binding.get(label_key) and current_binding.get(label_key) else ref_key
+        if not previous_binding.get(key) or previous_binding[key] != current_binding.get(key):
+            return False
+    return True
+
+
+def _completed_subtask_phases(record: ToolExecutionRecord) -> bool:
+    facts = _planning_response_facts(record.response)
+    if (
+        facts.get("status") != "succeeded"
+        or facts.get("outcome_known") is not True
+        or facts.get("possession_state") != "empty"
+    ):
+        return False
+    result = facts.get("subtask_result")
+    sequence = record.arguments.get("tool_sequence")
+    if (
+        not isinstance(result, Mapping)
+        or result.get("status") != "completed"
+        or result.get("outcome_known") is not True
+        or result.get("failed_phase") is not None
+        or result.get("subtask_id") != record.arguments.get("subtask_id")
+        or not isinstance(sequence, list)
+        or not sequence
+    ):
+        return False
+    receipts = result.get("receipts")
+    if not isinstance(receipts, list) or len(receipts) != len(sequence):
+        return False
+    completed_tools = []
+    for call, receipt in zip(sequence, receipts, strict=True):
+        if not isinstance(call, Mapping) or not isinstance(receipt, Mapping):
+            return False
+        phase = call.get("phase")
+        if (
+            receipt.get("tool_id") != call.get("tool_id")
+            or receipt.get("phase") != phase
+            or receipt.get("status") != ("available" if phase == "prepare" else "succeeded")
+            or receipt.get("outcome_known") is not True
+        ):
+            return False
+        completed_tools.append(call.get("tool_id"))
+    return result.get("completed_tool_ids") == completed_tools
 
 
 def _remote_identity(exc: Exception) -> tuple[str | None, str | None]:
