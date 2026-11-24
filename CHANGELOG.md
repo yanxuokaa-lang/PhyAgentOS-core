@@ -204,6 +204,11 @@ index 57044f43..68916aed 100644
 - [env] [exp] 本地阶段动作、接触时序及场景物理测试 290 项通过，2 项原生 USD 测试因本地只安装 usd-core 而跳过。 / Phase motion, contact timing and scene physics tests passed with 290 passed and 2 skips for native USD checks requiring the PhysX schema.
 - [env] [exp] Isaac 原生传感器烟测 `out/labutopia-elevated-20261124/support-contact-smoke/probe_adapter_reader.json` 中，物理步开始前没有新样本，R03 六个控制步的台面向上载荷为 0.957–0.990 N，重量为 0.981 N，试管架反馈为 0 N。 / In the native Isaac reader smoke, no fresh sample existed before stepping physics. Six R03 control steps measured 0.957–0.990 N from the table against 0.981 N of vessel weight and zero force from the rack.
 - [policy] [exp] Agent Host 子任务续接、PlanningLoop、长流程控制和恢复判定共 244 项通过。 / All 244 Agent Host subtask continuation, PlanningLoop, long-horizon control and recovery decision tests passed.
+- [env] [exp] Isaac 5.1 原生 USD 场景物理测试 10 项全部通过，包括本地跳过的 2 项。 / All 10 native USD scene physics tests passed with Isaac 5.1, including the two host skips.
+
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `9f755c4c`，`feature/planning-loop`，2026-11-25 02:31:00 +0800。
 
 ## v17.9.15 (2026-11-25 01:19) - codex
 
