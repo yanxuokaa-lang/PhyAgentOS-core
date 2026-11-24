@@ -96,6 +96,10 @@ index 2868423c..ddb77d30 100644
 
 - [policy] [exp] Agent 基础与 Isaac host 测试 172 项通过。长流程控制器、PlanningLoop、执行结算恢复、恢复决策和 Isaac 子任务续接测试 232 项通过。 / All 172 Agent foundation and Isaac host tests passed, along with 232 long-horizon controller, PlanningLoop, effect recovery, recovery decision and Isaac subtask continuation tests.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `d09ca13f`，`feature/planning-loop`，2026-11-25 03:13:01 +0800。
+
 ## v17.10.0 (2026-11-25 02:17) - codex
 
 - [env] [fix] 已判定失抓且固定等待后，若仍有单侧指爪载荷，只有测得瓶体由现场配置的支撑面承重才允许固定臂位开爪，随后按原有空夹确认和回撤流程恢复。 / After a confirmed grasp failure and a stationary wait, open the fingers at a fixed arm pose only if configured support is measured bearing the bottle's weight when unilateral finger load persists. Then use existing empty-gripper verification and retreat.
