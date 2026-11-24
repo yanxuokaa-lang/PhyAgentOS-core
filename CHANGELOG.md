@@ -50,6 +50,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.9 (2026-11-24 21:06) - codex
+
+- [eval] [fix] [完成] 修改 Isaac 宿主的续接计划和测试。用 Coordinator 已持久化的当前场景查询及原始子任务语义编译新的准备段，失败恢复后从新观测继续，保留已经完成的动作，并在发现准备节点引用旧场景时先重规划观察。 / Use Coordinator-persisted current-scene queries and the original subtask semantics to compile fresh preparation after recovery. Preserve completed actions and refresh the scene when preparation is bound to an earlier revision.
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L28、L183–L184。给现有 AgentLoop 接入仿真续接插件。 / Attach the simulation continuation plugin to the existing AgentLoop.
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/subtask_continuation.py` L1–L239。根据当前修订的查询回执恢复语义绑定，再通过既有准备段编译器保留工艺查询到实际动作的参数依赖。 / Rebind from current Query receipts and use the existing subtask composer to preserve argument dependencies from process Queries to the Action.
+- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py` L1–L243。验证安全失抓后续接、第二瓶换用新场景、保留已完成动作，以及已发布查询的参数兼容性。 / Cover safe-failure continuation, scene refresh for the second bottle, retention of completed actions, and published Query argument compatibility.
+
+```diff
+- planner_plugin=AgentRecoveryDecisions(provider, model, coordinator, ...)
++ planner_plugin=LabSubtaskContinuation(provider, model, coordinator, sensor_ref=sensor_ref, ...)
++ records = current_scene_query_records(task)
++ rebound = spec.model_copy(update={"binding": binding, "depends_on": ()})
++ composed = compose_subtask_plan(..., (rebound,), ...)
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 17 项宿主和续接测试通过。21:18:30 轮已实测 R05 抓取抬升 58.01 mm，倾倒和第二瓶结果待该轮结算。 / All 17 host and continuation tests passed. The 21:18:30 replay measured a successful 58.01 mm R05 lift. The pour and second bottle remain in progress.
+
 ## v17.9.8 (2026-11-24 20:55) - codex
 
 - [eval] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` 与宿主测试。预先绑定同运行时已有的语义抓取发现查询，让任务恢复可以在新观测上获取理解、候选与能力回执。补充宿主计划指引，使用当前场景发现证据，保持已完成动作及原有动作准入。 / Enroll existing semantic discovery Queries so a task can collect understanding, candidates and capabilities from a fresh observation. Guide the host to keep settled effects and use current scene evidence before preparing the next bottle. (local)
@@ -154,28 +176,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `fcf879e7`，2026-11-22 17:31:09 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
-## v17.9.4 (2026-11-22 16:52) - codex
-
-- [eval] [fix] `phase_motion.py` 与 `test_phase_motion.py` 补上重新验证后的撤离末端补偿。首轮 R03 为 0.996807 rad、2.800 s，撤离全段保持接触但末端瓶轴残差 0.14755 rad。继续使用相同验证与实测终态条件。 / Correct terminal drift after requalified pour exit. R03 held 0.996807 rad for 2.800 s and retained grip through exit, but the measured terminal tool axis error was 0.14755 rad. Reuse existing validation and terminal measurements.
-- [eval] [fix] `held_manipulation.py` 和对应测试让分阶段倾倒结果采用既有倾倒轨迹测量中的合格保持时长。首轮 R03 已达到轨迹验收，运行时投影仍要求峰值达到 1.000000 rad，造成两处验收冲突。 / Use the existing qualified-interval measurement in the phase result projection. The measured R03 trajectory qualified within the configured band, but projection independently imposed a one-sided 1.000000 rad peak.
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L159–166、L2529、L2589–2612、L2959–2965、L2984–2985；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3390–3530。补偿一次后重新测量，碰撞与残余偏差仍返回失败。 / Apply one measured correction, then verify again. A collision or persistent endpoint error still fails.
-- [eval] [fix] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py` L801–802；`examples/forge-skills/pick-place-workflow/tests/test_held_manipulation.py` L170–190。合格时长和完成标志均须有效，旧版反馈沿用既有峰值判定。 / Require the qualified interval and completion flag. Older providers retain their existing peak check.
-
-```diff
-- # Finish after the qualified exit.
-+ # If there is residual tool drift, solve one measured terminal correction.
-+ goal = self._pour_corrected_joints(start, planned, expected, relation, tool, "exit")
-+ # Send the correction through the ordinary attached segment checks.
-- return at_least("aligned_hold_s", params["hold_s"]) and at_least("maximum_tilt_rad", params["tilt_rad"])
-+ if "qualified_tilt_hold_s" in metrics:
-+     return metrics.get("process_completed") is True and at_least("qualified_tilt_hold_s", params["hold_s"])
-+ return at_least("aligned_hold_s", params["hold_s"]) and at_least("maximum_tilt_rad", params["tilt_rad"])
-```
-
-- [eval] [exp] 311 项阶段运动、宿主和操作回归通过。修复后启动同场景双瓶复跑，目录 `out/labutopia-elevated-20261122/v17.9.4-r03-r05-agent-controller-165606`，保留命令、实施补丁和回执。 / Passed 311 motion, host and manipulation tests. The listed single-scene two-bottle replay preserves its command, implementation patch and receipts.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `6b6ce702`，2026-11-22 16:58:13 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
