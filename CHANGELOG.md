@@ -50,6 +50,152 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.15 (2026-11-25 01:19) - codex
+
+- [env] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` 在瓶体仍处于原支撑位置、低速且双指反馈新鲜时，让失抓恢复在实测臂关节与指距处限时采样。`001734` 的 R03 失败帧中瓶体仍直立，单指窗口有约 0.00328 N·s 的瞬时冲量。仅靠最后一个运动窗口无法知道停止后是否卸载，Git、类型与普通测试也不能提供这一仿真物理事实。使用原有 `settle_s`、碰撞和停机约束，保留开爪与回撤的原有判据和 AgentLoop 的重试所有权。 / Sample at the measured arm and finger positions for a bounded interval after grasp loss when the body remains within its support band at low speed and both fingers have fresh feedback. In the `001734` R03 receipt, the body remained upright and one finger measured about 0.00328 N·s over the aborted-motion window. That window cannot establish whether the fingers unload after stopping. Reuse `settle_s`, collision and stop checks, the existing opening and retreat criteria, and AgentLoop ownership of retries.
+- [env] [exp] [完成] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` 覆盖固定指距下瞬时载荷消退、持续载荷、状态失效和碰撞中止。 / Verify transient unload at fixed aperture, persistent load, invalidated feedback and collision abort.
+
+### 文件变更详情 / File changes
+
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L848–L866、L2443、L2485–L2557、L2679–L2682、L2991–L2994、L3010–L3011。双指必须在当前窗口提交有效数据，固定姿态采样必须取得晚于该步开始的双指反馈。原开爪判据、全指距包络碰撞检查、继续执行的步数及取消控制均保留。反馈记录最近下发的停止、固定、开爪及回撤指距。 / Both fingers must contribute current feedback, and fixed-position sampling requires fresh frames after the step starts. Retain the existing opening criteria, full finger-sweep collision checks, execution budget and cancellation. Record the most recent commanded aperture when stopping, holding, opening or retreating.
+- [env] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2451–L2540。以真实执行入口和无运动夹具覆盖瞬时与持续单指载荷，以及离开支撑、重新检测到持有、帧不更新、碰撞、取消。验证固定期间指距不变，且开爪发生在新窗口卸载之后。 / Exercise transient and persistent unilateral load, loss of support, renewed grasp, stale frames, collision, and cancellation through the execution entry point in a no-motion fixture. Assert fixed aperture throughout sampling and fresh unloading before opening.
+
+```diff
+@@ -846,12 +846,19 @@ class GripContactWindow:
+         )
+
+-    def current_unloaded(self, *, require_clear=False, whole_interval=True):
+-        """Judge both fingers using their latest capture and current interval."""
++    def has_current_feedback(self, *, after=None):
++        """Check that both fingers contributed a fresh frame to this interval."""
+         if self.error is not None:
+             raise PhaseMotionError("contact_sampling_failed", str(self.error)) from self.error
+         now = float(self.world.current_time)
+         return len(self.sensors) == 2 and all(
+-            latest is not None and latest[0] in frames and now - latest[0] <= self.dt * 2
+-            and frames[latest[0]] == 0.
++            latest is not None and latest[0] in frames and 0. <= now - latest[0] <= self.dt * 2
++            and (after is None or after < latest[0])
++            for latest, frames in zip(self.latest, self.frames, strict=True)
++        )
++
++    def current_unloaded(self, *, require_clear=False, whole_interval=True):
++        """Judge both fingers using their latest capture and current interval."""
++        return self.has_current_feedback() and all(
++            frames[latest[0]] == 0.
+             and (not whole_interval or all(impulse == 0. for impulse in frames.values()))
+             and (not require_clear or not latest[1])
+@@ -2434,5 +2441,5 @@ class IsaacPhaseMotion:
+         qualified_start,
+     ):
+-        """Open at a fixed arm pose, then reverse the qualified path once clear."""
++        """Confirm unload at a fixed pose, then open and reverse the qualified path."""
+         if failure not in acquire_failure_recovery_codes(self.config):
+             raise PhaseMotionError("acquire_recovery_not_allowed", failure)
+@@ -2476,16 +2483,10 @@ class IsaacPhaseMotion:
+             return supported, position_error, rotation_error
+
+-        held, physical_body = record("recovery_check")
+-        supported, _, _ = measure_support(physical_body)
+-        clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
+-        residual_unloaded = (
+-            failure == "physical_grasp_lost"
+-            and support_contact_allowed("lift", physical_body, original, tolerance)
+-            and contact_window.current_unloaded()
+-        )
+-        if held or not supported or not (clear or residual_unloaded):
+-            raise PhaseMotionError(
+-                "acquire_recovery_possession_uncertain",
+-                "safe opening requires a stable supported object and current unloaded fingers",
++        def in_support_band(pose):
++            return support_contact_allowed("lift", pose, original, tolerance)
++
++        def safe_to_open(pose):
++            return contact_window.current_unloaded(require_clear=True, whole_interval=False) or (
++                failure == "physical_grasp_lost" and in_support_band(pose) and contact_window.current_unloaded()
+             )
+
+@@ -2509,4 +2510,6 @@ class IsaacPhaseMotion:
+             ):
+                 raise PhaseMotionError("joint_limit_violation", "safe acquire recovery joint target is invalid")
++            if fingers.shape != initial_gripper.shape or not np.isfinite(fingers).all():
++                raise PhaseMotionError("joint_limit_violation", "safe acquire recovery finger target is invalid")
+             measured_relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
+             self._collisions(
+@@ -2527,7 +2530,30 @@ class IsaacPhaseMotion:
+             step_count += 1
+             record_frame(stage)
+-            record(stage)
++            feedback = record(stage, commanded_fingers=fingers)
+             if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
+                 raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
++            return feedback
++
++        held, physical_body = record("recovery_check")
++        supported, _, _ = measure_support(physical_body)
++        can_open = not held and supported and safe_to_open(physical_body)
++        if (not can_open and failure == "physical_grasp_lost" and not held and supported
++                and in_support_band(physical_body) and contact_window.has_current_feedback()):
++            hold_arm = self.joints()
++            hold_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
++            for _ in range(math.ceil(self.config.get("settle_s", 0.) / self.dt)):
++                held, physical_body = command(hold_arm, hold_fingers, "recovery_settle", True)
++                supported, _, _ = measure_support(physical_body)
++                if (held or not supported or not in_support_band(physical_body)
++                        or not contact_window.has_current_feedback(after=contact_window.start)):
++                    break
++                if safe_to_open(physical_body):
++                    can_open = True
++                    break
++        if not can_open:
++            raise PhaseMotionError(
++                "acquire_recovery_possession_uncertain",
++                "safe opening requires a stable supported object and current unloaded fingers",
++            )
+
+         opening_arm = self.joints().copy()
+@@ -2651,5 +2677,8 @@ class IsaacPhaseMotion:
+             return contact_window.valid()
+
+-        def record(stage):
++        def record(stage, *, commanded_fingers=None):
++            nonlocal finger_target
++            if commanded_fingers is not None:
++                finger_target = commanded_fingers
+             physical_body = self.observed_pose(source)
+             tcp = self.tcp()
+@@ -2960,6 +2989,8 @@ class IsaacPhaseMotion:
+             try:
+                 if changed:
++                    stop_positions = np.asarray(self.robot.get_joint_positions()).copy()
+                     self.robot.get_articulation_controller().apply_action(
+-                        ArticulationAction(joint_positions=np.asarray(self.robot.get_joint_positions()).copy()))
++                        ArticulationAction(joint_positions=stop_positions))
++                    finger_target = stop_positions[finger_indices]
+             except Exception as stop_exc:
+                 reference = self._artifact("phase-feedback", {"operation": operation,
+@@ -2978,5 +3009,4 @@ class IsaacPhaseMotion:
+             ):
+                 try:
+-                    finger_target = np.asarray(self.scene.get("initial_gripper_positions"), dtype=float)
+                     recovery = self._recover_failed_acquire(
+                         failure=failure,
+```
+
+```diff
++@pytest.mark.parametrize("outcome", [
++    "transient", "persistent", "support_lost", "held_again", "stale", "collision", "cancelled",
++])
++def test_failed_lift_samples_unload_before_opening_at_fixed_pose(monkeypatch, outcome):
++    ...
++    assert settling[-1]["selected_contact_impulse_ns"] == [0., 0.]
++    assert opening[0]["timestamp_s"] > settling[-1]["timestamp_s"]
+```
+
+### 验证 / Validation
+
+- [env] [exp] 阶段动作和接触时序测试共 273 项通过，`git diff --check` 通过。完整 Isaac 仿真另行验证。 / All 273 phase-motion and contact-timing tests passed, as did the diff check. The full Isaac replay is tracked separately.
+
 ## v17.9.14 (2026-11-25 00:16) - codex
 
 - [policy] [fix] [完成] PlanningLoop 接续已通过原调用结算的动作时，复用 Coordinator 已保存的同调用结算，避免用执行后的场景重算成 stale。保留不同调用的冲突检查、未知结果、实际重试与场景刷新。 / Reuse the Coordinator settlement of the same invocation during handoff to the planning loop. Preserve checks for distinct invocations, unknown outcomes, actual retries, and scene refresh.
@@ -210,27 +356,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `af2ea7ee`，`feature/planning-loop`，2026-11-24 22:14:18 +0800。
-
-## v17.9.10 (2026-11-24 21:26) - codex
-
-- [eval] [fix] [完成] 在 Coordinator 的任务结算中识别一次已经安全收尾的失抓后来由相同动作义务成功补做的情况。保留失败与成功的原始回执，核对成功是同一个物体、目标和工艺请求，其他未知及未恢复的结果仍阻止结算为成功。 / In Coordinator task finalization, recognize a safely recovered failed acquire when a later measured success fulfills the same original Action obligation with the same object, destination and process request. Retain both receipts and continue blocking success for unresolved or unrecovered effects.
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `PhyAgentOS/forge/task.py` L33–L37、L5118–L5253。结算时核对失败回撤、后续修订的同义务动作、物体与目标、归位要求和各阶段已知结果。 / Finalization links a proven failed-acquire recovery to a later known completion of the same obligation, objects, return request, and phases.
-- [eval] [refactor] `PhyAgentOS/forge/manipulation.py` L26–L67 与 `PhyAgentOS/agent/recovery_decisions.py` L17、L167–L194。复用同一回执判定识别空夹、安全回撤和支撑面上的物体。 / Share recognition of known support, empty gripper, and safe retreat between recovery and finalization.
-- [eval] [exp] `tests/test_subtask_finalization.py` L1–L179。以持久化任务验证补做成功、参数不匹配和不安全或未知结果。 / Exercise successful replacement, changed request semantics, and unknown or unsafe outcomes with persisted tasks.
-
-```diff
--        for item in task.execution_records
-+        or _subtask_failure_was_replaced(task, item)
-+        for item in task.execution_records
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 定向测试 30 项通过，从已保存的仿真记录核对过真实失抓与成功回执。扩大测试 86 项通过，另 1 项缺少 `planning_selections` 的测试数据错误已在修改前重现。 / All 30 focused tests passed. Existing simulation ledgers supplied real failure and success receipts. The wider suite had 86 passes and one fixture failure for missing `planning_selections`, reproduced before the change.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `71ad9d7b`，`feature/planning-loop`，2026-11-24 21:41:50 +0800。

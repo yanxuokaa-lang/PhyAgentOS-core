@@ -845,14 +845,21 @@ class GripContactWindow:
             for latest in self.latest
         )
 
-    def current_unloaded(self, *, require_clear=False, whole_interval=True):
-        """Judge both fingers using their latest capture and current interval."""
+    def has_current_feedback(self, *, after=None):
+        """Check that both fingers contributed a fresh frame to this interval."""
         if self.error is not None:
             raise PhaseMotionError("contact_sampling_failed", str(self.error)) from self.error
         now = float(self.world.current_time)
         return len(self.sensors) == 2 and all(
-            latest is not None and latest[0] in frames and now - latest[0] <= self.dt * 2
-            and frames[latest[0]] == 0.
+            latest is not None and latest[0] in frames and 0. <= now - latest[0] <= self.dt * 2
+            and (after is None or after < latest[0])
+            for latest, frames in zip(self.latest, self.frames, strict=True)
+        )
+
+    def current_unloaded(self, *, require_clear=False, whole_interval=True):
+        """Judge both fingers using their latest capture and current interval."""
+        return self.has_current_feedback() and all(
+            frames[latest[0]] == 0.
             and (not whole_interval or all(impulse == 0. for impulse in frames.values()))
             and (not require_clear or not latest[1])
             for latest, frames in zip(self.latest, self.frames, strict=True)
@@ -2433,7 +2440,7 @@ class IsaacPhaseMotion:
         articulation_action,
         qualified_start,
     ):
-        """Open at a fixed arm pose, then reverse the qualified path once clear."""
+        """Confirm unload at a fixed pose, then open and reverse the qualified path."""
         if failure not in acquire_failure_recovery_codes(self.config):
             raise PhaseMotionError("acquire_recovery_not_allowed", failure)
         initial_arm = np.asarray(self.scene.get("initial_joint_positions"), dtype=float)
@@ -2475,18 +2482,12 @@ class IsaacPhaseMotion:
             )
             return supported, position_error, rotation_error
 
-        held, physical_body = record("recovery_check")
-        supported, _, _ = measure_support(physical_body)
-        clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
-        residual_unloaded = (
-            failure == "physical_grasp_lost"
-            and support_contact_allowed("lift", physical_body, original, tolerance)
-            and contact_window.current_unloaded()
-        )
-        if held or not supported or not (clear or residual_unloaded):
-            raise PhaseMotionError(
-                "acquire_recovery_possession_uncertain",
-                "safe opening requires a stable supported object and current unloaded fingers",
+        def in_support_band(pose):
+            return support_contact_allowed("lift", pose, original, tolerance)
+
+        def safe_to_open(pose):
+            return contact_window.current_unloaded(require_clear=True, whole_interval=False) or (
+                failure == "physical_grasp_lost" and in_support_band(pose) and contact_window.current_unloaded()
             )
 
         controller = self.robot.get_articulation_controller()
@@ -2508,6 +2509,8 @@ class IsaacPhaseMotion:
                 or np.any(arm > self.limits[:, 1])
             ):
                 raise PhaseMotionError("joint_limit_violation", "safe acquire recovery joint target is invalid")
+            if fingers.shape != initial_gripper.shape or not np.isfinite(fingers).all():
+                raise PhaseMotionError("joint_limit_violation", "safe acquire recovery finger target is invalid")
             measured_relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
             self._collisions(
                 arm,
@@ -2526,9 +2529,32 @@ class IsaacPhaseMotion:
             self.world.step(render=True)
             step_count += 1
             record_frame(stage)
-            record(stage)
+            feedback = record(stage, commanded_fingers=fingers)
             if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
                 raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
+            return feedback
+
+        held, physical_body = record("recovery_check")
+        supported, _, _ = measure_support(physical_body)
+        can_open = not held and supported and safe_to_open(physical_body)
+        if (not can_open and failure == "physical_grasp_lost" and not held and supported
+                and in_support_band(physical_body) and contact_window.has_current_feedback()):
+            hold_arm = self.joints()
+            hold_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
+            for _ in range(math.ceil(self.config.get("settle_s", 0.) / self.dt)):
+                held, physical_body = command(hold_arm, hold_fingers, "recovery_settle", True)
+                supported, _, _ = measure_support(physical_body)
+                if (held or not supported or not in_support_band(physical_body)
+                        or not contact_window.has_current_feedback(after=contact_window.start)):
+                    break
+                if safe_to_open(physical_body):
+                    can_open = True
+                    break
+        if not can_open:
+            raise PhaseMotionError(
+                "acquire_recovery_possession_uncertain",
+                "safe opening requires a stable supported object and current unloaded fingers",
+            )
 
         opening_arm = self.joints().copy()
         current_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
@@ -2650,7 +2676,10 @@ class IsaacPhaseMotion:
         def contacts():
             return contact_window.valid()
 
-        def record(stage):
+        def record(stage, *, commanded_fingers=None):
+            nonlocal finger_target
+            if commanded_fingers is not None:
+                finger_target = commanded_fingers
             physical_body = self.observed_pose(source)
             tcp = self.tcp()
             relation = np.linalg.inv(tcp) @ physical_body
@@ -2959,8 +2988,10 @@ class IsaacPhaseMotion:
             # reverse only the commands already executed from the qualified route.
             try:
                 if changed:
+                    stop_positions = np.asarray(self.robot.get_joint_positions()).copy()
                     self.robot.get_articulation_controller().apply_action(
-                        ArticulationAction(joint_positions=np.asarray(self.robot.get_joint_positions()).copy()))
+                        ArticulationAction(joint_positions=stop_positions))
+                    finger_target = stop_positions[finger_indices]
             except Exception as stop_exc:
                 reference = self._artifact("phase-feedback", {"operation": operation,
                     "entity_ref": arguments["entity_ref"], "scene_revision": arguments["scene_revision"],
@@ -2977,7 +3008,6 @@ class IsaacPhaseMotion:
                 and failure in acquire_failure_recovery_codes(self.config)
             ):
                 try:
-                    finger_target = np.asarray(self.scene.get("initial_gripper_positions"), dtype=float)
                     recovery = self._recover_failed_acquire(
                         failure=failure,
                         source=source,

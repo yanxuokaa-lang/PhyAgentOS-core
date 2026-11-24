@@ -2448,6 +2448,98 @@ def test_failed_lift_recovery_opens_at_fixed_pose_and_retreats_only_when_clear(m
     assert not any(sample["stage"] == "recovery_retreat" for sample in feedback["samples"])
 
 
+@pytest.mark.parametrize("outcome", [
+    "transient", "persistent", "support_lost", "held_again", "stale", "collision", "cancelled",
+])
+def test_failed_lift_samples_unload_before_opening_at_fixed_pose(monkeypatch, outcome):
+    model, arguments, commands, artifacts = execution_fixture(monkeypatch)
+    model.config["settle_s"] = 3 * model.dt
+    positions = model._test_positions_ref
+    original = np.asarray(arguments["phase_route"]["original_return_pose"])
+    model.tcp = lambda *_: pose_matrix([.1 + positions[0], 0., 1.], [0., 0., 0., 1.])
+    cancel = Event()
+    stop_time = None
+    apply_action = model.robot.apply_action
+
+    def capture_stop(action):
+        nonlocal stop_time
+        if stop_time is None and positions[0] > .008 and np.array_equal(action.joint_positions, positions):
+            stop_time = model.world.current_time
+        apply_action(action)
+
+    def after_stop():
+        return stop_time is not None and model.world.current_time > stop_time
+
+    def contact_frame(index):
+        timestamp = model.world.current_time
+        settled = after_stop()
+        if settled and outcome == "stale" and index == 0:
+            timestamp = stop_time
+        if settled and outcome == "cancelled":
+            cancel.set()
+        contacts = []
+        if min(positions[7:]) < .035:
+            impulse = 1. if positions[0] <= 1e-9 else (
+                .00328 if (index == 0 and positions[0] > .008
+                           and (not settled or outcome in {"persistent", "cancelled"}))
+                or (settled and outcome == "held_again") else 0.
+            )
+            contacts = [{"body0": "/World/source/mesh", "body1": "/World/Franka/finger",
+                         "impulse": [impulse, 0., 0.]}]
+        return {"time": timestamp, "contacts": contacts}
+
+    def body_pose(_source):
+        pose = original.copy()
+        if after_stop():
+            if outcome == "support_lost":
+                pose[2, 3] -= .003
+            if outcome == "held_again":
+                pose[0, 3] += .003
+        return pose
+
+    def collisions(arm, *_args, held_fingers=False):
+        if outcome == "collision" and stop_time is not None:
+            assert not held_fingers  # The fixed command uses the full finger sweep.
+            assert arm == pytest.approx(positions[:7])
+            raise PhaseMotionError("route_collision", "stationary pose became obstructed")
+
+    model.body_pose = body_pose
+    model._collisions = collisions
+    model.robot.apply_action = capture_stop
+    model.sensors = [SimpleNamespace(get_current_frame=lambda index=index: contact_frame(index))
+                     for index in range(2)]
+    result = model.execute(arguments, cancel)
+
+    feedback = artifacts[-1][1]
+    samples = feedback["samples"]
+    check = next(sample for sample in samples if sample["stage"] == "recovery_check")
+    settling = [sample for sample in samples if sample["stage"] == "recovery_settle"]
+    opening = [sample for sample in samples if sample["stage"] == "recovery_open"]
+    assert result["failure_code"] == "physical_grasp_lost"
+    assert check["selected_contact_impulse_ns"][0] >= .00328
+    assert check["selected_contact_impulse_ns"][1] == 0.
+    for sample in settling:
+        assert sample["joints"] == check["joints"]
+        assert sample["finger_positions_m"] == check["finger_positions_m"]
+        assert sample["finger_target_m"] == check["finger_positions_m"]
+    if outcome == "transient":
+        assert len(settling) == 2
+        assert settling[0]["selected_contact_impulse_ns"] == [.00328, 0.]
+        assert settling[-1]["selected_contact_impulse_ns"] == [0., 0.]
+        assert opening[0]["timestamp_s"] > settling[-1]["timestamp_s"]
+        assert result["outcome_known"] and result["returned_to_safe_pose"]
+        assert result["possession_state"] == "empty"
+    else:
+        assert result["status"] == "unknown"
+        assert not opening
+        assert commands[-1][7:] == pytest.approx(check["finger_positions_m"])
+        expected_samples = {"persistent": 3, "collision": 0}.get(outcome, 1)
+        assert len(settling) == expected_samples
+        assert feedback["recovery_failure_code"] == {
+            "collision": "route_collision", "cancelled": "cancelled",
+        }.get(outcome, "acquire_recovery_possession_uncertain")
+
+
 def test_closure_settling_walk_is_judged_at_lift_entry_not_per_frame(monkeypatch):
     model, arguments, commands, artifacts = execution_fixture(monkeypatch)
 
