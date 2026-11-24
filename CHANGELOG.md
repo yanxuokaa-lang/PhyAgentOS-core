@@ -195,6 +195,9 @@
 ### 验证 / Validation
 
 - [env] [exp] 阶段动作和接触时序测试共 273 项通过，`git diff --check` 通过。完整 Isaac 仿真另行验证。 / All 273 phase-motion and contact-timing tests passed, as did the diff check. The full Isaac replay is tracked separately.
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `0e192705`，`feature/planning-loop`，2026-11-25 01:27:04 +0800。
 
 ## v17.9.14 (2026-11-25 00:16) - codex
 
