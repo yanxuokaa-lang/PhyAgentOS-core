@@ -68,6 +68,10 @@
 
 - [eval] [exp] 12 项宿主测试通过。21:01:49 启动复跑，R05 和 R03 同任务完成及恢复后重抓仍待实测。 / All 12 host tests passed. The 21:01:49 replay is running, with same-task completion and reacquisition still to verify.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `c0ca2529`，`feature/planning-loop`，2026-11-24 21:06:09 +0800。
+
 ## v17.9.7 (2026-11-24 20:29) - codex
 
 - [eval] [fix] [完成] 修改 `phase_motion.py` 与阶段测试。实测 R05 抬升失败时瓶底回到支撑高度，已无双侧承载但仍报告双侧零载接触；允许仅原地开夹，验证空夹与稳定支撑后沿已验证路径回撤，交接同任务恢复决策。 / In the measured R05 lift failure the bottle was back at support height with zero-load residual contact. Permit opening at the fixed arm pose and verify empty grip and stable support before the qualified reverse path and same-task recovery. (local)
@@ -175,4 +179,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `6b6ce702`，2026-11-22 16:58:13 Asia/Shanghai，分支 / branch `feature/planning-loop`。已推送。 / Pushed.
-
