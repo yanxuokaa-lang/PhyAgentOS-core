@@ -79,6 +79,10 @@
 
 - [eval] [exp] 232 项运动阶段测试通过，包含新增的 7 种失抓恢复场景。使用 20:03:32 的仿真配置启动同任务复跑，证据保存在 `out/labutopia-elevated-20261124/v17.9.7-r05-r03-agent-loop-recovery-203551`。 / All 232 motion phase tests passed, including seven recovery cases. A same-task replay using the 20:03:32 simulation profile was started and its evidence is stored at the listed path.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `e85b9628`，`feature/planning-loop`，2026-11-24 20:36:17 +0800。
+
 ## v17.9.6 (2026-11-24 20:00) - codex
 
 - [eval] [fix] [完成] 修改 `phase_motion.py` 中已完成归位运输后的下降重验证，从实测关节和夹持姿态求解剩余下降、释放和后撤。上一轮高位重复修正遇腕限位，跳过已完成的运输段后 13 个实测回放路点通过碰撞和限位资格检查。 / Requalify the remaining descent, release and retreat from measured joints and attachment after return transport completes. The repeat high approach hit a wrist limit, while all 13 remaining waypoints passed simulator collision and limit qualification. (local)
