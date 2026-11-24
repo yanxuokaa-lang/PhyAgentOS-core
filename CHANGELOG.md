@@ -111,6 +111,9 @@
 ### 验证 / Validation
 
 - [policy] [exp] 214 项 PlanningLoop、长程续接、多物体及未知动作恢复测试通过，`git diff --check` 通过。原仿真轮次 R05 三阶段完成，宿主因冲突关闭，新一轮用于验证 R03 续接。 / All 214 PlanningLoop, long-horizon, multi-object and unknown-action recovery tests passed, as did the diff check. The original run completed all R05 phases before its host exited on the conflict. A new run will validate continuation to R03.
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `3a449a99`，`feature/planning-loop`，2026-11-25 00:21:25 +0800。
 
 ## v17.9.13 (2026-11-24 23:33) - codex
 
