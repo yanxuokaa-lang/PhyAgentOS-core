@@ -128,7 +128,8 @@ Report only measured no-liquid manipulation, never transferred volume or chemica
 
 
 def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, execute=False,
-                 execution_timeout_s=1800):
+                 execution_timeout_s=1800, max_agent_provider_retries=2,
+                 agent_provider_retry_delay_s=1.0):
     workspace = Path(workspace).expanduser().resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     artifact_root = workspace / "artifacts" / "labutopia"
@@ -140,8 +141,11 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
     pad_span_offset = getattr(getattr(grasps, "provider", grasps), "pad_span_offset_m", 0.0)
     if isinstance(pad_span_offset, bool) or not isinstance(pad_span_offset, (int, float)):
         pad_span_offset = 0.0
-    coordinator = AgentTaskCoordinator(workspace=workspace,
-                                       config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None)
+    coordinator = AgentTaskCoordinator(
+        workspace=workspace, config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None,
+        max_agent_provider_retries=max_agent_provider_retries,
+        agent_provider_retry_delay_s=agent_provider_retry_delay_s,
+    )
     assignments = SQLiteAssignmentArtifactStore(workspace / "assignment-artifacts.sqlite3")
     bundle = build_labutopia_runtime(
         profile=profile, engine=engine, understanding_provider=visual, grasp_provider=grasps,
@@ -204,7 +208,10 @@ async def run_instruction(*, profile, workspace, config_path, instruction, senso
     loop, coordinator, bundle, assignments = compose_host(
         profile=profile, workspace=workspace, provider=provider,
         inference=RGBLabelPointInference(rgb_client, model=model), model=model,
-        sensor_ref=sensor_ref, execute=execute, execution_timeout_s=execution_timeout_s)
+        sensor_ref=sensor_ref, execute=execute, execution_timeout_s=execution_timeout_s,
+        max_agent_provider_retries=config.agents.verification.max_agent_provider_retries,
+        agent_provider_retry_delay_s=config.agents.verification.agent_provider_retry_delay_s,
+    )
     session_key = f"cli:lab-{uuid4().hex[:12]}"
     # Deployment guidance belongs to the system context, separate from the instruction.
     prompt_builder = loop.context.build_system_prompt

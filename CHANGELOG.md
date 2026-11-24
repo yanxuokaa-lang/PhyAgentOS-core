@@ -50,6 +50,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.9.12 (2026-11-24 22:34) - codex
+
+- [eval] [fix] [完成] Isaac 宿主接入现有 Agent Provider 重试预算及间隔配置。22:12:23 轮失抓后已通过新观察，但短时上游故障耗尽宿主默认重试并关闭仿真，使同一任务无法重抓。保持 Coordinator 对原节点、场景与重试权限的判定。 / Wire the existing Agent Provider retry budget and delay into the Isaac host. The 22:12:23 run obtained a fresh observation after grasp recovery, but an upstream outage exhausted the host defaults and closed the simulation before reacquisition. Preserve the Coordinator's node, scene and retry authorization checks.
+
+### 文件变更详情 / File changes
+
+- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L130–L132、L144–L148、L208–L214。转发现有配置给同一个任务协调器。 / Forward the existing settings to the task's Coordinator.
+- [eval] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L136–L143。验证宿主使用传入的非默认重试预算和间隔。 / Assert that the host applies a supplied retry budget and delay.
+
+```diff
+-    coordinator = AgentTaskCoordinator(workspace=workspace, config=..., client=None)
++    coordinator = AgentTaskCoordinator(
++        workspace=workspace, config=..., client=None,
++        max_agent_provider_retries=max_agent_provider_retries,
++        agent_provider_retry_delay_s=agent_provider_retry_delay_s,
++    )
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 17 项宿主和续接测试通过，`git diff --check` 通过。上游已恢复响应，实跑使用单次复跑配置来延长重试等待。 / All 17 host and continuation tests and the diff check passed. The upstream provider is responding. The simulation replay uses a run-specific configuration to allow longer retries.
+
 ## v17.9.11 (2026-11-24 22:08) - codex
 
 - [eval] [fix] [完成] 修改 Isaac 抓取准备与相应测试。预选路线未通过全路径检查时，尝试已有的完整路线搜索，保留原运动检查和准备证据。21:18:30 轮的 R03 在当前关节姿态下多次出现转腕 IK 不连续，而预选模式提前裁掉了其他策略。 / In Isaac acquire preparation, let a rejected preselected route fall back to the existing full route search with the same qualification and evidence. The current replay repeatedly found wrist IK discontinuities for R03 while preselection excluded alternate strategies.
@@ -147,36 +169,3 @@
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `c0ca2529`，`feature/planning-loop`，2026-11-24 21:06:09 +0800。
-
-## v17.9.7 (2026-11-24 20:29) - codex
-
-- [eval] [fix] [完成] 修改 `phase_motion.py` 与阶段测试。实测 R05 抬升失败时瓶底回到支撑高度，已无双侧承载但仍报告双侧零载接触；允许仅原地开夹，验证空夹与稳定支撑后沿已验证路径回撤，交接同任务恢复决策。 / In the measured R05 lift failure the bottle was back at support height with zero-load residual contact. Permit opening at the fixed arm pose and verify empty grip and stable support before the qualified reverse path and same-task recovery. (local)
-
-### 文件变更详情 / File changes
-
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L844–L856、L2353、L2382–L2405、L2449–L2485。检查两指最新采样、接触负载、瓶位与支撑高度。冻结开夹时的手臂目标，开夹后和撤离后确认瓶身稳定及双指脱离。 / Check current finger samples, load, bottle pose and support height. Hold the arm target fixed during opening and verify stable support and clearance before and after retreat.
-- [eval] [fix] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2331–L2394。覆盖零载接触成功、单侧载荷、过期采样、支撑高度异常、开夹后残留接触或负载、瓶身移动。 / Cover zero-load residual contact recovery and rejection of unilateral load, stale samples, unsupported height, continued contact or load, and bottle movement.
-- [docs] [docs] `.task/current.md` L744–L746。记录适配器与 AgentLoop 的职责和证据边界。 / Record ownership and evidence boundaries.
-
-```diff
-- if held or contact_load_valid or contact_manifold_valid or not supported:
-+ clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
-+ residual_unloaded = (
-+     failure == "physical_grasp_lost"
-+     and support_contact_allowed("lift", physical_body, original, tolerance)
-+     and contact_window.current_unloaded()
-+ )
-+ if held or not supported or not (clear or residual_unloaded):
-      raise PhaseMotionError("acquire_recovery_possession_uncertain", ...)
-- command(self.joints(), fingers, "recovery_open", True)
-+ command(opening_arm, fingers, "recovery_open", True)
-+ verify_empty("recovery_open_check")
-```
-
-### 验证 / Validation
-
-- [eval] [exp] 232 项运动阶段测试通过，包含新增的 7 种失抓恢复场景。使用 20:03:32 的仿真配置启动同任务复跑，证据保存在 `out/labutopia-elevated-20261124/v17.9.7-r05-r03-agent-loop-recovery-203551`。 / All 232 motion phase tests passed, including seven recovery cases. A same-task replay using the 20:03:32 simulation profile was started and its evidence is stored at the listed path.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `e85b9628`，`feature/planning-loop`，2026-11-24 20:36:17 +0800。

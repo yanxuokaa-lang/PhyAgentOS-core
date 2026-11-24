@@ -135,9 +135,12 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
             "source_path": "/World/source", "destination_path": "/World/destination"}, base_dir=tmp_path)
         loop, coordinator, bundle, assignments = compose_host(
             profile=profile, workspace=tmp_path, provider=Mock(generation=SimpleNamespace(max_tokens=2048)), inference=Mock(),
-            model="test-model", sensor_ref="sensor://front")
+            model="test-model", sensor_ref="sensor://front", max_agent_provider_retries=5,
+            agent_provider_retry_delay_s=3.5)
         try:
             assert coordinator.config.execution_timeout_s == 1800
+            assert coordinator.max_agent_provider_retries == 5
+            assert coordinator.agent_provider_retry_delay_s == 3.5
             adapter = loop.long_horizon_controller.adapter
             assert callable(adapter.recovery_policy)
             assert callable(adapter.replan_proposer)
