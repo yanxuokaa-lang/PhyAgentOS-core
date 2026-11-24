@@ -72,6 +72,10 @@
 
 - [eval] [exp] 234 项 Isaac 阶段运动测试通过。`git diff --check` 通过。21:18:30 轮 R05 已完成，R03 尚未发生动作。备选选择待复跑实测。 / All 234 Isaac phase-motion tests and the diff check passed. The 21:18:30 run completed R05 and reported no motion for R03. Simulation of alternative selection remains pending.
 
+### Git 提交 / Git Commit
+
+- 实现提交 / Implementation commit `af2ea7ee`，`feature/planning-loop`，2026-11-24 22:14:18 +0800。
+
 ## v17.9.10 (2026-11-24 21:26) - codex
 
 - [eval] [fix] [完成] 在 Coordinator 的任务结算中识别一次已经安全收尾的失抓后来由相同动作义务成功补做的情况。保留失败与成功的原始回执，核对成功是同一个物体、目标和工艺请求，其他未知及未恢复的结果仍阻止结算为成功。 / In Coordinator task finalization, recognize a safely recovered failed acquire when a later measured success fulfills the same original Action obligation with the same object, destination and process request. Retain both receipts and continue blocking success for unresolved or unrecovered effects.
