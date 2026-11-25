@@ -324,3 +324,108 @@ All32 bounded static candidates failed:6 robot collisions,6 payload collisions,1
 验证命令为 `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`。`test_contact_timing.py` 的 Ruff 与 `git diff --check` 通过；完整 Ruff 仍报告 `phase_motion.py` L1061–L1065 既有 I001 import 格式问题，已用 `git show HEAD:... | ruff check --stdin-filename ... -` 复现于未改动的 e17645a3，无新增告警。20:37 验证完成；本次没有 Isaac 运行或新硬件证据，主会话代码审阅无 Blocker/Major，实际抓持居中和倾倒路线能否改善仍待提交后另行实跑。
 
 The previous static evidence is committed and pushed as `e17645a3`. The existing per-frame finger guard missed sub-threshold outward steps that accumulated during R03 close/lift. The Adapter now retains each finger's minimum measured opening across both stages, freezes the last target after cumulative retreat exceeds the unchanged 0.1 mm threshold, and retains legitimate inward following. Six real execute-loop regressions failed on the original implementation and now pass; the combined motion/contact suite passes all 297 tests. Existing disabled-follow, release, contact-loss and cancellation tests also pass. Full Ruff retains one pre-existing import-format finding, with no new lint findings. Historical detector recalculation is not a new physical result; no simulation was launched. Parent code review found no Blocker/Major; commit and live validation remain pending.
+
+
+## v17.10.11 全流程复测准备 / Full-task retest preparation
+
+v17.10.10 修复已由主会话提交并推送 `61a52a2a8b109e8501b2c3817edbcbc43ca63fbe`，分支 `feature/planning-loop`。2026-11-25 20:44:20 +08:00 创建独立目录 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.11-r05-r03-cumulative-guard-204420/`，从 191713 复制 13 个启动/场景/配置文件；未复制 artifacts、.paos、assignment 数据库、acceptance、sessions 或 memory。准备阶段尚未启动；后续授权、启动及运动进展见下文。
+
+逐文件比较结果：10 个文件字节一致，command.json、profile.json、station.yaml 三个文件仅替换运行目录，共 10 处路径替换；归一化路径后 13 个文件全部一致。JSON/YAML 解析、4 个 Python 脚本语法检查及 18 个依赖路径检查通过。`preparation-review.json` 保存完整比较和 metadata 前后差异，`configuration-paths.diff` 保存路径 Diff。metadata 标明实际代码 commit、来源运行、准备时间和版本，清除旧 host/observer PID、creation_attempt、started_at。
+
+双指 max_force 保持 60/60 N，max_velocity 保持 0.02/0.2 m/s，retain 保持 4 mm，finger_hold_follow 保持 true；motion/oracle/碰撞/接触阈值、原 R05→R03 指令及 replan budget 4 均一致。原 search 600 s、execute_phase request 2700 s、每个复合子任务 Coordinator reconciliation budget 3600 s 不变。比较源代码提交 efb217c9 与 61a52a2a，生产代码仅 phase_motion.py 的累计外退修复发生变化。启动仍使用原 launcher 临时配置及视频观察器，读取当前本机 provider 配置；LLM 选择与仿真数值波动仍可能影响实际轨迹，尚无新实跑结论。
+
+以下为同等启动命令；实际启动使用 Python subprocess.Popen(start_new_session=True)，argv 见 launch-receipt.json：
+
+```bash
+cd /home/yanxu/PhyAgentOS-forge
+retest_dir=/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.11-r05-r03-cumulative-guard-204420
+nohup /home/yanxu/PhyAgentOS-forge/.venv/bin/python -u "$retest_dir/launch.py" > "$retest_dir/launcher.log" 2>&1 < /dev/null &
+echo $! > "$retest_dir/launcher.pid"
+```
+
+Prepared a separate retest using pushed commit 61a52a2a. All 13 launch/configuration files match 191713 after path normalization: ten are byte-identical and three contain only path changes. Forces, velocities, 4 mm retain, motion/oracle thresholds, instruction, timeouts and the configured replan budget remain unchanged. Metadata identifies the new code and removes stale process fields. No prior database or output was copied. Preparation was reviewed before the launch recorded below; this comparison does not claim an execution result.
+
+
+## v17.10.11 启动 / Launch
+
+主会话独立审阅 13 文件与元数据后授权运行。2026-11-25 20:46:32.983 +08:00 以原 launch.py 启动 launcher PID543121；20:46:33.000 启动 host PID543123、视频观察器 PID543124，Isaac worker PID543672。实际 argv 与代码 commit 保存在 launch-receipt.json，metadata 保存 host/observer 启动信息。20:47:40 forge_task_create 成功，新任务为 `task_3bddc1ef6f1642dd`，随后进入 planning_execution；这是新的完整 R05→R03 任务，没有复用旧物理状态或任务 DB。
+
+启动前 GPU 空余 9505 MiB、RAM available 23 GiB、swap 空余 7.9 GiB、工作盘空余 54 GiB；没有旧 Isaac worker。启动按既定参数进行，未改生产代码或配置。阶段视频观察器沿用原逻辑；首个实际运动阶段与最终结果继续观察，当前不记录成功结论。
+
+Following parent review, launcher543121 started at20:46:32.983, with host543123, observer543124 and worker543672. The fresh task task_3bddc1ef6f1642dd was created successfully and entered execution planning. The run uses commit61a52a2a and the reviewed unchanged parameters; actual motion evidence and terminal results remain pending.
+
+
+### 首个实际运动阶段 / First actual motion
+
+20:49:56 Agent 选择 R05 的 manipulation.execute_subtask，20:52:49 生成 readiness `6dd3d5e33e5743d0bc59ecf2f90ec6bc`；随后 acquire 阶段视频 `951d8035f5004ed69861e2c1defddd24.mp4` 持续写入，20:53:36 达 8,126,508 字节，证实已进入实际运动。任务 `task_3bddc1ef6f1642dd` 仍在运行，没有 acquire 终态回执；视频增长只证明执行阶段在推进，不证明抓取、倾倒或归位成功。主会话接管后续监控，执行代理完成启动记录后暂停写入，整任务保持进行中。
+
+The Agent selected the R05 composite action at20:49:56, readiness was recorded at20:52:49, and its acquire video continued growing to8,126,508 bytes at20:53:36. Actual motion has begun, but acquisition has no terminal receipt yet. The full task remains in progress; the parent takes over monitoring while the execution agent pauses documentation edits.
+
+
+## v17.10.11 R05阶段完成 / R05 phases completed
+
+同一任务 `task_3bddc1ef6f1642dd` 的 R05 acquire、pour、place 均成功，对应回执为 `1745aa48ab274e148f81f7b9e788748f`、`85386aec13ac4656a4ee3d16aa416966`、`1acaaeeb96b042f28150d75cdb8ca61c`。首个 close 双侧载荷有效样本至末 close 共36帧，双指位移 `[-3.996579,+4.013482] mm`，瓶体世界位移 `[+3.594877,-1.785462,+0.000171] mm`。保存样本中的 target 仅更新1次（首触后下一命令应用初次冻结），lift target没有更新。上述数值与191713全部相同，说明此 R05 样本保留了已有快速外退后的冻结行为；不等于没有侧移。
+
+| R05实测指标 / Measured metric | 191713 | 204420 |
+|---|---:|---:|
+| Lift双侧载荷有效 / Bilateral load | 117/117 | 117/117 |
+| Lift grasp_valid | 117/117 | 117/117 |
+| 末附着误差 / Final attachment error (mm) | 0.04714051 | 0.04714051 |
+| 首末lift瓶体上升 / Lift object rise (mm) | 60.07461810 | 60.07461810 |
+| 峰值倾角 / Peak tilt (rad) | 1.00144218 | 1.00144218 |
+| 对准连续保持 / Aligned continuous hold (s) | 2.81666681 | 2.81666681 |
+| 归位误差 / Return error (mm) | 0.20240487 | 0.20240487 |
+
+可审阅合辑为 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/204420_R05完整成功_R03进行中_同一AgentLoop.mp4`：118.8秒、7128帧、16个连续阶段章节，ffprobe核对和ffmpeg全片解码通过。复用原观察器/章节工具保存的3段视频，按acquire35.2s→pour59.35s→place24.25s拼接；保留ffconcat及ffmetadata，供后续同任务R03完成后追加。`r05-stage-comparison.json`保存两轮紧凑实测与精确相等结果，`r05-video-compilation.json`保存阶段路径、偏移和解码回执。大pour/place反馈仅定位末尾64KiB提取顶层measurements，没有重复读取420MB样本数组。
+
+R05的无液体动作阶段已完成；R03仍由原AgentLoop继续，整个R05→R03任务保持进行中，尚无本轮R03终态结论。未改参数/生产代码，视频处理仅流复制及低优先级双线程解码，不查询或干预运行中的worker。主会话继续监控，执行代理完成阶段证据后暂停写入。
+
+R05 acquisition, pouring and placement succeeded. The compact measured comparison exactly matches191713, including117/117 valid lift-contact/grasp samples,0.04714051mm final attachment error,2.81666681s aligned hold and0.20240487mm return error. The118.8-second,7128-frame compilation retains16 contiguous phase chapters and passes full decoding. Large pour/place feedback was read only from its trailing64KiB metrics section. R03 and the full task remain in progress; no simulation parameters or production code were changed.
+
+
+## v17.10.11 R03抓取抬升成功 / R03 acquisition succeeded
+
+已独立读取本轮 acquire 回执 `83eae0a69fd84157a805b46faaf03b59` 和191713回执 `28e717d0996f4276a5465b80e255b42d`。close范围为首次 `contact_load_valid=true` 到末close，lift范围为全部lift样本；target变化按相邻已记录数组不相等计数，包含首触冻结在下一采样记录中的应用。两轮分别36个close与119个lift样本，紧凑证据保存于本轮 `r03-acquire-comparison.json`。
+
+| R03实测指标 / Measured metric | 191713 | 204420 |
+|---|---:|---:|
+| Close target变化次数 / Changes | 35 | 2 |
+| Close双指位移 / Finger delta (mm) | [-2.439553,+2.441075] | [-4.068043,+4.068617] |
+| Lift target变化次数 / Changes | 116 | 0 |
+| Lift双指位移 / Finger delta (mm) | [-8.050825,+8.050924] | [-0.000238,+0.001790] |
+| Lift双侧载荷有效 / Bilateral load | 119/119 | 119/119 |
+| Lift grasp_valid | 116/119 | 119/119 |
+| 末附着误差 / Final attachment error (mm) | 8.13312281 | 0.02533375 |
+| 首末lift瓶体上升 / Lift object rise (mm) | 60.11434181 | 60.11261100 |
+
+本轮close瓶体世界位移 `[-3.628907,-1.818365,+0.002503] mm`；末lift双指实测 `[0.015813103,0.024196945] m`，冻结目标 `[0.015808698,0.016202483] m`，末双侧接触冲量 `[0.372912,0.377415] N·s`。累计保护停止了后续lift目标追随，抬升期间夹指位移与附着误差显著缩小；close仍有约4mm侧走，不能据此声称完全居中或已完成倾倒。其他物理配置、候选准备机制和阈值均未改。
+
+带章节视频 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/204420_R03_抓取抬升_成功_124a03e5.mp4` 为59.633333秒、3578帧、9个连续章节，ffprobe与低优先级双线程全片解码通过，验证回执为 `r03-acquire-video.json`。`completed-phase-video-manifest.json` 与 `204420_completed_phases.ffconcat` 已登记R05三阶段和R03 acquire，R03 pour/place仍列pending，尚未生成最终成功双瓶合辑。
+
+本阶段仅确认R03 acquire成功；同一任务 `task_3bddc1ef6f1642dd` 继续运行，后续倾倒与归位需各自实测回执。执行代理没有读取巨大pour样本、改变配置或干预worker，完成记录后暂停写入，由主会话继续监控。
+
+Independent receipt comparison confirms close target updates fell from35 to2 and lift updates from116 to0. During lift, finger displacement became[-0.000238,+0.001790]mm, all119 samples retained bilateral load and valid grasp, and final attachment error fell from8.13312281 to0.02533375mm. Close still produced about4mm of lateral finger movement, so this demonstrates improved lift stability rather than perfect centering. The59.633333-second acquire video has9 chapters and passes full decoding. R03 pour/place and the complete task remain pending; only a partial compilation manifest has been prepared.
+
+
+## v17.10.11 终态：R03倾倒准备失败 / Terminal: R03 pour preparation failed
+
+独立核对acceptance：任务 `task_3bddc1ef6f1642dd` 于 **2026-11-25 21:27:53.835170 +08:00** 终止为 `failed`。共有6个revision，`controller_outcomes.replans=0`；配置预算仍为4，本轮没有耗尽重规划预算。R05复合动作completed且末状态empty；R03 acquire成功后，`manipulation.prepare_held` 返回 `unavailable`，底层错误为 `pour_route_unavailable`，subtask的failed_phase为prepare、failure_code为subtask_failed、requires_replan=false、末possession_state为holding。
+
+核对的复合动作回执共9条：R05为prepare→acquire→prepare_held→pour→prepare_held→place，共6条且全部available/succeeded；R03为prepare→acquire→prepare_held，共3条，末条unavailable。四个已执行阶段的feedback/video引用均落盘；没有R03 pour、place或safe-recovery回执/视频。R03有效候选为 `eab3ba8939e5440eab7efa9f139e1a8a-8`，acquire assignment为 `31ec5683e9824995b352d7f6d9d83c86`。launcher543121、host543123、观察器543124和worker543672已全部退出。
+
+从acceptance的R03末receipt.response.error逐字提取保存 `r03-pour-route-unavailable.txt`，60行、33110字符；未把嵌套receipt.error的null误当作实际错误。分类按每行实际错误文本完成，保留行号与候选yaw/azimuth/offset，详细JSON为 `r03-pour-failure-summary.json`：
+
+| 失败类型 / Failure category | 数量 / Count | 阶段 / Stage |
+|---|---:|---|
+| Robot/finger collision | 16 | process |
+| Payload collision | 9 | process |
+| Joint continuity | 15 | transport |
+| Inverse kinematics | 20 | transport |
+
+碰撞具体为panda_hand–BEAKER 10条、finger–BEAKER 1条、panda_link6–table 5条、payload–BEAKER 9条。以上只分类已有60条准备拒绝，不新增搜索、不改变碰撞或关节阈值，也不证明所有可能方位均不可行。完整任务及9条回执索引存于 `terminal-summary.json`，重规划次数采用controller原始结果，未由revision数量推算。
+
+最终同任务视频：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/204420_R05完成_R03抬升成功_倾倒准备失败_同一AgentLoop.mp4`，**178.433333秒、10706帧、25个连续章节**，ffprobe与全片解码通过。前118.8秒是R05三阶段，后59.633333秒是R03 acquire；末章节明确写“R03抬升成功；后续倾倒准备失败，倾倒与归位未执行”。准备失败没有对应运动画面，末章标注的是后续结果，没有伪造倾倒、归位或恢复。`final-video-compilation.json`保存验证回执；先前“R03进行中”视频/JSON保留为阶段历史，以本终态和最终合辑为准。
+
+本轮实跑验证累计外退保护停止了R03 lift目标追随，使119帧抓持均有效、末附着误差降至0.02533375mm；R05实测保持不变。完整双瓶任务仍失败于后续倾倒路线准备，不能把抓持修复等同于任务成功。物理配置和阈值未改，无硬件运动；运行代码61a52a2a，当前只整理本轮证据，未开启下一诊断、未提交/推送。主会话审阅后统一提交。
+
+Task task_3bddc1ef6f1642dd failed at21:27:53.835170+08:00 with6 revisions and0 controller-reported replans. R05 completed; R03 acquisition succeeded, then held-object pour preparation returned pour_route_unavailable while possession remained holding and requires_replan stayed false. No R03 pouring, placement or safe-recovery receipt exists. The60 raw failures comprise16 robot/finger collisions,9 payload collisions,15 joint-continuity failures and20 IK failures. The178.433333-second,10706-frame,25-chapter final video passes full decoding and labels the subsequent preparation failure. Improved R03 lift stability does not establish completion of the full task; all runtime processes exited, with no parameter or production change during evidence collection.
