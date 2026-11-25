@@ -131,7 +131,7 @@ Report only measured no-liquid manipulation, never transferred volume or chemica
 
 def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, execute=False,
                  execution_timeout_s=1800, max_agent_provider_retries=2,
-                 agent_provider_retry_delay_s=1.0):
+                 agent_provider_retry_delay_s=1.0, max_replans=2):
     workspace = Path(workspace).expanduser().resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     artifact_root = workspace / "artifacts" / "labutopia"
@@ -147,6 +147,7 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
         workspace=workspace, config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None,
         max_agent_provider_retries=max_agent_provider_retries,
         agent_provider_retry_delay_s=agent_provider_retry_delay_s,
+        max_replans=max_replans,
     )
     assignments = SQLiteAssignmentArtifactStore(workspace / "assignment-artifacts.sqlite3")
     bundle = build_labutopia_runtime(
@@ -213,6 +214,7 @@ async def run_instruction(*, profile, workspace, config_path, instruction, senso
         sensor_ref=sensor_ref, execute=execute, execution_timeout_s=execution_timeout_s,
         max_agent_provider_retries=config.agents.verification.max_agent_provider_retries,
         agent_provider_retry_delay_s=config.agents.verification.agent_provider_retry_delay_s,
+        max_replans=config.agents.verification.max_replans_per_episode,
     )
     session_key = f"cli:lab-{uuid4().hex[:12]}"
     # Deployment guidance belongs to the system context, separate from the instruction.

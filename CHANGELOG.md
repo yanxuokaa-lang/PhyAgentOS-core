@@ -51,6 +51,128 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.7 (2026-11-25 19:13) - codex
+
+- [env] [fix] [完成] 修复Isaac agent_host预算接线：compose_host新增默认2的max_replans并传入Coordinator，run_instruction传递现有verification.max_replans_per_episode，保留显式0。 / [Completed] Wire the existing verification replan budget through run_instruction and compose_host to Coordinator, retaining default2 and explicit0. (local)
+- [eval] [fix] [完成] 使用无运动测试验证默认2、自定义4、显式0及真实配置读取路径；stub外部LLM/感知，不启动仿真。 / [Completed] Test default2, custom4, explicit0 and real configuration loading without motion, stubbing external model/perception. (local)
+- [docs] [docs] [完成] 更新报告、精确行号/Diff和最近五条；前轮最终证据提交为d1ce17b7。预算及生命周期由Coordinator拥有，Provider和物理参数不变，不新增schema/gate。 / [Completed] Update report, lines/diff and latest five entries; previous final evidence commit is d1ce17b7. Coordinator retains budget/lifecycle ownership; provider and physical settings remain unchanged without new schemas or gates. (local)
+
+### 所有权与验证边界 / Ownership and validation boundaries
+
+- Host只将已有配置接入Coordinator；预算与生命周期、取消、结算、恢复归Coordinator，Provider不变且可替换，不新增契约。使用当前加载配置为新任务构建Coordinator，不改变旧任务证据。最小失败测试是配置4却得到2；无运动配置集成测试揭示该接线遗漏。 / Host only forwards existing configuration; Coordinator owns budget/lifecycle/cancellation/settlement/recovery, providers remain replaceable and contracts unchanged. Current configuration initializes new task composition without altering historical evidence. The minimal regression is configured4 becoming2, exposed by no-motion configuration integration tests.
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L134、L150、L217：增加默认2参数并接通配置→Host→Coordinator。 / Add the default2 parameter and wire configuration through Host to Coordinator.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L5、L144、L201–L238：默认值断言及真实配置加载的2/4/0无运动测试。 / Add default assertion and real configuration-loading no-motion cases for2/4/0.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L234–L246：记录根因、所有权、测试及前轮提交d1ce17b7。 / Record root cause, ownership, validation and prior final-evidence commit d1ce17b7.
+- [修改 / Modified] `CHANGELOG.md`：最近五条为17.10.7至17.10.3，与月档全文一致。 / Latest five entries17.10.7 through17.10.3 match their archive records.
+
+```diff
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
+index ddb77d30..5e2e23c8 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
+@@ -131,7 +131,7 @@ Report only measured no-liquid manipulation, never transferred volume or chemica
+
+ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, execute=False,
+                  execution_timeout_s=1800, max_agent_provider_retries=2,
+-                 agent_provider_retry_delay_s=1.0):
++                 agent_provider_retry_delay_s=1.0, max_replans=2):
+     workspace = Path(workspace).expanduser().resolve()
+     workspace.mkdir(parents=True, exist_ok=True)
+     artifact_root = workspace / "artifacts" / "labutopia"
+@@ -147,6 +147,7 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref,
+         workspace=workspace, config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None,
+         max_agent_provider_retries=max_agent_provider_retries,
+         agent_provider_retry_delay_s=agent_provider_retry_delay_s,
++        max_replans=max_replans,
+     )
+     assignments = SQLiteAssignmentArtifactStore(workspace / "assignment-artifacts.sqlite3")
+     bundle = build_labutopia_runtime(
+@@ -213,6 +214,7 @@ async def run_instruction(*, profile, workspace, config_path, instruction, senso
+         sensor_ref=sensor_ref, execute=execute, execution_timeout_s=execution_timeout_s,
+         max_agent_provider_retries=config.agents.verification.max_agent_provider_retries,
+         agent_provider_retry_delay_s=config.agents.verification.agent_provider_retry_delay_s,
++        max_replans=config.agents.verification.max_replans_per_episode,
+     )
+     session_key = f"cli:lab-{uuid4().hex[:12]}"
+     # Deployment guidance belongs to the system context, separate from the instruction.
+diff --git a/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py b/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
+index 7d3f5776..efa3a343 100644
+--- a/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
++++ b/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
+@@ -2,7 +2,7 @@ import asyncio
+ import json
+ from dataclasses import replace
+ from types import SimpleNamespace
+-from unittest.mock import Mock
++from unittest.mock import AsyncMock, Mock
+
+ import pytest
+
+@@ -141,6 +141,7 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path,
+             agent_provider_retry_delay_s=3.5)
+         try:
+             assert coordinator.config.execution_timeout_s == 1800
++            assert coordinator.max_replans == 2
+             assert coordinator.max_agent_provider_retries == 5
+             assert coordinator.agent_provider_retry_delay_s == 3.5
+             adapter = loop.long_horizon_controller.adapter
+@@ -195,3 +196,43 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path,
+             bundle.client.close()
+             assignments.close()
+     asyncio.run(run(tmp_path))
++
++
++@pytest.mark.parametrize('budget', [None, 4, 0], ids=['default', 'four', 'disabled'])
++def test_run_instruction_applies_loaded_replan_budget(tmp_path, monkeypatch, budget):
++    from isaacsim_lab import agent_host
++
++    verification = {} if budget is None else {'maxReplansPerEpisode': budget}
++    config = tmp_path / 'config.json'
++    config.write_text(json.dumps({
++        'agents': {'defaults': {'model': 'openai/test-model'}, 'verification': verification},
++        'providers': {'openai': {'apiKey': 'test-only-key'}},
++    }))
++    for name in ('camera.yaml', 'scene.usd', 'robot.usd'):
++        (tmp_path / name).write_text('test fixture; never loaded by a simulator')
++    profile = LabUtopiaProfile.from_mapping({
++        'lab_root': str(tmp_path), 'config_path': 'camera.yaml',
++        'scene_usd_path': 'scene.usd', 'robot_usd_path': 'robot.usd',
++        'source_path': '/World/source', 'destination_path': '/World/destination',
++    }, base_dir=tmp_path)
++    provider = Mock(generation=SimpleNamespace(max_tokens=2048), _client=None)
++    monkeypatch.setattr('PhyAgentOS.cli.commands._make_provider', lambda *a, **k: provider)
++    monkeypatch.setattr('openai.OpenAI', lambda **kwargs: Mock(close=kwargs['http_client'].close))
++    monkeypatch.setattr(agent_host, 'build_visual_providers', lambda *args: (Mock(), Mock()))
++    monkeypatch.setattr(agent_host.AgentLoop, 'process_direct', AsyncMock(return_value='no motion'))
++    monkeypatch.setattr(agent_host.AgentLoop, 'wait_for_long_horizon_tasks', AsyncMock(return_value=[]))
++    composed = []
++
++    def capture_host(**kwargs):
++        result = compose_host(**kwargs)
++        composed.append(result[1])
++        return result
++
++    monkeypatch.setattr(agent_host, 'compose_host', capture_host)
++    report = asyncio.run(agent_host.run_instruction(
++        profile=profile, workspace=tmp_path, config_path=config,
++        instruction='Read-only configuration check', sensor_ref='sensor://front',
++    ))
++    assert composed[0].max_replans == (2 if budget is None else budget)
++    assert report['simulated_motion_enabled'] is False
++    assert report['tasks'] == []
+```
+
+### 验证 / Validation
+
+- [eval] [fix] 上述报告命令：15 passed；两个代码文件Ruff、git diff --check通过；无仿真/硬件运动。 / The documented command passed15 tests; both files passed Ruff and diff whitespace checks; no simulation or hardware motion.
+
+### Git 提交 / Git Commit
+
+- 前轮最终证据 / Previous final evidence: `d1ce17b7`；分支 / Branch: `feature/planning-loop`。本修复待主会话审阅提交。 / This repair awaits parent review and commit.
+
 ## v17.10.6 (2026-11-25 16:50) - codex
 
 - [env] [exp] [完成] 使用已提交 2dcf0aaa 的 stale 重采集修复启动独立 R05→R03 连续 AgentLoop 仿真；复制 155843 的配置仅替换运行路径，保留 4 mm/60 N、原任务与安全检查，保存阶段录像。 / [Completed] Replay the continuous R05→R03 AgentLoop task on committed 2dcf0aaa, copying 155843 configuration with run paths replaced and preserving 4 mm/60 N, task instruction and safety checks; retain annotated phase videos. (local)
@@ -601,72 +723,3 @@ index 9415dfa8..911bacee 100644
 - [env] [exp] 已将 `150350` 同一任务的 R05 抓取、倾倒、归位三段成功录像按顺序合成 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/150350_R05全周期成功_R03未完成_同一AgentLoop.mp4`，时长 160.250 s、16 个章节，保留原片。ffprobe 检查及 ffmpeg 完整解码通过；合辑和原片不加入 Git。R03 未运动，本轮任务失败。 / Concatenated the three successful R05 phases from the same task into the named 160.250 s video with 16 chapters, retaining original clips. ffprobe inspection and full ffmpeg decoding passed. Videos remain outside Git; R03 did not move and the task failed.
 
 - [env] [exp] `150350` 最终任务 `task_6559745fef2c4afc` 为 failed，R05 全周期成功，R03 未运动；搜索工件 `acquire-search/2b8ee5f6fb724ed09272e7ea2dffadfe.json` 记录 600.3088 s、107 次尝试、99 次剪枝、269 个变体，错误 `route_search_timeout`，重规划次数 0。 / Run 150350 ended failed after a complete R05 cycle and before R03 motion. Its acquisition-search artifact records 600.3088 s, 107 attempts, 99 pruned attempts and 269 variants with route_search_timeout and zero replans.
-
-## v17.10.2 (2026-11-25 04:06) - codex
-
-- [env] [fix] Isaac 回放 `031330` 的 R03 在失抓后原位开夹首帧未通过承重复核。局部复现显示，开夹初段台面和单侧指爪分担荷载，期间瓶体高度变化约 0.094 mm。仅在夹爪固定、瓶体距原支撑高度不超过 0.5 mm 且单侧仍有有效载荷时，允许按 75% 瓶重确认继续开夹。开始开夹与开夹后回撤前仍要求至少 90% 实测承重。 / R03 stopped on the first recovery opening frame in Isaac replay `031330`. Isolated simulation replay showed shared support during partial opening with about 0.094 mm vertical bottle travel. Fixed-arm opening accepts 75% of vessel weight only within 0.5 mm of the original seated height with measured unilateral finger load. Admission and retreat still require measured support of at least 90% of vessel weight.
-- [env] [fix] 把有效但不足的实测力保存在阶段回执中，便于区分承重不足与反馈缺失。 / Retain valid subthreshold force samples to distinguish low force from missing feedback.
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2546–L2567、L2637–L2639、L2661–L2692。区分承重读数新鲜度与重量比例，新增固定臂位开夹的坐落判断，在回撤前校验开夹空夹与独立支撑。 / Separate read freshness from load qualification, check the seated pose during fixed-arm opening, and verify an open clear gripper and independent support before retreat.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2617–L2718。验证开夹时的分担荷载、低载、离座、清空后承重不足及回撤前复核失败。 / Exercise shared load, weak support, unseated geometry, low support after finger clearance, and a failed final recheck.
-
-```diff
-diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
-index 3abc51fc..80f2d807 100644
---- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
-+++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
-@@ -2545,0 +2546,3 @@ class IsaacPhaseMotion:
-+        def seated_on_support(pose):
-+            return in_support_band(pose) and abs(pose[2, 3] - original[2, 3]) <= .0005
-+
-@@ -2558,2 +2561 @@ class IsaacPhaseMotion:
--                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)
--                    or evidence["upward_force_n"] < .9 * evidence["weight_n"]):
-+                    or not contact_window.start < evidence["timestamp_s"] <= float(self.world.current_time)):
-@@ -2562,0 +2565,3 @@ class IsaacPhaseMotion:
-+        def support_bears_weight(evidence, minimum_fraction=.9):
-+            return evidence is not None and evidence["upward_force_n"] >= minimum_fraction * evidence["weight_n"]
-+
-@@ -2632 +2637,2 @@ class IsaacPhaseMotion:
--                if settle_steps and evidence is not None and contact_window.has_unilateral_load():
-+                if (settle_steps and seated_on_support(physical_body) and support_bears_weight(evidence)
-+                        and contact_window.has_unilateral_load()):
-@@ -2655 +2661,4 @@ class IsaacPhaseMotion:
--                if (held or not supported or not in_support_band(physical_body) or evidence is None
-+                unloaded = safe_to_open(physical_body)
-+                # During partial release the seated bottle can share load with one finger.
-+                shared_support = not unloaded and contact_window.has_unilateral_load()
-+                if (held or not supported or not seated_on_support(physical_body)
-@@ -2657 +2666,2 @@ class IsaacPhaseMotion:
--                        or not (safe_to_open(physical_body) or contact_window.has_unilateral_load())):
-+                        or not (unloaded or shared_support)
-+                        or not support_bears_weight(evidence, .75 if shared_support else .9)):
-@@ -2663,2 +2673,3 @@ class IsaacPhaseMotion:
--        def verify_empty(stage):
--            held, physical_body = record(stage)
-+        def verify_empty(stage, *, require_support_load=False):
-+            evidence = read_support() if require_support_load else None
-+            held, physical_body = record(stage, support_evidence=evidence)
-@@ -2669 +2680,6 @@ class IsaacPhaseMotion:
--                    or not contact_window.current_unloaded(require_clear=True)):
-+                    or not contact_window.current_unloaded(require_clear=True)
-+                    or (require_support_load and not (
-+                        seated_on_support(physical_body)
-+                        and contact_window.has_current_feedback(after=contact_window.start)
-+                        and support_bears_weight(evidence)
-+                    ))):
-@@ -2676 +2692 @@ class IsaacPhaseMotion:
--        verify_empty("recovery_open_check")
-+        verify_empty("recovery_open_check", require_support_load=require_supported_opening)
-```
-
-### 验证 / Validation
-
-- [env] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` 通过 261 项。 / All 261 phase motion tests passed.
-- [env] [exp] 独立 Isaac 5.1 局部复现采用 `031330` 的关节序列与每控制步 16 个物理子步。前 20 帧台面实测最低 0.757 N，瓶重 0.981 N，开夹后的最后八帧平均承重 0.979–0.984 N。 / The isolated Isaac 5.1 replay used the `031330` joint samples and 16 physics substeps per control interval. The first 20 opening frames had a minimum measured support of 0.757 N for a 0.981 N vessel. Over the last eight frames, control-interval mean support was 0.979–0.984 N.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `80cee4e0`，`feature/planning-loop`，2026-11-25 04:09:52 +0800。

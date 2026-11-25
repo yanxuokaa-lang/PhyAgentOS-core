@@ -230,3 +230,17 @@ At 18:43:22 the same Agent selected the second R03 Action with fresh scene revis
 最终合辑绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R05完成_R03两次失抓均恢复_任务失败_同一AgentLoop.mp4`。381.050秒、30章节，ffmpeg完整解码通过；全部片段来自同一任务，标明任务失败。2:40.250进入R03首抓，4:37.333进入第二次重抓。现有证据证明恢复和重抓链路，不能证明双瓶完成，也不能证明4 mm/60 N已经解决R03持瓶稳定性。
 
 At 19:07:56 the acceptance record marked the task failed. R05 completed; both R03 lift attempts lost bilateral load and safely recovered. The original Agent reobserved and physically retried, but R03 pouring/placement remained incomplete. Recovery after the second attempt exhausted the actual Coordinator replan limit of2 despite launch configuration requesting4; this discrepancy requires diagnosis. The 381.050-second, 30-chapter same-task video passed full decoding and explicitly labels failure.
+
+## v17.10.7 预算传递修复 / Replan budget wiring repair
+
+最终仿真证据已提交 `d1ce17b7`。预算差异根因位于Isaac Host组合层：run_instruction读取了verification配置，却未将max_replans_per_episode传入compose_host；compose_host构造Coordinator时也未传max_replans，导致其默认值2生效。
+
+compose_host现在接受max_replans（默认2），直接传给AgentTaskCoordinator；run_instruction从现有config.agents.verification.max_replans_per_episode传入该值，显式0保持0。Coordinator继续拥有预算、生命周期、取消、结算与恢复；Provider/Adapter、坐标/TCP标定和运动安全边界均未修改。此修复只使配置值生效，不能解决R03物理失抓。
+
+无运动测试从临时JSON配置经真实load_config、run_instruction、compose_host构造真实Coordinator，替换外部LLM/感知和消息执行，验证省略预算=2、自定义4、显式0；既有直接compose_host测试验证默认2。Host定向回归15项通过，两文件Ruff与git diff --check通过；未启动新仿真或硬件执行。
+
+```bash
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py --tb=short
+```
+
+The Isaac Host omitted both links from the existing verification configuration to Coordinator.max_replans. The repair forwards the configured value while preserving default2 and explicit0. Coordinator retains lifecycle and budget ownership; physical grasp stability is unchanged. Real configuration-loading and composition tests passed (15 tests), with external model/perception calls stubbed and no motion enabled.

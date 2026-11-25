@@ -2,7 +2,7 @@ import asyncio
 import json
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -141,6 +141,7 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
             agent_provider_retry_delay_s=3.5)
         try:
             assert coordinator.config.execution_timeout_s == 1800
+            assert coordinator.max_replans == 2
             assert coordinator.max_agent_provider_retries == 5
             assert coordinator.agent_provider_retry_delay_s == 3.5
             adapter = loop.long_horizon_controller.adapter
@@ -195,3 +196,43 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path, 
             bundle.client.close()
             assignments.close()
     asyncio.run(run(tmp_path))
+
+
+@pytest.mark.parametrize('budget', [None, 4, 0], ids=['default', 'four', 'disabled'])
+def test_run_instruction_applies_loaded_replan_budget(tmp_path, monkeypatch, budget):
+    from isaacsim_lab import agent_host
+
+    verification = {} if budget is None else {'maxReplansPerEpisode': budget}
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({
+        'agents': {'defaults': {'model': 'openai/test-model'}, 'verification': verification},
+        'providers': {'openai': {'apiKey': 'test-only-key'}},
+    }))
+    for name in ('camera.yaml', 'scene.usd', 'robot.usd'):
+        (tmp_path / name).write_text('test fixture; never loaded by a simulator')
+    profile = LabUtopiaProfile.from_mapping({
+        'lab_root': str(tmp_path), 'config_path': 'camera.yaml',
+        'scene_usd_path': 'scene.usd', 'robot_usd_path': 'robot.usd',
+        'source_path': '/World/source', 'destination_path': '/World/destination',
+    }, base_dir=tmp_path)
+    provider = Mock(generation=SimpleNamespace(max_tokens=2048), _client=None)
+    monkeypatch.setattr('PhyAgentOS.cli.commands._make_provider', lambda *a, **k: provider)
+    monkeypatch.setattr('openai.OpenAI', lambda **kwargs: Mock(close=kwargs['http_client'].close))
+    monkeypatch.setattr(agent_host, 'build_visual_providers', lambda *args: (Mock(), Mock()))
+    monkeypatch.setattr(agent_host.AgentLoop, 'process_direct', AsyncMock(return_value='no motion'))
+    monkeypatch.setattr(agent_host.AgentLoop, 'wait_for_long_horizon_tasks', AsyncMock(return_value=[]))
+    composed = []
+
+    def capture_host(**kwargs):
+        result = compose_host(**kwargs)
+        composed.append(result[1])
+        return result
+
+    monkeypatch.setattr(agent_host, 'compose_host', capture_host)
+    report = asyncio.run(agent_host.run_instruction(
+        profile=profile, workspace=tmp_path, config_path=config,
+        instruction='Read-only configuration check', sensor_ref='sensor://front',
+    ))
+    assert composed[0].max_replans == (2 if budget is None else budget)
+    assert report['simulated_motion_enabled'] is False
+    assert report['tasks'] == []
