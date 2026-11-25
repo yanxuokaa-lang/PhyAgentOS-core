@@ -52,6 +52,89 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.0.1 (2026-11-25 23:12) - codex
+
+### 计划与边界 / Plan and ownership
+
+- [sense] [fix] [完成] 223214实跑中R05完成后live scene已为scene:3，R03的旧scene:0缓存仍被process-feature propose作为available返回；内部capture一致不证明当前场景一致。仅在LabVisualPerception.propose现有Provider边界读取live revision，旧capture返回stale、缺revision返回unavailable且不创建candidate set；engine=None离线历史模式和全局_records保持。 / [Completed] The223214 run accepted scene:0 process features after R05 advanced the live scene to scene:3. Internal capture consistency does not establish current-scene validity. Check the live revision only at the process-feature Provider proposal boundary; reject stale/missing revisions without creating candidates while retaining offline and historical record behavior. (local)
+- [policy] [fix] [完成] ProcessFeatureQueryEndpoint保留Provider明确stale/unavailable/invalid及错误，未知status不得转成功；空候选和motionfalse使用现有公共契约，无status legacy Provider继续兼容。 / [Completed] Preserve explicit Provider failure status/error at the generic endpoint, never promote unknown status to success, and retain legacy Providers without a status field under the existing public contract. (local)
+- [eval] [fix] [完成] 覆盖live当前/变化/缺失/异常、新capture恢复、offline/legacy替换和携带候选的失败状态；以真实LabVisualPerception+endpoint的stale经过既有归一/settlement及LabSubtaskContinuation恢复，证明R05历史保留、只续R03，unknown/partial不绕过。 / [Completed] Cover current/stale/missing/error revisions, fresh-capture recovery and offline/legacy substitution; integrate a real stale Provider response through existing normalization, settlement and continuation to preserve completed R05 while resuming R03 without bypassing unknown/partial effects. (local)
+- [docs] [docs] [完成] 通用endpoint拥有状态语义，Isaac Provider拥有live scene机制；Coordinator/既有plugin继续拥有生命周期/重规划，运动/公共schema保持。已完成process_features、visual_perception、subtask_continuation、paos_integration、semantic_task_creation/subtask_executor回归，补精确行号/diff/report/Latest5并交主审；无新hash/gate/retry、无仿真、无自动提交。 / [Completed] Keep generic status semantics separate from Isaac scene mechanisms and retain Coordinator/plugin lifecycle ownership. Complete focused regressions, document exact changes and pause for review without motion, new schemas/gates/retries or automatic commit. (local)
+
+- [sense] [fix] [证据补充] TOOL_SPEC明确current-scene；223214旧capture自报freshness740ms，即使已过约20分钟仍通过请求内age验证，schema与_records只比较缓存/请求，不读取live scene。修复范围限propose，不扩至validate_selection或_records。 / [Evidence] The ToolSpec requires current-scene evidence, but the old capture still self-reported740ms after about20minutes; request age/schema and cached-record checks cannot observe the live revision. Limit this correction to propose. (local)
+
+### Git 提交 / Git Commit
+
+- 上轮 / Previous: `a8b08049b4325d8f234951bf72db4b5d35aa76f7`于2026-11-25T23:10:42+08:00提交并推送feature/planning-loop，HEAD/origin/远端分支一致；本轮实现待主审，不commit/push。 / The previous evidence commit is pushed and all branch identities agree; this implementation awaits review without commit/push.
+
+
+### 实际实现及文件详情 / Implementation and file details
+
+- [sense] [fix] [完成] live revision校验仅位于propose的capture一致性检查之后、生成任何candidate之前；stale/缺revision不改变process_feature_sets，异常不吞入Provider。历史_records读取与离线engine=None保持，当前成功候选路径不变。 / [Completed] Check live revision only after capture consistency and before candidate creation; stale/missing revision leaves the candidate store untouched, backend errors propagate to the existing endpoint handler, and offline/historical reads remain supported. (local)
+- [policy] [fix] [完成] Provider status分支位于原有result identity检查之后，仅新增分支向_failure传request；原参数/age/exception/候选验证失败输出不改，显式失败即使带有效候选也不能转available。 / [Completed] Preserve the original identity-check order and failure receipts; only the new Provider-status branches pass request identity, and explicit failure cannot become available even when candidates are present. (local)
+- [eval] [fix] [完成] 真实stale结果经Coordinator既有_tool_result_from_execution和settle_node，再进入LabSubtaskContinuation.select_recovery/propose_replan与fresh receipt续接：R05原action/settlement保留，仅R03生成新动作片段；unknown/partial仍不提供续接，旧stale Query证据不进入当前context。 / [Completed] A real stale response traverses existing result projection, settlement, recovery and fresh-receipt continuation; retain R05 history, generate only R03 and block continuation for unknown/partial effects while excluding stale Query evidence. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L1250-L1265
+
+- 新增Provider-private live scene检查及明确拒绝输出；无新公共schema/重试/生命周期机制。 / Add the Provider-private live-scene check and explicit failure output without a new public schema, retry or lifecycle mechanism.
+
+```diff
+  records = self._records(request)
++ if self.engine is not None:
++     live_revision = self.engine.backend.current_scene_revision()
++     # Missing revision -> unavailable; different revision -> stale.
++     # Return request identity, unavailable candidate-set ref and [] before candidate creation.
+  expected = set(request["entity_refs"])
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/process_features.py` L97-L104、L134-L141
+
+- 明确失败/未知status使用现有输出语义；_failure可选identity只服务这两个新增分支。 / Use existing failure semantics for explicit or unknown status; optional request identity serves only these two new branches.
+
+```diff
+  # Existing result identity check remains before status handling.
++ status = result.get("status", "available")
++ if status in ("stale", "unavailable", "invalid"):
++     return self._failure(status, provider_error, request)
++ if status not in ("available", "empty"):
++     return self._failure("unavailable", unknown_status_error, request)
+  # Existing candidate validation remains unchanged.
+- def _failure(status, message):
++ def _failure(status, message, request=None):
++     # Copy request identity only when explicitly supplied.
+```
+
+#### [修改 / Modified] 测试 / Tests
+
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py` L346、L373-L459、L2028-L2029：仅propose所需fixture明确offline/live engine；验证当前可用、scene:0→3拒绝且store不增、fresh capture恢复、missing/exception拒绝和历史_records可读。 / Limit fixture changes to proposal calls and cover current/stale/fresh/missing/error/offline behavior without losing historical records.
+- `examples/forge-skills/pick-place-workflow/tests/test_process_features.py` L3-L4、L12、L196-L236：显式失败/未知status不因携带候选转成功，输出保持schema；available/empty继续候选验证，失败status不绕过原identity验证；既有无status Provider替换测试继续通过。 / Cover failure/unknown statuses with candidates, schema-compatible rejection, retained validation and legacy Provider substitution.
+- `examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py` L1-L40、L138-L181、L197-L209、L277-L282：以真实Provider/endpoint结果替代手工failed settlement，串接现有恢复和fresh receipt，核对R05历史与R03续接及unknown/partial边界。 / Replace fabricated failure with the real Provider/endpoint result and exercise existing recovery/receipt continuation and unknown/partial boundaries.
+- `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L672-L686：追加具体故障链、修复归属、验证与无运动证据范围。 / Append the observed failure path, ownership, validation and no-motion evidence limits.
+- `CHANGELOG.md`同步最新五版本18.0.1/18.0.0/17.10.15/17.10.14/17.10.13完整条目；旧版本历史不改。 / Synchronize the five latest complete entries without rewriting historical entries.
+
+```diff
+- failed = NodeSettlement(..., status="failed")  # fixture-only failure
++ response = ProcessFeatureQueryEndpoint(real_visual).invoke(old_capture)
++ result = _tool_result_from_execution(task, persisted_record(response))
++ failed = settle_node(node, result, current_scene_revision="after")
+  recovery = plugin.propose_replan(...)
+  # Existing fresh receipt sequence: observe -> understand -> capabilities -> grasp.
++ assert original_R05_action_and_settlement_are_retained
++ assert resumed_action_nodes == ["R03"]
+```
+
+### 验证 / Validation
+
+- [eval] [fix] 六文件集中回归208 passed in20.35s；先前process_features+visual_perception专项105 passed in1.09s、continuation5 passed in0.56s。五个改动Python文件Ruff全通过，git diff --check通过。 / The six-file focused suite passed208 tests in20.35s; initial targeted runs passed105 and5 tests. Ruff passes all five changed Python files and diff whitespace validation passes. (local)
+- [eval] [fix] Ruff初报两个新增import块I001，已仅整理对应测试文件import；主审收窄了endpoint失败回执与fixture修改范围。未新增生产防御框架/运动/仿真/测试范围；208项是契约、Provider和恢复组合证据，不证明新的物理成功。 / Fixed import ordering in two modified test files and narrowed endpoint/fixture scope following review. No new defensive framework, motion, simulation or expanded test scope; the208 tests establish contract, Provider and recovery composition evidence, not physical success. (local)
+
+```bash
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-skills/pick-place-workflow/tests/test_process_features.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short
+.venv/bin/ruff check examples/forge-skills/pick-place-workflow/src/pick_place_workflow/process_features.py examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py examples/forge-skills/pick-place-workflow/tests/test_process_features.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py
+```
+
+- [docs] [docs] 本轮实现/文档完成，暂停写入供主审；当前HEAD仍a8b08049，本轮没有commit/push或启动Isaac。 / Implementation and documentation are complete and writing pauses for parent review; HEAD remainsa8b08049, with no commit/push or Isaac launch for this change. (local)
+
 ## v18.0.0 (2026-11-25 22:31) - codex
 
 - [eval] [exp] [准备完成] 本次为patch复测，按minor10/patch15上限由v17.10.15进位v18.0.0；仅从v17.10.11的204420目录复制13个启动脚本/配置至独立时间目录，路径归一后完全一致，实际代码为已推送2b27db35。保持同一R05→R03任务、60/60N、0.02/0.2m/s、retain4mm、motion/oracle/全部阈值与maxreplans4，不复制旧DB/artifacts。 / [Prepared] Roll the patch version to v18.0.0 per project limits and prepare an isolated run from exactly13 launch/config files in204420. Keep the same full task and all physical/motion/observation/budget settings, with pushed code2b27db35; do not copy previous databases or artifacts. (local)
@@ -343,60 +426,3 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-p
 ```
 
 - [docs] [docs] 本轮证明几何高度差并测得换点后的路线拒绝，未得到可执行路线，也未授权生产静默换feature。没有扩大候选、放宽阈值、改生产/物理配置或执行物理轨迹；历史日志保留，Latest5同步，完成后暂停写入供主会话审阅，不commit/push。 / The experiment confirms the geometric height difference and measures route rejections after point replacement; it yields no executable route and does not authorize silent production feature substitution. No search expansion, threshold relaxation, production/physics change or physical trajectory execution occurred. Preserve history, synchronize latest-five records and pause for review without commit/push. (local)
-
-## v17.10.12 (2026-11-25 21:40) - codex
-
-- [eval] [exp] [完成] 在独立时间目录复用201540只读静态诊断，改用204420的R03 acquire assignment31ec5683e9824995b352d7f6d9d83c86、feedback83eae0a69fd84157a805b46faaf03b59及唯一scene:4 rim特征；固定clearance0.048m、tilt1rad、hold2s。候选依次为yaw0的4个cardinal对照、4个diagonal、yaw±π/4各8方位，共24条；完成对照后遇可行停止扩展。 / [Completed] Reuse the201540 read-only static diagnostic in a separate timestamped directory with204420 R03 acquisition assignment/feedback and unique scene:4 rim features. Keep clearance0.048m, tilt1rad and hold2s; evaluate four yaw-zero cardinal controls, four yaw-zero diagonals and eight directions at each yaw±π/4, with24 candidates maximum and stop after controls once feasible. (local)
-- [eval] [exp] [完成] 仅准备脚本/config及无Isaac的语法/输入/候选检查，提交主会话审阅后再运行。复用历史末态q/TCP/body/fingers的纯计算与生产碰撞检查；初始化后不step、不set姿态、不发action，保留真实joints/simulation time前后读数。 / [Completed] Prepare script/config and perform syntax/input/candidate checks without Isaac, then wait for parent review before running. Reuse historical terminal state as calculation inputs and retain production collision checks; after initialization issue no steps, pose writes or actions, and preserve before/after real joints and simulation time. (local)
-- [docs] [docs] [完成] 保存code/config/input artifacts、seed/checkpoint不适用说明、输出位置及fresh obstacles与历史场景差异，更新报告和Latest5。此为Adapter私有机制的本地诊断；通用domain/Tool/AgentLoop及Runtime生命周期不改，结果不作为readiness或执行许可。不改生产、不提交/推送。 / [Completed] Record code/config/input artifacts, seed/checkpoint non-applicability, outputs and fresh-obstacle versus historical-scene drift; update the report and latest-five index. This local diagnostic reuses Adapter mechanisms without changing domain, Tool, AgentLoop or Runtime ownership; results are neither readiness nor execution authorization. Make no production edits or commit/push. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮终态证据 / Previous terminal evidence: `60e22cf4d9c52f4a140d486f9d1f28aa88bc178e`（已提交并推送 / committed and pushed）；分支 / Branch: `feature/planning-loop`。历史204420实际执行代码 / Historical execution code: `61a52a2a8b109e8501b2c3817edbcbc43ca63fbe`。本轮经主会话审阅后获准静态诊断，结果见下方，不commit/push。 / Parent review authorized this static diagnostic; results follow below, without commit/push.
-
-### 静态诊断运行授权 / Static diagnostic authorization
-
-- [eval] [exp] [完成] 2026-11-25 21:43:06 +0800 主会话独立审阅214104脚本/config及AST，无新增运动调用，批准按24候选规格启动单个静态诊断进程；记录PID/时间和分组结果，完成对照后找到可行即停止扩展，结束后补齐文档并暂停，不改生产、不提交。 / [Completed] Parent review of the214104 script/config/AST found no added motion calls and authorized one static-diagnostic process with the24-candidate specification. Record process/time and group results; stop expansion after controls once feasible, complete documentation and pause without production edits or commit. (local)
-
-### 文件变更详情 / File changes
-
-- [新增 / Added] 本地独立目录 `out/labutopia-elevated-20261125/v17.10.12-r03-pour-diagnostic-214104/`，`diagnose_r03_pour.py` L1–L303复用201540脚本；L56–L67替换候选组，L89把CLI最大候选降为24，L105–L106记录本轮dataset与checkpoint不适用。L24–L53取数、L70–L83虚拟夹指、L145–L235历史状态与碰撞几何绑定、L238–L299求解和前后真实状态比较保持原实现。 / The separate local directory reuses the prior303-line script, changing only candidate groups, CLI budget and dataset/checkpoint reporting; input loading, virtual fingers, historical binding, solving and state-equality checks retain the original implementation.
-- [新增 / Added] `diagnostic-config.json` L1–L29记录204420输入、61a52a2a历史执行代码、60e22cf4当前代码/终态证据、clearance0.048、tilt1/hold2、dataset/seed/checkpoint/输出及环境漂移；`script-changes.diff` L1–L38保留完整脚本差异，`preparation-checks.json` L1–L341保留24候选与输入检查，`launch-receipt.json` L1–L25记录PID688240、2026-11-25T21:43:24.395988+08:00、argv/code/resources。 / Local configuration, full script diff, preparation checks and launch receipt record provenance, all24 variants and the authorized process start.
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L434–L460记录输入、候选表、准备验证、启动命令及静态诊断范围；诊断终态随后追加。 / The report documents inputs, candidate groups, preparation checks, launch command and static-only scope, with terminal results appended next.
-
-```diff
-- historical_run = 191713; assignment = 74d7bd9b34bf43028a02eb8377418c23
-- feedback = 28e717d0996f4276a5465b80e255b42d; clearances = [0.048,0.04]
-- yaw0 cardinal8 + yaw0 diagonal8 + yaw±π/2 diagonal16; budget32
-+ historical_run = 204420; assignment = 31ec5683e9824995b352d7f6d9d83c86
-+ feedback = 83eae0a69fd84157a805b46faaf03b59; clearances = [0.048]
-+ yaw0 cardinal4 + yaw0 diagonal4 + yaw±π/4 each8directions; budget24
-  tilt_rad=1; hold_s=2; offsets=[0,0,0]
-  historical q/TCP/body/fingers remain calculation-only
-  production collision/IK/joint/workspace checks retained
-```
-
-### 准备验证 / Preparation validation
-
-- [eval] [exp] worker Python3.11.17 py_compile、JSON读取、24唯一候选4/4/16与clearance/yaw/tilt/hold检查通过；唯一scene:4 R03/BEAKER特征及历史点云、8个profile文件依赖存在。首次文件探测误包含USD prim source_path，已修正探测字段，无Isaac初始化发生；此为本地检查修正，未改诊断机制。 / Worker-Python syntax, JSON, candidate uniqueness/grouping and parameter checks passed; unique scene:4 features, point cloud and eight file dependencies exist. An initial filesystem probe incorrectly included a USD prim path and was corrected before Isaac initialization, without changing the diagnostic mechanism. (local)
-- [eval] [exp] 主会话审阅完整script diff/config及AST后允许启动；实际只运行一个静态进程，不创建AgentLoop任务、不改真实持瓶状态、不发控制action，无生产或物理配置变化。初始化后真实joints/time比较由脚本保留在结果中，准备检查本身不声称已证明运行时相等。 / Parent review of the script diff/config/AST authorized one static process, without an AgentLoop task, historical-state writes, control actions or production/physics edits. The script retains runtime joint/time comparison; preparation checks alone do not claim runtime equality. (local)
-
-### 静态诊断结果 / Static diagnostic results
-
-- [eval] [exp] [完成] 24/24候选完成、0可行，122.422817862s，停止原因为bounded_candidate_budget_completed，PID688240已退出。yaw0 cardinal4为route_collision1/payload_collision2/ik_discontinuity1；yaw0 diagonal4为route2/payload1/continuity1；yaw−π/4八条为route2/continuity4/IK2；yaw+π/4八条为route5/joint_limit2/payload1。合计route10、payload4、continuity6、IK2、limit2，process14/transport10。 / [Completed] All24 candidates completed with0 feasible routes in122.422817862s; the bounded budget ended and PID688240 exited. Group distributions are retained as stated, totaling10 robot collisions,4 payload collisions,6 IK discontinuities,2 IK failures and2 joint-limit violations across14 process and10 transport failures. (local)
-- [eval] [exp] [完成] 真实12维关节数组前后exact相等，simulation time均0.0020833334419876337s；初始化后0控制action/step，历史夹指生产碰撞几何调用5928次，FK(saved_q)与saved_TCP位置/旋转误差均0。捕获中心代理差范数0.048762510mm；fresh BEAKER相对历史acquire位置Δ[+0.013247132,−0.056545192,+0.967681408]mm、旋转差0.000137165rad。 / [Completed] Real12-DOF joint arrays and simulation time remain exactly unchanged, with no post-initialization actions/steps,5928 historical-finger geometry calls and zero saved-state FK position/rotation errors. Capture-center proxy mismatch is0.048762510mm; fresh-versus-historical BEAKER displacement/rotation are retained explicitly. (local)
-- [新增 / Added] 本地 `diagnostic-results.json` L1–L2426保存所有输入、模型配置、24条阶段/失败diagnostics和前后真实状态；`diagnostic-summary.json` L1–L568保存分组、逐候选拒绝及环境漂移；`docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L463–L481追加结果表和证据范围。 / Local full/compact results retain inputs, model configuration, all24 rejection diagnostics, actual state comparisons and environment drift; the report adds the result table and evidence scope.
-
-```diff
-- diagnostic_status = prepared_not_started
-+ diagnostic_status = completed_static_diagnostic_only
-+ evaluated=24; feasible=0; stop_reason=bounded_candidate_budget_completed
-+ failures={route_collision:10,payload_collision:4,ik_discontinuity:6,
-+           inverse_kinematics_failed:2,joint_limit_violation:2}
-+ real_joints_unchanged=true; simulation_time_unchanged=true
-+ before_time_s=after_time_s=0.0020833334419876337
-+ FK_saved_q_position_error=0; FK_saved_q_rotation_error=0
-  execution_authorized=false; readiness_or_admission=false
-```
-
-- [docs] [docs] 新鲜BEAKER高度约比历史acquire高0.968mm，结果限定为带记录环境差异的静态诊断，不是历史精确重放或执行许可；没有扩展候选、放宽阈值、改生产/物理配置或启动新任务。Latest5同步，历史v17.10.11及更早月档保留不变；完成记录后暂停写入供主会话审阅，无commit/push。 / Fresh BEAKER height differs by about0.968mm, so these results remain static diagnostics with measured environment drift, not exact historical replay or execution permission. No expanded search, threshold relaxation, production/physics edit or new task occurred. Latest-five entries are synchronized while earlier monthly records remain unchanged; pause edits for parent review without commit/push. (local)

@@ -94,6 +94,14 @@ class ProcessFeatureQueryEndpoint:
             "observation_ref", "scene_revision", "frame_id", "calibration_ref"
         )):
             return self._failure("stale", "process feature evidence does not match the current Query")
+        status = result.get("status", "available")
+        if status in ("stale", "unavailable", "invalid"):
+            error = result.get("error")
+            return self._failure(
+                status, error if isinstance(error, str) else f"process feature provider returned {status}", request,
+            )
+        if status not in ("available", "empty"):
+            return self._failure("unavailable", f"unknown process feature provider status: {status}", request)
         candidate_set_ref = result.get("candidate_set_ref")
         candidates = result.get("candidates")
         if not isinstance(candidate_set_ref, str) or not candidate_set_ref.startswith("process-feature-set://"):
@@ -123,10 +131,13 @@ class ProcessFeatureQueryEndpoint:
         }
 
     @staticmethod
-    def _failure(status: str, message: str) -> dict[str, Any]:
+    def _failure(status: str, message: str, request: Mapping[str, Any] | None = None) -> dict[str, Any]:
         return {"status": status, "candidate_set_ref": "process-feature-set://unavailable",
                 "observation_ref": "observation://unknown/unknown", "scene_revision": "unknown",
                 "frame_id": "unknown", "calibration_ref": "artifact://unknown",
+                **({key: request[key] for key in (
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )} if request is not None else {}),
                 "candidates": [], "motion_authorized": False, "error": message}
 
 

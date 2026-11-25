@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+from jsonschema import Draft202012Validator
 from PhyAgentOS.agent.argument_sources import resolve_argument_sources
 from PhyAgentOS.forge.task import ToolExecutionRecord, _planning_record_status
 from PhyAgentOS.planning import derive_ready_nodes, project_tool_spec
@@ -7,6 +9,7 @@ from PhyAgentOS.planning import derive_ready_nodes, project_tool_spec
 from pick_place_workflow.agent_planning import compose_subtask_plan
 from pick_place_workflow.process_features import (
     PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+    PROCESS_FEATURE_TOOL_SPEC,
     ProcessFeaturePreparationEndpoint,
     ProcessFeatureQueryEndpoint,
 )
@@ -188,3 +191,46 @@ def test_tool_specs_declare_operation_scoped_predecessor_ref_sources():
                              "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
                              "selected_grasp_candidate_ref", "qualified_grasp_candidate_refs") for item in
                action.argument_source_requirements)
+
+
+@pytest.mark.parametrize("status", ["stale", "unavailable", "invalid", "unknown", "future-status", None])
+def test_query_preserves_provider_failure_with_candidates_and_request_identity(status):
+    class FailedProvider(_ReplaceableProvider):
+        def propose(self, request):
+            return {**super().propose(request), "status": status, "error": "provider diagnostic"}
+
+    request = _request()
+    result = ProcessFeatureQueryEndpoint(FailedProvider()).invoke(request)
+    assert result["status"] == (status if status in {"stale", "unavailable", "invalid"} else "unavailable")
+    assert result["error"] == ("provider diagnostic" if status in {"stale", "unavailable", "invalid"}
+                               else f"unknown process feature provider status: {status}")
+    assert result["candidate_set_ref"] == "process-feature-set://unavailable"
+    assert result["candidates"] == [] and result["motion_authorized"] is False
+    assert all(result[key] == request[key] for key in (
+        "observation_ref", "scene_revision", "frame_id", "calibration_ref"))
+    Draft202012Validator(PROCESS_FEATURE_TOOL_SPEC["output_schema"]).validate(result)
+
+
+@pytest.mark.parametrize("status", ["available", "empty"])
+def test_explicit_success_status_still_validates_candidates(status):
+    class MalformedProvider(_ReplaceableProvider):
+        def propose(self, request):
+            result = super().propose(request)
+            result["status"] = status
+            result["candidates"][1] = result["candidates"][0]
+            return result
+
+    assert ProcessFeatureQueryEndpoint(MalformedProvider()).invoke(_request())["status"] == "invalid"
+
+
+def test_provider_failure_does_not_bypass_existing_query_identity_check():
+    class WrongCaptureProvider(_ReplaceableProvider):
+        def propose(self, request):
+            return {**super().propose(request), "status": "unavailable", "error": "provider diagnostic",
+                    "scene_revision": "another-scene"}
+
+    result = ProcessFeatureQueryEndpoint(WrongCaptureProvider()).invoke(_request())
+    assert result["status"] == "stale"
+    assert result["error"] == "process feature evidence does not match the current Query"
+    assert result["scene_revision"] == "unknown"
+    assert result["candidates"] == [] and result["motion_authorized"] is False

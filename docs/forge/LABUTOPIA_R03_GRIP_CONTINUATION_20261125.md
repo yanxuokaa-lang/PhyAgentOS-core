@@ -667,3 +667,20 @@ R03只完成process_features与prepare_process_features两个只读节点，停�
 本轮已完成证据收尾，完整任务未完成。没有重启、重新仿真、生产修改或commit/push；日志/报告/Latest5同步后暂停写入供主审。当前可评估范围是R05动作和R03规划阻塞，派生瓶口的完整R05→R03物理验证仍缺失。
 
 The process run has ended, but the persisted task is awaiting_replan with terminal_at=null and the controller reports blocked/replans0. Read-only database records match acceptance. R05 completed acquisition, pour and return:117/117 valid lift contacts/grasps,60.074618mm rise, maximum/final attachment errors0.047768/0.047141mm,1.001442rad tilt held2.816667s and0.202405mm return error. R03 has no physical-action evidence and did not reach held preparation; R05 selected no derived-tip fallback, so the new rim mechanism remains unevaluated physically. The122.8s/7368-frame/17-chapter video contains118.8s of R05 motion plus a clearly labeled4s incomplete-task result card, with continuous timestamps and successful full decoding. Raw receipts and failure text are preserved; no restart, production edit or commit/push occurred, and writing is paused for review.
+
+
+### v18.0.1 当前场景候选与失败状态修复 / Current-scene proposal and failure-state correction
+
+223214的后续诊断确认：R05完成后live scene已推进到scene:3，而R03的process-feature Query继续携带scene:0。旧capture仍自报freshness740ms；约20分钟后的请求内age检查、schema与`_records`只能证明请求和缓存互相一致，不能证明缓存属于live scene。ToolSpec明确要求current-scene，旧候选被当作available后，后续grasp_task_affordances轮只执行forge_plan_ready而没有Coordinator事实进展。这解释了本轮停在抓取前的具体路径，不改变v18.0.0原始回执或未完成结论。
+
+本次仅修改两个生产边界。`LabVisualPerception.propose`在已有capture匹配后读取`self.engine.backend.current_scene_revision()`：不同revision返回stale，空/缺失revision返回unavailable，均保留请求identity、空candidates和unavailable候选集引用，不创建新candidate set。backend异常继续由现有endpoint异常路径处理；`engine=None`保持离线历史capture行为，`_records`、validate_selection、历史acquisition与held frame读取均保持。
+
+通用`ProcessFeatureQueryEndpoint`先完成原有Provider identity检查，再尊重stale/unavailable/invalid和原始error；未知status返回unavailable。这两个新增分支携带请求identity并清空candidates、保持motion_authorized=false。原有参数/age/异常/候选验证失败回执及其顺序不变；legacy Provider省略status仍可成功，available/empty继续候选验证，公共Tool schema没有扩展。
+
+恢复证据使用真实LabVisualPerception与endpoint产生stale，包装成现有ToolExecutionRecord后，经`_tool_result_from_execution`归一为failed、`settle_node`生成settlement，再调用现有LabSubtaskContinuation.select_recovery/propose_replan。后续scene.observe/scene.understand/manipulation.capabilities/grasp.propose通过原有receipt与binding流程，只为R03生成新片段；R05原action/settlement和最初revision保留。带真实stale的unknown/partial情形仍没有续接选项。没有修改Coordinator、AgentLoop、重规划或恢复owner。
+
+集中六文件回归208 passed in20.35s（process_features、visual_perception、subtask_continuation、paos_integration、semantic_task_creation、subtask_executor）；两组初步验证分别105和5项通过。五个改动Python文件Ruff全部通过，`git diff --check`通过。该证据覆盖Provider状态、通用endpoint契约、替换Provider兼容与既有恢复组合，不是新的物理运行；没有启动Isaac或硬件运动，derived-rim完整物理验证仍待后续复测。
+
+v18.0.0证据已提交并推送`a8b08049b4325d8f234951bf72db4b5d35aa76f7`。本轮v18.0.1实现待主审，尚未commit/push；日志与Latest5完成后暂停写入。
+
+The stopped run exposed a current-scene contract failure: cached scene:0 process features were accepted after R05 advanced the live scene to scene:3. The fix reads the live revision only in the Isaac proposal boundary and preserves explicit Provider failures in the generic endpoint after its existing identity check. Historical acquisition access, offline/legacy compatibility, public schemas and lifecycle ownership remain unchanged. A real stale response now traverses the existing result projection, settlement and continuation path; fresh receipts generate only R03 while retaining completed R05, and unknown/partial effects still block continuation. All208 focused tests and Ruff pass. This is no-motion integration evidence; no new physical outcome or derived-rim validation is claimed. The preceding evidence commit is pushed and this change awaits review without commit/push.

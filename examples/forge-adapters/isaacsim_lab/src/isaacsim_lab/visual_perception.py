@@ -1247,6 +1247,22 @@ class LabVisualPerception:
     def propose(self, request):
         """Expose only opaque identities and semantic roles from the current capture."""
         records = self._records(request)
+        if self.engine is not None:
+            live_revision = self.engine.backend.current_scene_revision()
+            if not isinstance(live_revision, str) or not live_revision.strip():
+                status, error = "unavailable", "current scene revision is unavailable"
+            elif live_revision != request["scene_revision"]:
+                status, error = "stale", "process feature capture differs from the current scene revision"
+            else:
+                status, error = "available", ""
+            if status != "available":
+                return {
+                    "status": status, "error": error,
+                    **{key: request[key] for key in (
+                        "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                    )},
+                    "candidate_set_ref": "process-feature-set://unavailable", "candidates": [],
+                }
         expected = set(request["entity_refs"])
         if not expected <= set(records):
             raise ValueError("process feature Query entities do not belong to the current observation")

@@ -1,23 +1,43 @@
 import asyncio
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-
 from PhyAgentOS.agent.plan_proposal import compile_task_plan
 from PhyAgentOS.agent.planner_plugin import PlanningRequest
 from PhyAgentOS.agent.planning_context import context_from_task
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
-from PhyAgentOS.agent.planning_loop import EvidenceExecutionContext, NodeExecutionContext, project_consumer_arguments
-from PhyAgentOS.planning import NodeSettlement, build_replan_delta, project_tool_spec
+from PhyAgentOS.agent.planning_loop import (
+    EvidenceExecutionContext,
+    NodeExecutionContext,
+    project_consumer_arguments,
+)
+from PhyAgentOS.forge.task import ToolExecutionRecord, _tool_result_from_execution
+from PhyAgentOS.planning import (
+    NodeSettlement,
+    build_replan_delta,
+    plan_node_digest,
+    project_tool_spec,
+    settle_node,
+    tool_input_binding_digest,
+)
 from pick_place_workflow.agent_planning import compose_subtask_plan
-from pick_place_workflow.grasp_task_affordance import GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC, GRASP_TASK_AFFORDANCE_TOOL_SPEC
+from pick_place_workflow.grasp_task_affordance import (
+    GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+    GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+)
 from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
 from pick_place_workflow.persistent_runtime import _spec
-from pick_place_workflow.process_features import PROCESS_FEATURE_PREPARATION_TOOL_SPEC, PROCESS_FEATURE_TOOL_SPEC
+from pick_place_workflow.process_features import (
+    PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+    PROCESS_FEATURE_TOOL_SPEC,
+    ProcessFeatureQueryEndpoint,
+)
 from pick_place_workflow.subtask_executor import SUBTASK_TOOL_SPEC, SubtaskSpec
 
 from isaacsim_lab.subtask_continuation import LabSubtaskContinuation
+from isaacsim_lab.visual_perception import LabVisualPerception
 
 
 def perception(scene, tool_id, arguments):
@@ -115,6 +135,52 @@ def lab_task(outcome):
     return task, action, original_settlement, LabSubtaskContinuation(None, None, coordinator, sensor_ref="sensor://front")
 
 
+def stale_process_feature_settlement(task):
+    graph = task.active_revision.plan_graph
+    node = next(item for item in graph.nodes if item.node_id == "R03.process_features")
+    request = deepcopy(node.input_bindings)
+    backend = SimpleNamespace(current_scene_revision=Mock(return_value="before"))
+    visual = LabVisualPerception(SimpleNamespace(backend=backend), None, None, segmentation=None,
+                                 geometry=None, store=None, grasps=None,
+                                 provider_from_tcp=[[1., 0., 0., 0.], [0., 1., 0., 0.],
+                                                    [0., 0., 1., 0.], [0., 0., 0., 1.]])
+    identity = {key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
+    rim = {"feature_kind": "rim", "feature_role": "opening", "axis_world": [0., 0., 1.],
+           "rim_radius_m": .02, "origin_world": [0., 0., .8], "size_m": [.1, .1, .2]}
+    visual.observations[request["calibration_ref"]] = {
+        ref: {**identity, "entity_ref": ref, "process_feature_candidates": [
+            {**rim, "tip_world": [index * .3, 0., 1.]}]}
+        for index, ref in enumerate(request["entity_refs"])}
+    endpoint = ProcessFeatureQueryEndpoint(visual)
+    assert endpoint.invoke(request)["status"] == "available"
+    before = deepcopy(visual.process_feature_sets)
+    backend.current_scene_revision.return_value = "after"
+    response = endpoint.invoke(request)
+    assert response["status"] == "stale"
+    assert response["candidates"] == [] and response["motion_authorized"] is False
+    assert response["scene_revision"] == "before"
+    assert visual.process_feature_sets == before
+
+    record = ToolExecutionRecord(
+        record_id="stale-r03-features", revision_id=graph.revision_id, node_id=node.node_id,
+        node_digest=plan_node_digest(node), obligation_id=node.obligation_id,
+        input_binding_digest=tool_input_binding_digest(request), decision_trace_ref="artifact://decision/stale-r03",
+        tool_id=node.capability, semantics="query", caller_id="paos:task:stale-r03",
+        status="succeeded", arguments=request, response={"ok": True, "data": response},
+        evidence_refs=["tool:stale-r03-features"],
+    )
+    # Use the same result projection and pure settlement as Coordinator replay.
+    result = _tool_result_from_execution(task, record)
+    assert result.status == "failed" and result.scene_write_behavior == "none"
+    assert result.world_change_started is False and result.outcome_known is True
+    failed = settle_node(node, result, current_scene_revision="after")
+    assert failed.status == "failed"
+    task.execution_records.append(record)
+    task.active_revision.execution_records.append(record)
+    task.active_revision.node_settlements.append(failed)
+    return failed
+
+
 def method(plugin, task):
     ctx = context_from_task(task, allow_refresh=True)
     return plugin.propose_method_options(request=PlanningRequest(
@@ -128,15 +194,19 @@ def method(plugin, task):
                                           ("unknown", None), ("partial", None)])
 def test_continuation_consumes_current_receipts_through_published_query_policies(outcome, label):
     task, action, action_settlement, plugin = lab_task(outcome)
+    original_action = deepcopy(action)
+    original_revision = task.active_revision
+    graph = original_revision.plan_graph
+    failed = action_settlement if outcome == "recovered" else stale_process_feature_settlement(task)
     options, context = method(plugin, task)
     if label is None:
         assert not options
+        assert plugin._refresh_spec(task, graph, failed, context) is None
+        assert task.execution_records[0] == original_action
         return
 
-    graph = task.active_revision.plan_graph
-    failed = (action_settlement if outcome == "recovered" else
-              NodeSettlement(task_id=task.task_id, revision_id=graph.revision_id, node_id="R03.process_features",
-                             status="failed", world_change_started=False, outcome_known=True))
+    assert context.scene_revision == "after"
+    assert "tool:stale-r03-features" not in context.evidence_refs
     delta = build_replan_delta(graph, failed)
     inputs = dict(graph=graph, settlement=failed, delta=delta, context=context)
     assert asyncio.run(plugin.select_recovery(**inputs)) == "replan"
@@ -204,6 +274,12 @@ def test_continuation_consumes_current_receipts_through_published_query_policies
     assert action_node.input_bindings["parameters"] == {"tilt_rad": 1.0, "hold_s": 2.0}
     assert action_node.input_bindings["depends_on"] == []
     assert not any(node.capability == "task.verify" for node in compiled.nodes)
+    assert task.revisions[0] is original_revision
+    assert task.execution_records[0] == original_action
+    assert original_revision.node_settlements[0] is action_settlement
+    if outcome == "completed":
+        assert action_settlement.status == "completed"
+        assert all(not node.node_id.startswith("R05") for node in compiled.nodes)
 
 
 def test_continuation_advances_after_safe_acquire_failure_is_replaced():

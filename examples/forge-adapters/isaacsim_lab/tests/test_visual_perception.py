@@ -343,6 +343,7 @@ def test_process_feature_query_emits_task_directed_rim_as_opaque_candidate():
     }
     bottle_ref, beaker_ref = "entity://bottle", "entity://beaker"
     visual = object.__new__(LabVisualPerception)
+    visual.engine = None
     visual.observations = {identity["calibration_ref"]: {
         bottle_ref: {**identity, "entity_ref": bottle_ref, "category": "reagent_bottle",
                      "process_feature_candidates": [source]},
@@ -367,6 +368,93 @@ def test_process_feature_query_emits_task_directed_rim_as_opaque_candidate():
         )],
     })
     assert selection["status"] == "available"
+
+
+def _live_process_feature_provider():
+    identity = {"observation_ref": "observation://scene:0/front", "scene_revision": "scene:0",
+                "frame_id": "front", "calibration_ref": "artifact://calibration/scene0"}
+    backend = SimpleNamespace(current_scene_revision=Mock(return_value="scene:0"))
+    visual = LabVisualPerception(SimpleNamespace(backend=backend), None, None, segmentation=None,
+                                 geometry=None, store=None, grasps=None, provider_from_tcp=np.eye(4))
+    rim = {"feature_kind": "rim", "feature_role": "opening", "axis_world": [0., 0., 1.],
+           "rim_radius_m": .02, "origin_world": [0., 0., .8], "size_m": [.1, .1, .2]}
+    visual.observations[identity["calibration_ref"]] = {
+        ref: {**identity, "entity_ref": ref, "process_feature_candidates": [
+            {**rim, "tip_world": [x, 0., 1.]}]}
+        for ref, x in (("entity://bottle", 0.), ("entity://beaker", .3))}
+    request = {**identity, "operation": "pour", "entity_refs": ["entity://bottle", "entity://beaker"],
+               "freshness_ms": 740, "max_age_ms": 1000}
+    return visual, backend, request
+
+
+def test_process_features_require_live_scene_and_recover_after_fresh_capture():
+    from pick_place_workflow.process_features import ProcessFeatureQueryEndpoint
+
+    visual, backend, request = _live_process_feature_provider()
+    endpoint = ProcessFeatureQueryEndpoint(visual)
+    assert endpoint.invoke(request)["status"] == "available"
+    before = deepcopy(visual.process_feature_sets)
+    backend.current_scene_revision.return_value = "scene:3"
+
+    stale = endpoint.invoke(request)
+
+    assert stale["status"] == "stale"
+    assert stale["candidate_set_ref"] == "process-feature-set://unavailable"
+    assert stale["candidates"] == [] and stale["motion_authorized"] is False
+    assert stale["error"] == "process feature capture differs from the current scene revision"
+    assert all(stale[key] == request[key] for key in (
+        "observation_ref", "scene_revision", "frame_id", "calibration_ref"))
+    assert visual.process_feature_sets == before
+    # Historical acquisition records remain readable despite the current Query being stale.
+    historical = visual._records(request)
+    fresh = {**request, "scene_revision": "scene:3", "observation_ref": "observation://scene:3/front",
+             "calibration_ref": "artifact://calibration/scene3"}
+    visual.observations[fresh["calibration_ref"]] = {
+        ref: {**deepcopy(record), **{key: fresh[key] for key in (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref")}}
+        for ref, record in historical.items()}
+    assert endpoint.invoke(fresh)["status"] == "available"
+    assert len(visual.process_feature_sets) == len(before) + 1
+    assert visual._records(request) == historical
+
+
+@pytest.mark.parametrize("revision", [None, "", " "])
+def test_process_features_missing_live_revision_is_unavailable_without_candidates(revision):
+    from pick_place_workflow.process_features import ProcessFeatureQueryEndpoint
+
+    visual, backend, request = _live_process_feature_provider()
+    backend.current_scene_revision.return_value = revision
+    result = ProcessFeatureQueryEndpoint(visual).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["error"] == "current scene revision is unavailable"
+    assert result["observation_ref"] == request["observation_ref"]
+    assert result["candidates"] == [] and result["motion_authorized"] is False
+    assert visual.process_feature_sets == {}
+
+
+def test_process_features_live_revision_exception_uses_existing_endpoint_failure():
+    from pick_place_workflow.process_features import ProcessFeatureQueryEndpoint
+
+    visual, backend, request = _live_process_feature_provider()
+    backend.current_scene_revision.side_effect = RuntimeError("backend is offline")
+    with pytest.raises(RuntimeError, match="backend is offline"):
+        visual.propose(request)
+    result = ProcessFeatureQueryEndpoint(visual).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["error"] == "process feature provider failed"
+    assert result["observation_ref"] == "observation://unknown/unknown"
+    assert result["candidates"] == [] and result["motion_authorized"] is False
+    assert visual.process_feature_sets == {}
+
+
+def test_offline_process_features_keep_historical_capture_behavior():
+    from pick_place_workflow.process_features import ProcessFeatureQueryEndpoint
+
+    visual, backend, request = _live_process_feature_provider()
+    visual.engine = None
+    backend.current_scene_revision.side_effect = AssertionError("offline must not query a live revision")
+    assert ProcessFeatureQueryEndpoint(visual).invoke(request)["status"] == "available"
+    backend.current_scene_revision.assert_not_called()
 
 
 def test_truth_manifest_discards_legacy_functional_coordinates(tmp_path):
@@ -1937,7 +2025,8 @@ def test_held_client_projects_current_circle_but_preserves_acquisition_frame(sou
     visual.captures = {identity["calibration_ref"]: (identity, None)}
     captured_body = np.eye(4)
     captured_body[:3, 3] = [.01, -.02, .8]
-    visual.engine = SimpleNamespace(bind_observed_entities=Mock(return_value={
+    visual.engine = SimpleNamespace(backend=SimpleNamespace(current_scene_revision=lambda: identity["scene_revision"]),
+                                    bind_observed_entities=Mock(return_value={
         "status": "available", "capabilities": {}, "records": [
             {"entity_ref": source_ref, "prim_path": "/private/source", "captured_body_pose": captured_body.tolist()},
             {"entity_ref": destination_ref, "prim_path": "/private/beaker"}]}))
