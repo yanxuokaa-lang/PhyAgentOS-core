@@ -456,3 +456,64 @@ def test_adapter_is_not_ready_without_all_provider_ports():
     assert adapter.ready is False
     with pytest.raises(PerceptionBindingError, match="providers"):
         adapter.bind()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("stale_count", [1, 2])
+async def test_binding_recaptures_stale_observation_before_using_fresh_lineage(asynchronous, stale_count):
+    chain = QueryChain(scene="fresh-scene")
+    stale = {**_chain(scene="stale-scene")[0], "status": "stale", "freshness_ms": 1235}
+    calls = []
+
+    def invoke(tool_id, arguments):
+        calls.append((tool_id, deepcopy(arguments)))
+        if tool_id == "scene.observe" and len(calls) <= stale_count:
+            return deepcopy(stale)
+        return chain(tool_id, arguments)
+
+    async def invoke_async(tool_id, arguments):
+        return invoke(tool_id, arguments)
+
+    adapter = PerceptionBindingAdapter(invoke_async if asynchronous else invoke, BindingRequest(
+        sensor_refs=("sensor://front",), source_category="reagent_a",
+        destination_category="beaker", max_age_ms=1000))
+    binding = await adapter.bind_async() if asynchronous else adapter.bind()
+    assert [tool for tool, _ in calls] == ["scene.observe"] * (stale_count + 1) + [
+        "scene.understand", "grasp.propose", "manipulation.capabilities"]
+    for _, arguments in calls[:stale_count + 1]:
+        assert arguments == {"sensor_refs": ["sensor://front"], "max_age_ms": 1000}
+    for _, arguments in calls[stale_count + 1:]:
+        assert arguments["scene_revision"] == "fresh-scene"
+        assert arguments["observation_ref"] == chain.observation["observation_ref"]
+    assert calls[stale_count + 1][1]["artifacts"] == [chain.observation["artifacts"][0]["ref"]]
+    assert binding.observation_ref == chain.observation["observation_ref"]
+    assert binding.max_age_ms == 1000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("status,attempts", [
+    ("stale", 3), ("unavailable", 1), ("invalid", 1), ("empty", 1), ("exception", 1),
+])
+async def test_binding_capture_failure_stops_without_downstream_queries(asynchronous, status, attempts):
+    calls = []
+
+    def invoke(tool_id, arguments):
+        calls.append((tool_id, arguments))
+        if status == "exception":
+            raise RuntimeError("capture transport failed")
+        return {"status": status}
+
+    async def invoke_async(tool_id, arguments):
+        return invoke(tool_id, arguments)
+
+    adapter = PerceptionBindingAdapter(invoke_async if asynchronous else invoke, BindingRequest(
+        sensor_refs=("sensor://front",), source_category="reagent_a",
+        destination_category="beaker", max_age_ms=1000))
+    with pytest.raises(PerceptionBindingError, match="scene.observe"):
+        if asynchronous:
+            await adapter.bind_async()
+        else:
+            adapter.bind()
+    assert calls == [("scene.observe", {"sensor_refs": ["sensor://front"], "max_age_ms": 1000})] * attempts

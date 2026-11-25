@@ -123,7 +123,7 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robo
   examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short
 ```
 
-结果：**89 passed**。覆盖超时后后续候选成功且保留原码/消息、两个候选均拒绝时的聚合建议和 refs、其他合同错误立即拒绝，以及既有恢复决策/子任务传播。两个修改代码文件的 Ruff 检查通过；v17.10.4 新仿真已于 15:58:43 启动，物理结果待回执。
+结果：**89 passed**。覆盖超时后后续候选成功且保留原码/消息、两个候选均拒绝时的聚合建议和 refs、其他合同错误立即拒绝，以及既有恢复决策/子任务传播。两个修改代码文件的 Ruff 检查通过；v17.10.4 仿真已停止于 waiting_for_user，归位准备报告观测“不可用或过期”。
 
 ## v17.10.4 新轮次启动 / New replay launch
 
@@ -135,6 +135,28 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robo
 .venv/bin/python -u out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843/launch.py
 ```
 
-2026-11-25 15:58:43 +08:00 启动，Launcher PID `1006855`、Host PID `1006858`、录像观察器 PID `1006859`。15:58:46，AgentLoop 进入任务创建模型调用，session `cli:lab-f0def334d3f4`。录像继续保存到本日 `review-videos`；启动时生产代码 diff 为空。结果待阶段回执，本轮尚未宣告双瓶完成。
+2026-11-25 15:58:43 +08:00 启动，Launcher PID `1006855`、Host PID `1006858`、录像观察器 PID `1006859`。15:58:46，AgentLoop 进入任务创建模型调用，session `cli:lab-f0def334d3f4`。录像继续保存到本日 `review-videos`；启动时生产代码 diff 为空。本轮后续停在 waiting_for_user，双瓶未完成。
 
-Replay 155843 started on pushed commit 69f2724f, preserving the previous run's physics, candidates and user instruction. The launcher, host and video observer are running; execution results remain pending.
+Replay 155843 started on pushed commit 69f2724f, preserving the previous run's physics, candidates and user instruction. The launcher, host and video observer are running; the run subsequently stopped waiting_for_user.
+
+## 155843 观测过期结果 / Stale observation result
+
+`task_321b838973ed4938` 最终停在 `waiting_for_user`。R05 抓取回执 `604115c42d2247cd82f8488449df46dc.json` 和倾倒回执 `2dab419aa55848059e6a070f02598453.json` 均成功；倾倒两次校正及测量指标与 `150350` 相同。归位准备 refresh_binding 报告观测“不可用或过期”，driver 返回 outcome_unknown，R03 未执行。原始 scene.observe 响应未保存在本轮日志，无法从该消息区分 unavailable 与 stale。
+
+归位观测 calibration `b02c15ef9e8e4062a415ff79fe3d8e41.json` 的写入时间为 16:25:46.326，state `97103928097a4fe697204820a17d503e.json` 为 16:25:47.561，工件写入间隔约 1.235 s，超过 max_age_ms=1000；mtime 仅为间接时序证据。恢复阶段重新观测 `8bd0668bae35481291d7ca9eac499dd3.json` / `8566a86969884c2faf233896e7d04b47.json` 的 freshness 为 540 ms，状态 available。这支持瞬时过期解释，尚不能确认首次原始响应就是 stale。
+
+## v17.10.5 只读重采集修复 / Read-only recapture repair
+
+检查现有绑定实现后，scene.observe 没有 stale 重试路径。同步 `bind` 和异步 `bind_async` 现在仅对明确 `status=stale` 的返回重新采集，最多三次总尝试，继续使用 max_age_ms=1000。仅 available 的新采集身份和工件进入 understand/grasp/capabilities；三次仍 stale 按原可用性检查拒绝，unavailable/invalid/empty 和查询异常立即停止。异步缓存仅保留最后的成功采集结果。
+
+该策略属于通用只读感知绑定编排；Provider 仍拥有采集，Runtime 仍拥有执行与未知结果处理。物理阈值、工具 schema、driver outcome_unknown 语义保持不变。
+
+验证：perception binding、subtask executor 和 Isaac PAOS integration 共 **104 passed**，包含 14 个新增同步/异步重采集案例，以及现有 refresh_binding 的 expected revision 和身份一致性测试。代码与测试 Ruff 通过。尚未启动 v17.10.5 仿真。
+
+```bash
+PYTHONPATH=examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src \
+  .venv/bin/python -m pytest -q \
+  examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py \
+  examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py --tb=short
+```

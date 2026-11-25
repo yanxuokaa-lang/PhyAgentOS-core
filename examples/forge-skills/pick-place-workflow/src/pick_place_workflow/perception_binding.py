@@ -26,6 +26,8 @@ from PhyAgentOS.forge.capability_runtime import (
 
 from .subtask_executor import PerceptionBinding
 
+_OBSERVATION_CAPTURE_ATTEMPTS = 3
+
 
 class PerceptionBindingError(ValueError):
     """Raised when a query chain cannot produce a safe binding."""
@@ -141,13 +143,16 @@ class PerceptionBindingAdapter:
     def bind(self) -> PerceptionBinding:
         if not self.ready:
             raise PerceptionBindingError("perception binding providers are unavailable")
-        observation = self._query(
-            "scene.observe",
-            {
-                "sensor_refs": list(self.request.sensor_refs),
-                "max_age_ms": self.request.max_age_ms,
-            },
-        )
+        for _ in range(_OBSERVATION_CAPTURE_ATTEMPTS):
+            observation = self._query(
+                "scene.observe",
+                {
+                    "sensor_refs": list(self.request.sensor_refs),
+                    "max_age_ms": self.request.max_age_ms,
+                },
+            )
+            if observation.get("status") != "stale":
+                break
         self._require_available(observation, "scene.observe")
         identity = self._identity(observation, self.request.max_age_ms)
         understanding = self._query(
@@ -283,10 +288,13 @@ class PerceptionBindingAdapter:
             results[tool_id] = dict(value)
             return results[tool_id]
 
-        observation = await query("scene.observe", {
-            "sensor_refs": list(self.request.sensor_refs),
-            "max_age_ms": self.request.max_age_ms,
-        })
+        for _ in range(_OBSERVATION_CAPTURE_ATTEMPTS):
+            observation = await query("scene.observe", {
+                "sensor_refs": list(self.request.sensor_refs),
+                "max_age_ms": self.request.max_age_ms,
+            })
+            if observation.get("status") != "stale":
+                break
         self._require_available(observation, "scene.observe")
         identity = self._identity(observation, self.request.max_age_ms)
         understanding = await query("scene.understand", {
