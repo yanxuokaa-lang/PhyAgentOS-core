@@ -51,6 +51,66 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.13 (2026-11-25 21:50) - codex
+
+- [eval] [exp] [完成] 复用214104脚本、204420真实q/TCP/body/fingers与同scene:4 opening rim，独立时间目录准备8条严格单变量静态对照：yaw0的azimuth0/π/−π/2/+π/2各比较旧固定lip与几何最低rim，全做完不扩展。clearance0.048m、tilt1rad、hold2s及所有IK/碰撞/关节/workspace阈值保持。 / [Completed] Reuse the214104 script, real204420 terminal state and same scene:4 opening rim in a separate directory for eight paired static comparisons: fixed lip versus geometric lowest rim at four yaw-zero cardinal azimuths. Complete all eight without expansion, preserving clearance, tilt, hold and all route-check thresholds. (local)
+- [eval] [exp] [完成] 新tip由原process_waypoints的planned tilted body rotation计算：把−R.T@destination_axis投影到原opening axis垂面，归一化后以原rim radius从opening center选点；仅copy(target)的tool_frame.tip_offset_m替换。保存old/new tip、opening center/axis/radius、planned R、高度差与半径/平面残差；标注研究变量，不能伪称原特征。 / [Completed] Compute the diagnostic tip from the planned tilted-body rotation by projecting the downward destination axis into the original opening plane, then offset its center by the measured rim radius. Replace only copied target.tool_frame.tip_offset_m and record both tips, opening geometry, rotation, height differences and geometric residuals. Label this research variable separately from the selected feature. (local)
+- [docs] [docs] [完成] 当前仅准备脚本/config、无Isaac输入/几何/语法检查、diff和报告/Latest5，交主会话审阅前不运行。domain语义和Runtime生命周期不变，Provider私有选点为唯一研究变量；保留输入/seed/checkpoint/环境漂移及真实joints/time前后证明机制，不step/set/action、不改生产、不提交。 / [Completed] Prepare script/config, no-Isaac input/geometry/syntax checks, diff and documentation for parent review before running. Domain semantics and Runtime lifecycle remain unchanged; Provider-private point selection is the sole research variable. Retain provenance, seed/checkpoint notes, environment drift and real-state comparison without steps, state writes, actions, production edits or commit. (local)
+
+### Git 提交 / Git Commit
+
+- 上轮静态证据 / Previous static evidence: `5a701a7c57fbe855b4a2cf5be6d7cff1aea0f434`（主会话已提交并确认推送成功 / parent committed and confirmed pushed）；分支 / Branch: feature/planning-loop。历史执行代码 / Historical execution code:61a52a2a，本轮准备代码 / Preparation code:5a701a7c，不commit/push。
+
+### 文件变更详情 / File changes
+
+- [新增 / Added] 独立目录 `out/labutopia-elevated-20261125/v17.10.13-r03-rim-selection-diagnostic-215141/`；`diagnose_r03_pour.py` L1–L348复用214104。L56–L95为8条成对候选和纯几何lowest_rim_geometry，L117固定budget8，L266–L318移除遇可行提前停止并记录每条old/new几何、仅替换target.tip后沿用完整qualify。L98–L111虚拟指、L174–L263历史输入绑定和L326–L344实际joints/time比较沿用。 / The isolated348-line script reuses214104, adding paired candidates and pure lowest-rim geometry, fixing the budget at8 and retaining all pairs. Its execution loop records old/new geometry and changes only the copied tip before full qualification; virtual fingers, input binding and actual-state comparisons remain intact.
+- [新增 / Added] `diagnostic-config.json` L1–L36记录5a701a7c、原204420输入、lip_modes、全8条完成规则及seed/checkpoint/漂移；`script-changes.diff` L1–L132保存全部差异；`preparation-checks.json` L1–L501保存8候选、几何残差/圆周minimum验证与未启动状态。 / Local configuration, full diff and preparation checks retain provenance, paired modes, all-eight completion policy, reproducibility fields, geometric residuals and not-started status.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L484–L511记录方案、domain/Provider边界、四方位高度差、验证、输出与待审运行命令。 / The report records the design, ownership boundary, cardinal height differences, checks, artifacts and command awaiting parent review.
+
+```diff
+- variants = yaw0 cardinal4 + diagonal4 + yaw±π/4 each8; max24
+- stop after controls if feasible
++ variants = yaw0 cardinal4 × [fixed_task_conditioned_lip,geometric_lowest_rim]; exactly8
++ complete all8 pairs, no expansion
++ R = (original_process_pose @ saved_tcp_from_object)[:3,:3]
++ center_local = inv(saved_body) @ raw_opening_tip_world
++ downhill = project(-R.T @ destination_axis, plane=opening_axis_local)
++ new_tip_local = center_local + observed_radius * normalize(downhill)
++ copied_target.tool_frame.tip_offset_m = new_tip_local  # diagnostic mode only
+  original selected feature, rotation, IK/collision/limits, real state unchanged
+```
+
+### 验证与状态 / Validation and status
+
+- [eval] [exp] 8唯一成对候选与参数检查、worker Python3.11.17 py_compile、输入target与214104一致、原始rim未修改均通过。新点半径/平面残差小于4.2e−18m，721圆周样本验证最低点，重生成planned rotation不变；四方位旧lip高度差为约0/24.1893292248/12.0946646124/12.0946646124mm。 / Eight unique paired variants, parameters, worker-Python syntax, identical source target and unchanged original rim passed. New-point radius/plane residuals are below4.2e−18m;721 circle samples validate the minimum and regenerated rotation is unchanged. Fixed-tip excess heights match the four reported values. (local)
+- [docs] [docs] 当前仅准备完成，无Isaac初始化、无路线qualify结果；没有真实姿态写入/step/action或生产变更。脚本/config/结果路径本地独立保留，记录真实前后状态与fresh场景差异的机制未变；Latest5同步后暂停写入供主会话审阅，不启动、不commit/push。 / Preparation only is complete, without Isaac initialization or route-qualification results. No physical state writes, steps, actions or production edits occurred. Separate local artifacts retain the existing state/drift evidence mechanism; synchronize the latest five entries and pause for parent review without launch or commit/push. (local)
+
+### 静态对照运行授权 / Paired static run authorization
+
+- [eval] [exp] [完成] 2026-11-25 21:54:19 +0800 主会话审阅完整diff/config、几何和AST，批准单进程运行8条成对对照；全部完成，即使可行也不扩展候选。记录PID、逐对结果及真实状态/环境漂移，结束后补齐文档暂停，不改生产、不提交。 / [Completed] Parent review of the full diff/config, geometry and AST authorized one process for all eight paired controls, without candidate expansion even if feasible. Record PID, paired results and actual-state/environment drift evidence, then complete documentation and pause without production edits or commit. (local)
+
+- [env] [exp] [完成] 2026-11-25T21:54:35.403568+08:00 实际启动PID708467，代码5a701a7c，单Isaac静态诊断；启动前GPU可用9498MiB、RAM22GiB、swap8.6GiB、工作盘52GiB，无旧worker。`launch-receipt.json` L1–L25保存argv/PID/time/code/resources，报告L514–L518追加实际启动。 / [Completed] Started the single static-diagnostic processPID708467 at the stated time with code5a701a7c and recorded available resources. The25-line launch receipt and report retain the actual start; earlier preparation status remains historical. (local)
+
+### 逐对静态结果 / Paired static results
+
+- [eval] [exp] [完成] 全8条完成、0可行，73.681017227s，paired_candidate_budget_completed，PID708467已退出；固定lip4条对照与214104同方位的status/failure_code/failure_detail/diagnostics/last_stage精确一致。azi0两者均process hand–BEAKER碰撞；aziπ固定payload_collision、最低rim改为transport ik_discontinuity；azi−π/2两者均process payload_collision；azi+π/2由transport ik_discontinuity变为inverse_kinematics_failed。 / [Completed] All eight candidates finished with0 feasible routes and exact reproduction of the four fixed-lip controls. Paired outcomes are unchanged robot collision at0, earlier transport discontinuity atπ, persistent payload collision at−π/2 and transport IK failure at+π/2. (local)
+- [eval] [exp] [完成] 总拒绝route_collision2、payload_collision3、ik_discontinuity2、inverse_kinematics_failed1；process5/transport3。aziπ新点未到process，不能称已消除payload碰撞。真实joint数组和simulation time前后exact相等，时间均0.0020833334419876337s；历史夹指几何调用1857次，FK位置/旋转误差0，运行几何残差最大6.2e−18m。fresh BEAKER相对历史高度差仍0.967681408mm，capture代理差0.048762510mm。 / [Completed] Rejections total2 robot collisions,3 payload collisions,2 IK discontinuities and1 IK failure, across5 process and3 transport cases. The newπ tip never reached process, so payload-collision removal is unproven. Real joint/time equality, historical-finger geometry, zero FK error and measured geometry/environment differences are retained. (local)
+- [新增 / Added] 本地 `diagnostic-results.json` L1–L1998保存输入、逐条old/new tip、opening几何/planned R/残差、完整拒绝diagnostics和真实状态前后读数；`paired-summary.json` L1–L718保存四方位逐对原文、固定lip对照一致性和环境漂移；`docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L521–L538补逐对结果与结论范围。 / Full and paired local results retain source inputs, geometric alternatives, full rejection diagnostics, state comparisons and matched fixed-lip controls; the report adds paired outcomes and their scope.
+
+```diff
+- diagnostic = prepared_not_started
++ diagnostic = completed_static_diagnostic_only; evaluated=8; feasible=0
++ old_fixed_controls = exactly reproduce214104
++ azi0: hand_collision -> hand_collision
++ aziπ: process_payload_collision -> transport_ik_discontinuity
++ azi−π/2: process_payload_collision -> process_payload_collision
++ azi+π/2: transport_ik_discontinuity -> transport_ik_failed
++ real_joints_unchanged=true; simulation_time_unchanged=true
+  alternate_tip = diagnostic research variable, not original selected feature
+```
+
+- [docs] [docs] 本轮证明几何高度差并测得换点后的路线拒绝，未得到可执行路线，也未授权生产静默换feature。没有扩大候选、放宽阈值、改生产/物理配置或执行物理轨迹；历史日志保留，Latest5同步，完成后暂停写入供主会话审阅，不commit/push。 / The experiment confirms the geometric height difference and measures route rejections after point replacement; it yields no executable route and does not authorize silent production feature substitution. No search expansion, threshold relaxation, production/physics change or physical trajectory execution occurred. Preserve history, synchronize latest-five records and pause for review without commit/push. (local)
+
 ## v17.10.12 (2026-11-25 21:40) - codex
 
 - [eval] [exp] [完成] 在独立时间目录复用201540只读静态诊断，改用204420的R03 acquire assignment31ec5683e9824995b352d7f6d9d83c86、feedback83eae0a69fd84157a805b46faaf03b59及唯一scene:4 rim特征；固定clearance0.048m、tilt1rad、hold2s。候选依次为yaw0的4个cardinal对照、4个diagonal、yaw±π/4各8方位，共24条；完成对照后遇可行停止扩展。 / [Completed] Reuse the201540 read-only static diagnostic in a separate timestamped directory with204420 R03 acquisition assignment/feedback and unique scene:4 rim features. Keep clearance0.048m, tilt1rad and hold2s; evaluate four yaw-zero cardinal controls, four yaw-zero diagonals and eight directions at each yaw±π/4, with24 candidates maximum and stop after controls once feasible. (local)
@@ -321,60 +381,3 @@ qualified = model.qualify(points, source, relation, 'pour', supported_pose,
 + actual_joints_unchanged = true; simulation_time_unchanged = true
 + execution_authorized = false; readiness_or_admission = false
 ```
-
-## v17.10.8 (2026-11-25 19:16) - codex
-
-- [env] [exp] [完成] 在独立本地运行中对照夹指驱动力：复制173255启动配置，仅新增joint2 max_force_n=60、max_velocity_m_s=0.2，保留joint1 60/0.02、4mm、场景/候选/阈值和R05→R03指令。先初始化只读原60/1200及新60/60的USD/runtime DOF驱动，确认初始化后state/time不变，再启动完整仿真；不改默认配置/生产运动代码。 / [Completed] In an independent local replay, add only finger-joint2 force60N with existing velocity0.2m/s; preserve joint1 60N/0.02m/s,4mm,scene/candidates/thresholds and R05→R03 instruction. Read USD/runtime drives after initialization without subsequent state/time changes before executing simulation; default configurations and production motion code remain unchanged. (local)
-- [docs] [docs] [完成] 更新报告、只读readback及录像索引；检验驱动不对称假设，不预先认定根因。前轮预算接线修复提交efb217c9。 / [Completed] Document readbacks and videos to test the asymmetric-drive hypothesis without assuming causality. Previous budget-wiring commit: efb217c9. (local)
-
-### 文件变更与证据 / File changes and evidence
-
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L248–L262：驱动力假设、独立只读诊断、初始化读数及实际启动。 / Document force hypothesis, independent read-only initialization and launch.
-- [新增 / Added] 本地运行 `out/labutopia-elevated-20261125/v17.10.8-r05-r03-symmetric-force-191713/`：launch.py L1–L57、diagnose_drives.py L1–L58及physics配置；运行产物留本地。 / Local launcher, read-only diagnostic and comparison physics, retained outside Git.
-
-```diff
- drives = [joint1(max_force_n=60.0, max_velocity_m_s=0.02)]
-+drives += [joint2(max_force_n=60.0, max_velocity_m_s=0.2)]
-- readback_joint2_max_force_n = 1200.0
-+ readback_joint2_max_force_n = 60.0
-```
-
-### 验证 / Validation
-
-- [env] [exp] [完成] 原/新两次初始化后USD/runtime DOF与gains比较：仅joint2力上限1200→60，速度/gains不变；两次读取前后关节/time相同，无初始化后运动指令。首次get_gains接口错误已更正为controller只读调用。 / [Completed] Both initialization readbacks confirm only joint2 force changes1200→60; velocities/gains and post-initialization state/time remain unchanged with no commands. Corrected the first diagnostic API mismatch to controller readback. (local)
-- [env] [exp] [完成] 19:22:58启动完整新任务，20:04:00以R03持瓶倾倒准备不可用终止failed，未达成双瓶目标。 / [Completed] The fresh task ran from19:22:58 to20:04:00 and ended failed at R03 held-object preparation; the dual-bottle goal is incomplete. (local)
-
-### Git 提交 / Git Commit
-
-- 执行代码 / Execution code: `efb217c9`（已推送 / pushed）；分支 / Branch: `feature/planning-loop`。启动证据提交 / Launch evidence commit: `378e200a`（2026-11-25 19:26:17 +08:00，已推送 / pushed）；本终态证据待主会话审阅提交。 / Final evidence awaits parent review and commit.
-
-- [env] [exp] R05三阶段成功，倾倒连续保持2.816667s，归位误差0.202405mm。双侧首次有效载荷至闭合末的推移方向反转但仍侧移，117/117 lift有效；R03待执行。报告新增L264–L270。 / R05 completed all three phases with2.816667s aligned hold and0.202405mm return error. Bilateral-load-to-close-end displacement reversed but persisted, and117/117 lift samples were valid; R03 remains pending. Report lines264–270. (local)
-
-- [docs] [docs] R05同任务完整合辑118.800秒、16章节，ffprobe及完整解码通过；报告L272新增视频与R03执行中进展。旧R03闭合统计同样明确为双侧有效载荷首样本起算（报告L250）。 / The118.800-second R05 same-task compilation has16 chapters and passed probing/full decoding; reportL272 records the video and active R03 execution. Prior R03 close statistics explicitly use the first bilateral-valid-load sample (reportL250). (local)
-
-- [env] [exp] R03 acquire成功：119/119 lift双侧载荷有效、116/119 grasp_valid，末attachment8.133123mm、上升60.114342mm；不改变阈值，后续倾倒/归位仍进行。报告L274–L280记录回执和首双侧有效close统计。 / R03 acquisition succeeded with119/119 bilateral-load-valid and116/119 grasp-valid lift samples, final8.133123mm attachment error and60.114342mm rise. Thresholds are unchanged; pouring/placement remain active. ReportL274–L280 records the receipt and bilateral-valid-close comparison. (local)
-
-```diff
-- R03 = awaiting acquisition result
-+ R03 acquire = succeeded; lift bilateral contact load 119/119
-+ lift grasp_valid = 116/119; final attachment error = 8.133123 mm
-+ R03 pour/place = pending; same task continues
-```
-
-### 终态证据 / Terminal evidence
-
-- [env] [exp] [完成] 20:04:00同一任务failed，R05全周期成功、R03 acquire成功；prepare_held返回pour_route_unavailable，failed_phase=prepare、possession_state=holding、requires_replan=false，6 revisions/0 replans。未执行R03倾倒/归位，无安全恢复回执。 / [Completed] The same task ended failed at20:04:00 after full R05 success and successful R03 acquisition; held preparation returned pour_route_unavailable with holding possession, no replan request,6 revisions and0 replans. R03 pouring/placement did not execute and no safe-recovery receipt exists. (local)
-- [docs] [docs] [完成] 最终合辑178.433333秒、25章节通过ffprobe与完整解码，1:58.800进入R03，末章节标注后续准备失败；60行原始诊断另存运行目录r03-pour-route-unavailable.txt。 / [Completed] The178.433333-second,25-chapter final compilation passed probing and full decoding; R03 begins at1:58.800 and the last chapter labels subsequent preparation failure. The run directory retains all60 raw diagnostic lines. (local)
-
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L282–L292：终态、持瓶准备失败边界、视频与对照证据范围。 / Terminal result, held-preparation failure boundary, video and comparison limits.
-
-```diff
-- overall = running; R03 pour/place pending
-+ overall = failed; R05 complete; R03 acquire succeeded
-+ failed_tool = manipulation.prepare_held; error = pour_route_unavailable
-+ possession = holding; requires_replan = false; replans = 0
-+ R03 pour/place/safe-recovery receipts = absent
-+ final_video = 178.433333 s; 25 chapters; full decode passed
-```
-
-- [eval] [exp] 本轮验证为真实Isaac仿真、顺序只读drive实测及终态视频/回执，不重复运行已通过Host单测；未改生产代码或默认physics。 / Validation consists of actual Isaac execution, sequential read-only drive measurements and terminal video/receipts; already-passed Host tests were not repeated. Production code and default physics remain unchanged. (local)

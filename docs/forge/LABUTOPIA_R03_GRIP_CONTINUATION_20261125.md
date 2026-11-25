@@ -479,3 +479,60 @@ This isolated static diagnostic uses204420's real terminal acquisition state and
 这些读数区分了新鲜场景障碍、历史acquire时BEAKER状态和scene:4观测目标；接近1mm的fresh BEAKER高度差没有被隐藏或通过改场景消除。保存输入为实际204420末态，结果是静态规划诊断，不是历史精确回放、物理倾倒结果或readiness。脚本/config/结果保留本地，旧运行不覆盖；文档整理后暂停写入交主会话审阅，无生产变更或commit/push。
 
 All24 bounded candidates were rejected:10 robot collisions,4 payload collisions,6 IK discontinuities,2 IK failures and2 joint-limit violations, split across14 process and10 transport failures. Real joints and simulation time remained exactly unchanged; saved-state FK errors were zero and historical finger geometry was used5928 times. Fresh BEAKER geometry was0.967681mm higher than its historical acquisition pose, so these static results retain the recorded environment mismatch and do not establish physical execution or readiness. The process exited after122.4228 seconds without expanding the search.
+
+
+## v17.10.13 单变量rim选点对照准备 / Paired rim-selection diagnostic preparation
+
+独立目录：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.13-r03-rim-selection-diagnostic-215141`。上一诊断已由主会话提交推送5a701a7c；本轮复用214104脚本及204420同一真实q/TCP/body/fingers、assignment、feedback、scene:4 opening rim和profile，尚未启动Isaac。研究问题是改变pour_azimuth后继续使用原固定task-conditioned lip是否令最低rim低于指定lip clearance，增加payload碰撞。
+
+固定yaw0，azimuth依次0、π、−π/2、+π/2；每个方位先旧固定lip，再几何最低rim，共8条且全部完成。clearance0.048m、tilt1rad、hold2s、offset0以及所有碰撞、IK、joint delta/workspace阈值不变。通用domain语义、opaque已选feature及Runtime生命周期不变；Provider私有几何选点是明确标注的诊断变量，不能将替换后的点宣称为原已选pour_lip，也不更改生产公共契约。
+
+新点采用原始opening rim的tip_world为圆心、axis_world为法向、radius0.014373240231407987m。先用原process_waypoints取得该候选process pose，再乘历史relation得到planned tilted body旋转R。将 `-R.T @ destination_axis` 投影到source opening axis垂面并归一化，以原半径从圆心偏移，得到geometric lowest rim；仅在deepcopy(target)中替换 `tool_frame.tip_offset_m`，再用原process_waypoints和qualify检查完整路径。真实robot不接收历史q/body/fingers，夹指碰撞仍用原SavedFingerReadback计算；初始化后无step、set或action，真实joints/time前后证明沿用。
+
+无Isaac纯计算检查结果：
+
+| Azimuth | 原固定lip高于最低rim / Fixed-lip height above lowest rim (mm) |
+|---|---:|
+| 0 | 约0，数值残差5.86e−15 |
+| π | 24.1893292248 |
+| −π/2 | 12.0946646124 |
+| +π/2 | 12.0946646124 |
+
+新点半径/平面残差绝对值小于4.2e−18m，721个圆周样本验证选点为最低高度；重新生成process旋转与原planned旋转一致。原始rim数据保持不变，重新构建输入target与214104保存结果完全一致。以上仅验证几何计算，尚无新路线可行性结果；该高度关系与2*r*sin(1rad)一致，但不单独证明历史碰撞根因。
+
+`diagnose_r03_pour.py`与 `diagnostic-config.json`准备完成，worker Python3.11.17语法检查通过；`script-changes.diff`保存全部差异，`preparation-checks.json`保存8候选纯几何与输入验证。config保留code/config/inputdataset、seed/checkpoint不适用说明及环境漂移；新初始化障碍与历史持瓶场景仍有差异，运行后需记录BEAKER和capture代理差异。本轮不覆盖214104/204420，不新增AgentLoop任务，不输出readiness。
+
+待主会话审阅后的运行命令（当前未执行）：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES /home/yanxu/miniconda3/envs/labutopia/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.13-r03-rim-selection-diagnostic-215141/diagnose_r03_pour.py --config /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.13-r03-rim-selection-diagnostic-215141/diagnostic-config.json --max-candidates 8
+```
+
+The prepared eight-candidate paired diagnostic changes only copied target.tool_frame.tip_offset_m, comparing the original fixed task-conditioned lip with the geometric lowest point of the same observed opening circle. Pure geometry yields fixed-tip excess heights of0/24.189329/12.094665/12.094665mm at the four cardinal azimuths, with negligible radius/plane residuals and unchanged planned rotation. The alternative point is explicitly a research variable, not the original opaque selected feature. No Isaac initialization or route qualification has run; production/domain/lifecycle contracts remain unchanged pending parent review.
+
+
+### v17.10.13 授权启动 / Authorized launch
+
+主会话完成script diff/config/几何/AST审阅后授权运行全部8条。2026-11-25 21:54:35.403568 +08:00 启动单进程PID708467，代码5a701a7c；启动前GPU可用9498MiB、RAM可用22GiB、swap可用8.6GiB、工作盘余52GiB，无其他Isaac worker。上段“尚未启动”保留准备时点事实；本段及后续结果记录当前状态。launch-receipt.json保存实际命令、PID/time/code；逐条日志与结果写diagnostic.log/diagnostic-results.json，全8条完成后结束，不追加候选。
+
+Parent review authorized the complete eight-candidate paired diagnostic. PID708467 started at21:54:35.403568+08:00 using5a701a7c, with no other Isaac worker present. The earlier not-started status describes preparation; this section and subsequent results record the actual run. All eight candidates will complete without expansion.
+
+
+### v17.10.13 逐对静态结果 / Paired static results
+
+8/8候选全部完成，0条可行，耗时73.681017227秒，停止原因为 `paired_candidate_budget_completed`，PID708467已退出。固定lip的四条对照与214104同方位的status、failure_code、failure_detail、diagnostics、last_stage逐字段完全一致。完整结果在 `diagnostic-results.json`，逐对比较与原始失败文本在 `paired-summary.json`。
+
+| Azimuth | 固定task-conditioned lip | 几何最低rim | 可证实变化 / Observed change |
+|---|---|---|---|
+| 0 | process: hand–BEAKER route_collision | process: hand–BEAKER route_collision | 选点高度等价，仍拒绝 / Equivalent height, still rejected |
+| π | process: payload_collision | transport: ik_discontinuity | 更早在transport拒绝，未检验process是否解碰撞 / Earlier transport rejection |
+| −π/2 | process: payload_collision | process: payload_collision | 两者仍碰撞 / Both retain payload collision |
+| +π/2 | transport: ik_discontinuity | transport: inverse_kinematics_failed | transport仍无可用连续解 / Transport remains infeasible |
+
+合计robot route_collision2、payload_collision3、ik_discontinuity2、inverse_kinematics_failed1，阶段为process5/transport3。π方位的最低点方案没有走到process，不能把失败码从payload变为IK解读为已消除倾倒碰撞；本轮没有获得任何可行完整路线。
+
+运行结果中的新tip半径/平面残差绝对值最大6.2e−18m，planned rotation未改变，新tip相对最低rim高度为0；原固定lip仍明确记录原已选feature，未被原地改写。真实12维joint数组前后exact相等，simulation time均0.0020833334419876337s；初始化后0action/step，保存历史夹指生产碰撞几何调用1857次。FK(saved_q)位置/旋转误差仍0，capture中心代理差范数0.048762510mm；fresh BEAKER相对历史acquire位移仍为 `[+0.013247132,-0.056545192,+0.967681408] mm`，旋转差0.000137165rad。
+
+这些结果验证了固定lip与最低rim之间的几何高度差，并记录改选点后的完整路线拒绝；它们未建立可执行路线，也不授权静默替换opaque已选feature。生产语义与公共契约留待主会话裁决。本轮只做已授权8条诊断，无新增候选、阈值调整、真实状态重放或生产变更；完成文档后暂停写入，无commit/push。
+
+All eight pairs completed with no feasible route in73.6810 seconds. The four fixed-lip controls exactly reproduce the previous diagnostic's status and rejection details. Selecting the lowest rim at azimuthπ moves rejection earlier to transport discontinuity, so it does not establish removal of process-stage payload collision; azimuth−π/2 still collides with the payload. Real joints/time remain unchanged, historical-finger geometry is retained, and the measured fresh-scene drift is unchanged. The alternative point remains an explicitly labeled diagnostic variable rather than the original opaque selected feature.
