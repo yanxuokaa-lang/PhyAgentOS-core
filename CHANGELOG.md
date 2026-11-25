@@ -51,6 +51,64 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.10 (2026-11-25 20:32) - codex
+
+- [env] [fix] [完成] 修复Isaac Adapter执行循环的既有夹指侧走保护：将逐帧参考改为close→lift持续保存的双指最小实测开度，累计外退超过原1e-4m阈值时冻结最后目标；close与attached-follow共用局部更新逻辑，正常内收仍跟随。 / [Completed] Repair the existing Isaac Adapter finger-divergence protection by retaining per-finger minimum measured openings across close/lift. Freeze the last target after cumulative outward retreat exceeds the unchanged1e-4m threshold; share local update logic while retaining inward following. (local)
+- [eval] [fix] [完成] 真实execute循环覆盖慢性close外退贯穿lift、仅lift外退、内收后累计外退与正常双指内收；复用disabled/release/contact-loss回归。验证旧实现新测试失败，再验证修复后的目标回归、Ruff与diff。 / [Completed] Exercise the real execute loop for slow close drift persisting through lift, lift-only drift, retreat after inward recession and legitimate inward following, retaining disabled/release/contact-loss regressions. Demonstrate regression failure on the old implementation, then run targeted tests, Ruff and diff checks. (local)
+- [docs] [docs] [完成] 只修改phase_motion.py、相应测试与报告/日志/Latest5；不改domain port、Tool、AgentLoop或Coordinator，Runtime仍拥有取消结算恢复；无新增gate/hash/schema，不启动仿真。前轮提交e17645a3已推送。 / [Completed] Change only phase_motion.py, tests and evidence documentation; domain ports, Tools, AgentLoop and Coordinator remain unchanged, with Runtime retaining cancellation/settlement/recovery. No new gate/hash/schema and no simulation launch. Previous commit e17645a3 is pushed. (local)
+
+### 失败场景与归属 / Failure and ownership
+
+191713 R03 close首次双侧载荷至末close36帧双指位移[-2.439553,+2.441075]mm，最大单帧外退0.074374mm，小于既有0.1mm阈值，目标更新35次；lift119帧位移[-8.050825,+8.050924]mm，最大外退0.071133mm、更新116次。逐帧重设reference使累计侧走漏检。修复归Isaac Adapter私有机制，跨实现调用契约不变；每控制interval实测finger/contact为新鲜证据，最小回归是载荷有效的慢外退在execute中冻结目标而双指内收仍跟随。 / In191713, sub-threshold per-frame drift accumulated through close/lift while targets kept following. This is an Adapter-private mechanism repair, supported by measured per-control-interval finger/contact evidence; callers and lifecycle ownership remain unchanged.
+
+### Git 提交 / Git Commit
+
+- 上轮诊断结果 / Previous diagnostic evidence: `e17645a3`（已推送 / pushed）；分支 / Branch: `feature/planning-loop`。主会话代码审阅无 Blocker/Major，待其统一提交；本执行代理不 commit/push。 / Parent code review found no Blocker/Major; parent commit is pending, and the execution agent will not commit or push.
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2777、L2788–L2802、L3027–L3037、L3078–L3085：执行局部的 minimum reference 与共享 follow helper，close/attached 两入口共同锁定累计外退；既有 1e-4 m 阈值不变，正常内收更新 minimum，跨 lift 保留参考。 / An execute-local minimum reference and shared follow helper latch cumulative outward retreat in both close and attached motion. The existing threshold remains unchanged; inward motion updates the minimum and lift retains it.
+- [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L385–L448：3 种慢性外退轨迹 × 任一夹指，共 6 个真实 execute 回归；双侧载荷保持有效，每帧外退 0.07 mm，验证越限前正常更新与越限后直到 lift 结束保持最后目标。 / Six real execute regressions cover three slow-retreat trajectories on either finger, preserving bilateral load and asserting normal updates before crossing and a frozen target through lift afterward.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L314–L326：历史失效证据、离线检测重算、Adapter 归属、旧实现失败和新实现回归、Ruff 既有问题及尚无新实跑证据。 / Historical failure evidence, offline detector recalculation, Adapter ownership, old/new regression results, the pre-existing Ruff finding and the absence of new live evidence.
+
+**修改前 / Before:**
+
+```python
+# Close compared only with the immediately preceding held sample.
+if (follow_hold and contact_established and last_follow_fingers is not None
+        and np.any(measured_fingers > last_follow_fingers + 1e-4)):
+    follow_diverged = True
+# Following updates then replaced that reference every interval.
+last_follow_fingers = measured_fingers
+# Attached following updated its target without an outward-retreat check.
+```
+
+**修改后 / After:**
+
+```python
+def follow_measured_fingers(measured_fingers):
+    nonlocal finger_target, follow_diverged, minimum_follow_fingers
+    if follow_diverged:
+        return
+    if (minimum_follow_fingers is not None
+            and np.any(measured_fingers > minimum_follow_fingers + 1e-4)):
+        follow_diverged = True
+        return
+    minimum_follow_fingers = (measured_fingers.copy() if minimum_follow_fingers is None
+                              else np.minimum(minimum_follow_fingers, measured_fingers))
+    retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
+    finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)
+# Close and attached-follow both call this execute-local helper.
+```
+
+### 验证与证据边界 / Validation and evidence boundary
+
+- [eval] [fix] 修改生产代码之前，`test_contact_timing.py -k freezes_cumulative_outward_drift --tb=short` 的 6 个新例全部失败（6 failed, 26 deselected, 1.22 s），失败均为累计越限后的 target 未冻结，最大偏离预期 0.49 mm；无需临时恢复生产文件。 / Before production edits, all six new cases failed because targets continued following after cumulative crossing, with a maximum 0.49 mm difference from the expected frozen value; no temporary source restoration was needed. (local)
+- [eval] [fix] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`：297 passed in 10.00 s；含快速侧走、正常双指内收、disabled、release、contact-loss、取消及已有恢复回归。 / The combined motion/contact suite passed all 297 tests, including fast divergence, normal inward following, disabled follow, release, contact loss, cancellation and existing recovery. (local)
+- [chore] [chore] `.venv/bin/ruff check examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py`、`git diff --check` 通过。生产文件完整 Ruff 未全绿：仅 L1061–L1065 既有 I001 import formatting，已在 `git show HEAD:examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py | .venv/bin/ruff check --stdin-filename examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py -` 复现相同告警，未顺带修改。 / Test-file Ruff and whitespace checks passed. Full production-file Ruff retains the same pre-existing I001 finding reproduced from HEAD; no unrelated formatting edit was made. (local)
+- [eval] [exp] 主会话对 191713 保存轨迹只读重算：R05 首双侧载荷后第 1 帧（0.01667 s）外退 0.145977 mm，旧 guard 已检出；R03 第 2 帧累计外退 0.143545 mm、每帧小于 0.1 mm，minimum reference 可检出。仅为历史检测重算，不是新物理结果。 / Parent read-only recalculation of the saved trajectory shows the old guard detecting R05's first outward step, while the minimum reference detects R03's accumulated second step. This is historical detector evidence, not a new physical result. (local)
+- [docs] [docs] 主会话审阅 helper 和 6 个回归，无 Blocker/Major；本轮没有启动 Isaac 或硬件、未变物理配置，也未证明居中抓持或倾倒成功。实际运动结果需提交后另行验证；执行代理完成文档后暂停写入。 / Parent review found no Blocker/Major. This work launched no Isaac or hardware execution and changed no physics configuration; centered gripping and pouring success still require later live validation. The execution agent pauses edits after documentation completion. (local)
+
 ## v17.10.9 (2026-11-25 20:12) - codex
 
 - [env] [exp] [完成] 创建独立本地R03静态倾倒路线诊断：使用191713抬升末态、历史assignment/点云及scene:4 rim特征，按现有qualify检查最多32条方位组合，量化历史观测与新初始化场景差异。初始化后不step、不写关节/物体、不执行动作；历史两指位置仅用于纯计算碰撞几何。 / [Completed] Create an independent static R03 pouring-route diagnostic using the191713 terminal lift sample, historical assignment/clouds and scene:4 rim features. Retain existing qualify checks for at most32 orientation variants and quantify historical/fresh-scene differences. After initialization, do not step, set joints/objects or execute; saved finger positions supply calculation-only collision geometry. (local)
@@ -345,146 +403,3 @@ index 7d3f5776..efa3a343 100644
 + overall = failed; replan budget exhausted (2)
 + evidence = same-task R05 success and two R03 recoveries; dual-bottle goal incomplete
 ```
-
-## v17.10.5 (2026-11-25 16:33) - codex
-
-- [policy] [fix] [完成] 在通用 `PerceptionBindingAdapter.bind` 与 `bind_async` 中仅对 scene.observe 明确 stale 重采集，最多三次总尝试，保留 max_age_ms；available 后才启动后续理解/抓取/能力查询，仅使用新采集身份和工件。其他状态及查询异常立即按原逻辑拒绝。 / [Completed] Retry only explicitly stale scene.observe results in synchronous/asynchronous perception binding, at most three total captures with the same age limit; only the available capture supplies identity/artifacts to subsequent queries. Other statuses and query exceptions retain immediate rejection. (local)
-- [eval] [exp] [完成] 扩展 `test_perception_binding.py` 覆盖同步/异步重采集、新鲜身份传递、持续 stale 上限、其他状态和异常无重试，并运行既有 refresh revision/identity 与执行器测试。 / [Completed] Cover sync/async recapture, fresh lineage, persistent stale bounds and immediate failure for other statuses/exceptions, and run existing refresh revision/identity and executor tests. (local)
-- [docs] [docs] [完成] generic 层只拥有只读绑定重采集策略，Provider 拥有 capture，Runtime 拥有执行；保持未知结果安全语义、schema 和物理阈值，不新增 gate/hash/sleep。补充结果、diff、行号和日志索引。 / [Completed] The generic layer owns read-only recapture policy, providers own capture and Runtime owns execution. Preserve unknown-outcome semantics, schemas and physical thresholds without new gates, hashes or sleeps; document results, diff, lines and index. (local)
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py` L29、L146–L155、L291–L297：共享三次总采集常量，同步/异步仅 stale 重采集。 / Share a three-capture bound and retry only explicit stale results in synchronous and asynchronous binding.
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py` L461–L519：14 个案例覆盖新鲜身份/工件、原时限不变、持续 stale 上限、其他状态及异常立即拒绝。 / Add 14 cases for fresh identity/artifacts, unchanged age limits, persistent stale bounds and immediate rejection of other statuses/exceptions.
-- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L126–162：补 155843 waiting_for_user、观测时间证据、只读重采集修复和验证命令。 / Record the 155843 waiting_for_user result, observation timing, recapture repair and validation command.
-- [修改 / Modified] `CHANGELOG.md`：最新五版本 17.10.5、17.10.4、17.10.3、17.10.2、17.10.1 与归档全文一致。 / Synchronize the latest five complete entries with the archive.
-
-```diff
-diff --git a/examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py b/examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py
-index 8c4e61b1..e2dc40ee 100644
---- a/examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py
-+++ b/examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py
-@@ -27,4 +27,6 @@ from PhyAgentOS.forge.capability_runtime import (
- from .subtask_executor import PerceptionBinding
-
-+_OBSERVATION_CAPTURE_ATTEMPTS = 3
-+
-
- class PerceptionBindingError(ValueError):
-@@ -142,11 +144,14 @@ class PerceptionBindingAdapter:
-         if not self.ready:
-             raise PerceptionBindingError("perception binding providers are unavailable")
--        observation = self._query(
--            "scene.observe",
--            {
--                "sensor_refs": list(self.request.sensor_refs),
--                "max_age_ms": self.request.max_age_ms,
--            },
--        )
-+        for _ in range(_OBSERVATION_CAPTURE_ATTEMPTS):
-+            observation = self._query(
-+                "scene.observe",
-+                {
-+                    "sensor_refs": list(self.request.sensor_refs),
-+                    "max_age_ms": self.request.max_age_ms,
-+                },
-+            )
-+            if observation.get("status") != "stale":
-+                break
-         self._require_available(observation, "scene.observe")
-         identity = self._identity(observation, self.request.max_age_ms)
-@@ -284,8 +289,11 @@ class PerceptionBindingAdapter:
-             return results[tool_id]
-
--        observation = await query("scene.observe", {
--            "sensor_refs": list(self.request.sensor_refs),
--            "max_age_ms": self.request.max_age_ms,
--        })
-+        for _ in range(_OBSERVATION_CAPTURE_ATTEMPTS):
-+            observation = await query("scene.observe", {
-+                "sensor_refs": list(self.request.sensor_refs),
-+                "max_age_ms": self.request.max_age_ms,
-+            })
-+            if observation.get("status") != "stale":
-+                break
-         self._require_available(observation, "scene.observe")
-         identity = self._identity(observation, self.request.max_age_ms)
-diff --git a/examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py b/examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py
-index b3b73253..17b3a8c7 100644
---- a/examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py
-+++ b/examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py
-@@ -457,2 +457,63 @@ def test_adapter_is_not_ready_without_all_provider_ports():
-     with pytest.raises(PerceptionBindingError, match="providers"):
-         adapter.bind()
-+
-+
-+@pytest.mark.asyncio
-+@pytest.mark.parametrize("asynchronous", [False, True])
-+@pytest.mark.parametrize("stale_count", [1, 2])
-+async def test_binding_recaptures_stale_observation_before_using_fresh_lineage(asynchronous, stale_count):
-+    chain = QueryChain(scene="fresh-scene")
-+    stale = {**_chain(scene="stale-scene")[0], "status": "stale", "freshness_ms": 1235}
-+    calls = []
-+
-+    def invoke(tool_id, arguments):
-+        calls.append((tool_id, deepcopy(arguments)))
-+        if tool_id == "scene.observe" and len(calls) <= stale_count:
-+            return deepcopy(stale)
-+        return chain(tool_id, arguments)
-+
-+    async def invoke_async(tool_id, arguments):
-+        return invoke(tool_id, arguments)
-+
-+    adapter = PerceptionBindingAdapter(invoke_async if asynchronous else invoke, BindingRequest(
-+        sensor_refs=("sensor://front",), source_category="reagent_a",
-+        destination_category="beaker", max_age_ms=1000))
-+    binding = await adapter.bind_async() if asynchronous else adapter.bind()
-+    assert [tool for tool, _ in calls] == ["scene.observe"] * (stale_count + 1) + [
-+        "scene.understand", "grasp.propose", "manipulation.capabilities"]
-+    for _, arguments in calls[:stale_count + 1]:
-+        assert arguments == {"sensor_refs": ["sensor://front"], "max_age_ms": 1000}
-+    for _, arguments in calls[stale_count + 1:]:
-+        assert arguments["scene_revision"] == "fresh-scene"
-+        assert arguments["observation_ref"] == chain.observation["observation_ref"]
-+    assert calls[stale_count + 1][1]["artifacts"] == [chain.observation["artifacts"][0]["ref"]]
-+    assert binding.observation_ref == chain.observation["observation_ref"]
-+    assert binding.max_age_ms == 1000
-+
-+
-+@pytest.mark.asyncio
-+@pytest.mark.parametrize("asynchronous", [False, True])
-+@pytest.mark.parametrize("status,attempts", [
-+    ("stale", 3), ("unavailable", 1), ("invalid", 1), ("empty", 1), ("exception", 1),
-+])
-+async def test_binding_capture_failure_stops_without_downstream_queries(asynchronous, status, attempts):
-+    calls = []
-+
-+    def invoke(tool_id, arguments):
-+        calls.append((tool_id, arguments))
-+        if status == "exception":
-+            raise RuntimeError("capture transport failed")
-+        return {"status": status}
-+
-+    async def invoke_async(tool_id, arguments):
-+        return invoke(tool_id, arguments)
-+
-+    adapter = PerceptionBindingAdapter(invoke_async if asynchronous else invoke, BindingRequest(
-+        sensor_refs=("sensor://front",), source_category="reagent_a",
-+        destination_category="beaker", max_age_ms=1000))
-+    with pytest.raises(PerceptionBindingError, match="scene.observe"):
-+        if asynchronous:
-+            await adapter.bind_async()
-+        else:
-+            adapter.bind()
-+    assert calls == [("scene.observe", {"sensor_refs": ["sensor://front"], "max_age_ms": 1000})] * attempts
-```
-
-### 验证 / Validation
-
-- [eval] [exp] `PYTHONPATH=examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py --tb=short`：104 passed，含现有 refresh_binding revision/identity 验证。 / All 104 tests passed, including existing refresh revision/identity validation.
-- [chore] [chore] 两个修改文件 Ruff、UTF-8、归档索引一致性及 `git diff --check` 通过。 / Ruff, UTF-8, archive/index consistency and diff whitespace checks passed.
-- [env] [exp] 本版尚未启动仿真，验证为只读绑定与既有执行路径的无运动测试。 / This version has not started simulation; validation consists of no-motion binding and existing execution-path tests.
-
-### Git 提交 / Git Commit
-
-- 分支 / Branch: `feature/planning-loop`。待主会话审阅提交。 / Awaiting parent-session review and commit.

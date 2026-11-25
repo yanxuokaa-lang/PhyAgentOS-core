@@ -382,6 +382,72 @@ def test_hold_follow_freezes_when_fingers_diverge(monkeypatch):
     assert targets[0][1] == pytest.approx(first_contact["finger_positions_m"][1] - .002)
 
 
+@pytest.mark.parametrize("drift_stage,inward_frames", [("close", 0), ("lift", 0), ("close", 3)])
+@pytest.mark.parametrize("outward_finger", [0, 1])
+def test_hold_follow_freezes_cumulative_outward_drift(
+        monkeypatch, drift_stage, inward_frames, outward_finger):
+    model, args, commands, artifacts = execution_fixture(monkeypatch)
+    retain, surface, drift = .002, .0251, .00007
+    model.config.update(finger_hold_follow=True, finger_retain_overshoot_m=retain)
+    positions = model._test_positions_ref
+    contact_started = False
+    drift_steps = 0
+    direction = np.full(2, -1.)
+    direction[outward_finger] = 1.
+
+    def step(**_kwargs):
+        nonlocal contact_started, drift_steps
+        for callback in model.world.physics_callbacks.values():
+            callback(model.dt)
+        positions[:] = commands[-1]
+        if contact_started:
+            if drift_stage == "close" or positions[0] > 1e-9:
+                drift_steps += 1
+        elif max(positions[7:]) <= surface:
+            contact_started = True
+        if contact_started:
+            # The replacement plant keeps both pads loaded while one retreats
+            # by only 0.07 mm per interval, regardless of the requested target.
+            inward = min(drift_steps, inward_frames) * .0002
+            outward = min(max(drift_steps - inward_frames, 0), 8) * drift
+            positions[7:] = surface - inward + direction * outward
+        model.world.current_time += model.dt
+        model.world.steps += 1
+
+    model.world.step = step
+    contact_sensors(model, lambda: contact_started)
+    original_body = model.body_pose("/World/source")
+    original_tcp = model.tcp()
+
+    def raised_pose(original):
+        value = original.copy()
+        value[2, 3] += max(0., positions[0])
+        return value
+
+    model.body_pose = lambda _: raised_pose(original_body)
+    model.tcp = lambda *_: raised_pose(original_tcp)
+    result = model.execute(args, Event())
+
+    assert result["status"] == "succeeded"
+    samples = [sample for sample in artifacts[-1][1]["samples"]
+               if sample["stage"] in {"close", "lift"} and sample["contact_load_valid"]]
+    measured = np.asarray([sample["finger_positions_m"] for sample in samples])
+    targets = np.asarray([sample["finger_target_m"] for sample in samples])
+    assert all(sample["grasp_valid"] for sample in samples)
+    assert np.max(np.diff(measured, axis=0)) == pytest.approx(drift)
+    crossing = next(index for index in range(1, len(samples))
+                    if np.any(measured[index] > np.min(measured[:index], axis=0) + .0001))
+    assert samples[crossing]["stage"] == drift_stage
+    if inward_frames:
+        # Retreat after inward settling still lies below the first-contact
+        # opening, so a fixed first-contact reference would also miss it.
+        assert measured[crossing, outward_finger] < measured[0, outward_finger]
+    np.testing.assert_allclose(targets[1:crossing + 1], measured[:crossing] - retain)
+    frozen = measured[crossing - 1] - retain
+    np.testing.assert_allclose(targets[crossing:], np.tile(frozen, (len(samples) - crossing, 1)))
+    assert any(sample["stage"] == "lift" for sample in samples[crossing + 1:])
+
+
 def test_cancellation_during_closure_holds_and_never_starts_lift(monkeypatch):
     model, args, commands, _ = execution_fixture(monkeypatch)
     cancel = Event()

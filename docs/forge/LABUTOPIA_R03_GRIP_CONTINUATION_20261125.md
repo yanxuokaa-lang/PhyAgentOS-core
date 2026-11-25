@@ -310,3 +310,17 @@ The parent-reviewed static diagnostic reads the saved terminal R03 attachment an
 真实关节数组前后完全一致，simulation time前后均为0.0020833334419876337s；历史finger readback参与7632次原finger_boxes调用。所有候选都保留原IK、joint delta、workspace、robot/finger/payload collision检查，无运动执行，也未输出readiness/admission。完整配置、每候选阶段/失败码/几何诊断、前后state/time保存于本地diagnostic-results.json与diagnostic.log。本有界样本未支持“仅补45度对角方位即可找到可行路线”，未证明所有其他方位均不可行；后续诊断由主会话裁决。
 
 All32 bounded static candidates failed:6 robot collisions,6 payload collisions,10 IK failures and10 continuity failures. Saved-state FK exactly matched the saved TCP. Actual joints and simulation time remained unchanged. Fresh BEAKER geometry was0.968mm higher than the historical acquisition state, so results remain approximate static diagnostics rather than an exact replay or admission. This sample did not find a feasible route by adding the tested diagonal azimuths; it does not establish infeasibility for every possible orientation.
+
+## v17.10.10 累计夹指外退保护修复 / Cumulative finger-retreat guard repair
+
+上一轮静态诊断已提交并推送 `e17645a3`。191713 的 R03 close 首个双侧载荷有效样本至末 close 共 36 帧，双指位移为 `[-2.439553,+2.441075] mm`；最大单帧外退仅 0.074374 mm，低于既有 0.1 mm 阈值，目标却跟随更新 35 次。lift 的 119 帧又累计 `[-8.050825,+8.050924] mm`，最大单帧外退 0.071133 mm、目标更新 116 次。原 close 保护每帧重置参考，attached-follow 入口也未检查外退，因而无法识别这类慢性侧走。
+
+主会话对保存轨迹的离线检测重算表明：R05 在首次双侧载荷后的第 1 帧（0.01667 s）已外退 0.145977 mm，旧保护即可触发；R03 在第 2 帧累计外退 0.143545 mm，但各单帧均小于 0.1 mm，需累计参考才能检出。此重算只说明历史检测行为，不能代替修复后的物理结果。
+
+`phase_motion.py` 的 Adapter 私有执行机制现在保存跨 close→lift 的两指最小实测开度。首次双侧载荷建立参考，正常内收使用逐指 minimum 更新；任一指累计外退大于原 `1e-4 m` 阈值后锁定 follow_diverged，保持最后 finger_target。close 与 attached-follow 共用局部函数；进入 lift 不清空参考。follow=false、松夹/后撤、失去载荷、恢复和后续持瓶阶段入口 preload 仍沿用现有路径，domain port、Tool、AgentLoop、Coordinator 未修改，Runtime 继续拥有取消、结算与恢复。
+
+新增真实 execute 循环测试覆盖 close 慢外退、仅 lift 慢外退、内收后慢外退，分别让任一夹指外退，共 6 例；替代 plant 保持双侧有效载荷，每帧外退 0.07 mm。旧生产实现上 6 例全部在冻结断言失败，越限后目标最大多跟随 0.49 mm；修复后两份测试文件共 297 项通过（10.00 s），包含正常双指内收、disabled、release、contact-loss 与取消的既有回归。代码不修改接触/碰撞阈值或生产 physics 配置，不新增 gate/hash/schema。
+
+验证命令为 `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`。`test_contact_timing.py` 的 Ruff 与 `git diff --check` 通过；完整 Ruff 仍报告 `phase_motion.py` L1061–L1065 既有 I001 import 格式问题，已用 `git show HEAD:... | ruff check --stdin-filename ... -` 复现于未改动的 e17645a3，无新增告警。20:37 验证完成；本次没有 Isaac 运行或新硬件证据，主会话代码审阅无 Blocker/Major，实际抓持居中和倾倒路线能否改善仍待提交后另行实跑。
+
+The previous static evidence is committed and pushed as `e17645a3`. The existing per-frame finger guard missed sub-threshold outward steps that accumulated during R03 close/lift. The Adapter now retains each finger's minimum measured opening across both stages, freezes the last target after cumulative retreat exceeds the unchanged 0.1 mm threshold, and retains legitimate inward following. Six real execute-loop regressions failed on the original implementation and now pass; the combined motion/contact suite passes all 297 tests. Existing disabled-follow, release, contact-loss and cancellation tests also pass. Full Ruff retains one pre-existing import-format finding, with no new lint findings. Historical detector recalculation is not a new physical result; no simulation was launched. Parent code review found no Blocker/Major; commit and live validation remain pending.

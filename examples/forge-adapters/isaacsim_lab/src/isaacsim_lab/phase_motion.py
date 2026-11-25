@@ -2774,7 +2774,7 @@ class IsaacPhaseMotion:
             finger_target = np.maximum(finger_target - retain_overshoot, 0.0)
         hold_follow_active = False
         follow_diverged = False
-        last_follow_fingers = None
+        minimum_follow_fingers = None
         step_count = 0
         last_stage = None
         lift_grip_confirmed = False
@@ -2784,6 +2784,22 @@ class IsaacPhaseMotion:
 
         def contacts():
             return contact_window.valid()
+
+        def follow_measured_fingers(measured_fingers):
+            nonlocal finger_target, follow_diverged, minimum_follow_fingers
+            if follow_diverged:
+                return
+            # Keep the tightest measured opening across close and lift. A pad
+            # can walk outward by less than the threshold on each interval;
+            # comparing only to the previous sample misses that accumulation.
+            if (minimum_follow_fingers is not None
+                    and np.any(measured_fingers > minimum_follow_fingers + 1e-4)):
+                follow_diverged = True
+                return
+            minimum_follow_fingers = (measured_fingers.copy() if minimum_follow_fingers is None
+                                      else np.minimum(minimum_follow_fingers, measured_fingers))
+            retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
+            finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)
 
         def record(stage, *, commanded_fingers=None, support_evidence=None):
             nonlocal finger_target
@@ -3009,7 +3025,7 @@ class IsaacPhaseMotion:
                             measured_sample["support_manifold_continuity_used"] = True
                             support_manifold_continuity = True
                     if (hold_follow_active and point["attached"] and held
-                            and stage not in {"open", "release", "retreat"} and not follow_diverged):
+                            and stage not in {"open", "release", "retreat"}):
                         # Keep the hold tracking surface recession during attached motion
                         # (lift/carry): the same bounded re-freeze as the close settle, so
                         # normal force does not decay on a tapering body. Commanded
@@ -3017,10 +3033,8 @@ class IsaacPhaseMotion:
                         # grip degrades the update stops and the existing failure paths
                         # decide the outcome. The stage exclusion protects the release
                         # opening target set at stage start.
-                        retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
-                        finger_target = np.maximum(
-                            np.asarray(self.robot.get_joint_positions())[finger_indices].copy() - retain_overshoot,
-                            0.0)
+                        follow_measured_fingers(
+                            np.asarray(self.robot.get_joint_positions())[finger_indices].copy())
                     if (operation == "acquire" and stage in {"approach", "grasp", "close"}
                             and not (closure is not None and contact_established)):
                         # Displacement is judged at the grasp anchor (the TCP
@@ -3062,13 +3076,11 @@ class IsaacPhaseMotion:
                             # finger joint limit by the ever-deepening chase). Symmetric
                             # advance is legitimate recession tracking and keeps following.
                             measured_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices].copy()
-                            if (follow_hold and contact_established and last_follow_fingers is not None
-                                    and np.any(measured_fingers > last_follow_fingers + 1e-4)):
-                                follow_diverged = True
-                            if not contact_established or (follow_hold and not follow_diverged):
+                            if follow_hold:
+                                follow_measured_fingers(measured_fingers)
+                            elif not contact_established:
                                 retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
                                 finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)
-                                last_follow_fingers = measured_fingers
                             contact_established = True
                             hold_follow_active = follow_hold
                             stable_frames += 1
