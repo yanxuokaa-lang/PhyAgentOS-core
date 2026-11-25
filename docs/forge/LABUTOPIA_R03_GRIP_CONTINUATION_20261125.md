@@ -429,3 +429,53 @@ Independent receipt comparison confirms close target updates fell from35 to2 and
 本轮实跑验证累计外退保护停止了R03 lift目标追随，使119帧抓持均有效、末附着误差降至0.02533375mm；R05实测保持不变。完整双瓶任务仍失败于后续倾倒路线准备，不能把抓持修复等同于任务成功。物理配置和阈值未改，无硬件运动；运行代码61a52a2a，当前只整理本轮证据，未开启下一诊断、未提交/推送。主会话审阅后统一提交。
 
 Task task_3bddc1ef6f1642dd failed at21:27:53.835170+08:00 with6 revisions and0 controller-reported replans. R05 completed; R03 acquisition succeeded, then held-object pour preparation returned pour_route_unavailable while possession remained holding and requires_replan stayed false. No R03 pouring, placement or safe-recovery receipt exists. The60 raw failures comprise16 robot/finger collisions,9 payload collisions,15 joint-continuity failures and20 IK failures. The178.433333-second,10706-frame,25-chapter final video passes full decoding and labels the subsequent preparation failure. Improved R03 lift stability does not establish completion of the full task; all runtime processes exited, with no parameter or production change during evidence collection.
+
+
+## v17.10.12 静态倾倒诊断 / Static pour diagnostic
+
+独立目录：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.12-r03-pour-diagnostic-214104`。上轮终态证据已由主会话提交推送60e22cf4，204420历史实际执行代码61a52a2a；本诊断使用当前60e22cf4代码及204420原profile/motion/physics，保留所有碰撞、IK、joint delta和workspace检查。仅复用Adapter私有计算机制，Tool、AgentLoop和Runtime生命周期不变。
+
+输入为唯一acquire assignment `31ec5683e9824995b352d7f6d9d83c86` 的route_arguments及feedback `83eae0a69fd84157a805b46faaf03b59` 最后lift样本。真实末指开度 `[0.015813102945685387,0.024196945130825043] m` 仅经SavedFingerReadback提供给生产finger_boxes计算，不写robot。scene:4唯一R03 rim为 `1a1f362b29f34ed3a9aeae86607e233d.json`、BEAKER rim为 `fd0517f53401494785f05ede5ec5979d.json`；历史点云为 `6bfce525329f4aa3b61140011e042d63.npy`，artifact root保留指向204420。
+
+脚本相对201540只改候选安排、CLI预算32→24和dataset/checkpoint说明。沿用 `_task_conditioned_pour_feature` 派生lip，再按refresh_process相同公式将tip/axis转到末样本observed body frame；relation为inv(saved_tcp)@saved_body，qualify使用initial_joints=saved_q、initial_pose=saved_tcp。初始化后不world.step、不写真实姿态或发action；前后真实关节数组与simulation time相等证明仍由原脚本保存，FK(saved_q)与saved_tcp误差、捕获与末反馈差异及新旧BEAKER差异另行落盘。
+
+| 顺序 / Group | Yaw | Azimuth | 数量 / Count |
+|---|---|---|---:|
+| Existing cardinal controls | 0 | 0, π, −π/2, +π/2 | 4 |
+| Diagonal, yaw zero | 0 | +π/4, −π/4, +3π/4, −3π/4 | 4 |
+| Intermediate yaw | −π/4, +π/4 | 每个yaw各上述8方位 / All eight per yaw | 16 |
+
+所有候选clearance=0.048m、offset=[0,0,0]，tilt=1rad、hold=2s；最多24条，四个cardinal对照完成后已有可行即停止扩展。候选和IK warm start为现有确定性输入，没有新增随机种子；checkpoint不适用。fresh初始化障碍不是历史持瓶现场，scene:4特征捕获也不是末反馈的精确刚体重放；量化这些差异后结果仍仅为静态诊断，不能作为readiness或执行许可。旧201540/204420工件保留，输出写新目录diagnostic-results.json。
+
+准备检查通过：worker Python3.11.17的py_compile、JSON读取、24唯一候选4/4/16、唯一scene:4 rim、历史点云及8个文件依赖。首次文件检查将USD prim source_path误当作文件路径，已改为只检查8个真实文件输入；准备阶段没有导入或初始化Isaac。`preparation-checks.json`保存检查结果，`script-changes.diff`保存全部脚本差异。
+
+主会话审阅脚本/config/AST后批准启动：2026-11-25 21:43:24.395988 +08:00，PID688240；启动前无其他Isaac worker，GPU可用9512MiB、RAM可用22GiB、swap可用8.6GiB、工作盘余52GiB。启动命令：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES /home/yanxu/miniconda3/envs/labutopia/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.12-r03-pour-diagnostic-214104/diagnose_r03_pour.py --config /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.12-r03-pour-diagnostic-214104/diagnostic-config.json --max-candidates 24
+```
+
+`launch-receipt.json`记录实际argv/PID/time/code，`diagnostic.log`逐阶段flush，`diagnostic-results.json`保留中间结果。此处记录启动状态，终态结果待下段补充；本轮没有生产或物理配置修改，没有commit/push。
+
+This isolated static diagnostic uses204420's real terminal acquisition state and unique scene:4 features. It evaluates at most24 candidates at0.048m clearance, with four cardinal controls, four yaw-zero diagonals and sixteen intermediate-yaw candidates. Historical joints/body/fingers are calculation inputs; initialization is the only reset boundary, and no subsequent step, pose write or action is issued. Fresh-obstacle and capture-time differences remain explicit, so a feasible route is neither readiness nor execution permission. Parent-approved PID688240 started at21:43:24.395988+08:00; terminal results follow below.
+
+
+### v17.10.12 静态结果 / Static results
+
+诊断完成，24/24候选均被现有检查拒绝、0条可行，耗时122.422817862秒，停止原因为 `bounded_candidate_budget_completed`；PID688240已退出，未扩展候选。完整逐候选阶段、failure_code和diagnostics在 `diagnostic-results.json`，紧凑分组与原文在 `diagnostic-summary.json`。
+
+| 组 / Group | Robot collision | Payload collision | IK discontinuity | IK failed | Joint limit | 合计 / Total |
+|---|---:|---:|---:|---:|---:|---:|
+| Yaw0 cardinal | 1 | 2 | 1 | 0 | 0 | 4 |
+| Yaw0 diagonal | 2 | 1 | 1 | 0 | 0 | 4 |
+| Yaw−π/4, eight azimuths | 2 | 0 | 4 | 2 | 0 | 8 |
+| Yaw+π/4, eight azimuths | 5 | 1 | 0 | 0 | 2 | 8 |
+| 合计 / Total | 10 | 4 | 6 | 2 | 2 | 24 |
+
+失败阶段为process14、transport10。robot碰撞具体为panda_hand–BEAKER6、panda_link6–table3、panda_link5–table1；payload4条均与BEAKER碰撞。所有碰撞、IK和关节检查保留原阈值。结果只证明给定历史持瓶关系、fresh障碍和这24种无offset候选未通过检查，不推断其他路线不存在。
+
+前后真实12维关节数组exact相等，simulation time均为 `0.0020833334419876337 s`；初始化后没有控制action或step，保存历史指开度的生产finger_boxes调用5928次。FK(saved_q)与saved_TCP位置/旋转误差均0。capture中心代理−末observed body origin为 `[-0.005483125,-0.047964919,-0.006861794] mm`，范数0.048762510mm，轴角代理差0.001522660rad。fresh BEAKER−历史acquire BEAKER位置为 `[+0.013247132,-0.056545192,+0.967681408] mm`，旋转差0.000137165rad；scene4与scene3的BEAKER rim位置差约 `[0,-0.000037893,0] mm`。
+
+这些读数区分了新鲜场景障碍、历史acquire时BEAKER状态和scene:4观测目标；接近1mm的fresh BEAKER高度差没有被隐藏或通过改场景消除。保存输入为实际204420末态，结果是静态规划诊断，不是历史精确回放、物理倾倒结果或readiness。脚本/config/结果保留本地，旧运行不覆盖；文档整理后暂停写入交主会话审阅，无生产变更或commit/push。
+
+All24 bounded candidates were rejected:10 robot collisions,4 payload collisions,6 IK discontinuities,2 IK failures and2 joint-limit violations, split across14 process and10 transport failures. Real joints and simulation time remained exactly unchanged; saved-state FK errors were zero and historical finger geometry was used5928 times. Fresh BEAKER geometry was0.967681mm higher than its historical acquisition pose, so these static results retain the recorded environment mismatch and do not establish physical execution or readiness. The process exited after122.4228 seconds without expanding the search.

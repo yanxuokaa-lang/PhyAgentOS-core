@@ -51,6 +51,63 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.12 (2026-11-25 21:40) - codex
+
+- [eval] [exp] [完成] 在独立时间目录复用201540只读静态诊断，改用204420的R03 acquire assignment31ec5683e9824995b352d7f6d9d83c86、feedback83eae0a69fd84157a805b46faaf03b59及唯一scene:4 rim特征；固定clearance0.048m、tilt1rad、hold2s。候选依次为yaw0的4个cardinal对照、4个diagonal、yaw±π/4各8方位，共24条；完成对照后遇可行停止扩展。 / [Completed] Reuse the201540 read-only static diagnostic in a separate timestamped directory with204420 R03 acquisition assignment/feedback and unique scene:4 rim features. Keep clearance0.048m, tilt1rad and hold2s; evaluate four yaw-zero cardinal controls, four yaw-zero diagonals and eight directions at each yaw±π/4, with24 candidates maximum and stop after controls once feasible. (local)
+- [eval] [exp] [完成] 仅准备脚本/config及无Isaac的语法/输入/候选检查，提交主会话审阅后再运行。复用历史末态q/TCP/body/fingers的纯计算与生产碰撞检查；初始化后不step、不set姿态、不发action，保留真实joints/simulation time前后读数。 / [Completed] Prepare script/config and perform syntax/input/candidate checks without Isaac, then wait for parent review before running. Reuse historical terminal state as calculation inputs and retain production collision checks; after initialization issue no steps, pose writes or actions, and preserve before/after real joints and simulation time. (local)
+- [docs] [docs] [完成] 保存code/config/input artifacts、seed/checkpoint不适用说明、输出位置及fresh obstacles与历史场景差异，更新报告和Latest5。此为Adapter私有机制的本地诊断；通用domain/Tool/AgentLoop及Runtime生命周期不改，结果不作为readiness或执行许可。不改生产、不提交/推送。 / [Completed] Record code/config/input artifacts, seed/checkpoint non-applicability, outputs and fresh-obstacle versus historical-scene drift; update the report and latest-five index. This local diagnostic reuses Adapter mechanisms without changing domain, Tool, AgentLoop or Runtime ownership; results are neither readiness nor execution authorization. Make no production edits or commit/push. (local)
+
+### Git 提交 / Git Commit
+
+- 上轮终态证据 / Previous terminal evidence: `60e22cf4d9c52f4a140d486f9d1f28aa88bc178e`（已提交并推送 / committed and pushed）；分支 / Branch: `feature/planning-loop`。历史204420实际执行代码 / Historical execution code: `61a52a2a8b109e8501b2c3817edbcbc43ca63fbe`。本轮经主会话审阅后获准静态诊断，结果见下方，不commit/push。 / Parent review authorized this static diagnostic; results follow below, without commit/push.
+
+### 静态诊断运行授权 / Static diagnostic authorization
+
+- [eval] [exp] [完成] 2026-11-25 21:43:06 +0800 主会话独立审阅214104脚本/config及AST，无新增运动调用，批准按24候选规格启动单个静态诊断进程；记录PID/时间和分组结果，完成对照后找到可行即停止扩展，结束后补齐文档并暂停，不改生产、不提交。 / [Completed] Parent review of the214104 script/config/AST found no added motion calls and authorized one static-diagnostic process with the24-candidate specification. Record process/time and group results; stop expansion after controls once feasible, complete documentation and pause without production edits or commit. (local)
+
+### 文件变更详情 / File changes
+
+- [新增 / Added] 本地独立目录 `out/labutopia-elevated-20261125/v17.10.12-r03-pour-diagnostic-214104/`，`diagnose_r03_pour.py` L1–L303复用201540脚本；L56–L67替换候选组，L89把CLI最大候选降为24，L105–L106记录本轮dataset与checkpoint不适用。L24–L53取数、L70–L83虚拟夹指、L145–L235历史状态与碰撞几何绑定、L238–L299求解和前后真实状态比较保持原实现。 / The separate local directory reuses the prior303-line script, changing only candidate groups, CLI budget and dataset/checkpoint reporting; input loading, virtual fingers, historical binding, solving and state-equality checks retain the original implementation.
+- [新增 / Added] `diagnostic-config.json` L1–L29记录204420输入、61a52a2a历史执行代码、60e22cf4当前代码/终态证据、clearance0.048、tilt1/hold2、dataset/seed/checkpoint/输出及环境漂移；`script-changes.diff` L1–L38保留完整脚本差异，`preparation-checks.json` L1–L341保留24候选与输入检查，`launch-receipt.json` L1–L25记录PID688240、2026-11-25T21:43:24.395988+08:00、argv/code/resources。 / Local configuration, full script diff, preparation checks and launch receipt record provenance, all24 variants and the authorized process start.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L434–L460记录输入、候选表、准备验证、启动命令及静态诊断范围；诊断终态随后追加。 / The report documents inputs, candidate groups, preparation checks, launch command and static-only scope, with terminal results appended next.
+
+```diff
+- historical_run = 191713; assignment = 74d7bd9b34bf43028a02eb8377418c23
+- feedback = 28e717d0996f4276a5465b80e255b42d; clearances = [0.048,0.04]
+- yaw0 cardinal8 + yaw0 diagonal8 + yaw±π/2 diagonal16; budget32
++ historical_run = 204420; assignment = 31ec5683e9824995b352d7f6d9d83c86
++ feedback = 83eae0a69fd84157a805b46faaf03b59; clearances = [0.048]
++ yaw0 cardinal4 + yaw0 diagonal4 + yaw±π/4 each8directions; budget24
+  tilt_rad=1; hold_s=2; offsets=[0,0,0]
+  historical q/TCP/body/fingers remain calculation-only
+  production collision/IK/joint/workspace checks retained
+```
+
+### 准备验证 / Preparation validation
+
+- [eval] [exp] worker Python3.11.17 py_compile、JSON读取、24唯一候选4/4/16与clearance/yaw/tilt/hold检查通过；唯一scene:4 R03/BEAKER特征及历史点云、8个profile文件依赖存在。首次文件探测误包含USD prim source_path，已修正探测字段，无Isaac初始化发生；此为本地检查修正，未改诊断机制。 / Worker-Python syntax, JSON, candidate uniqueness/grouping and parameter checks passed; unique scene:4 features, point cloud and eight file dependencies exist. An initial filesystem probe incorrectly included a USD prim path and was corrected before Isaac initialization, without changing the diagnostic mechanism. (local)
+- [eval] [exp] 主会话审阅完整script diff/config及AST后允许启动；实际只运行一个静态进程，不创建AgentLoop任务、不改真实持瓶状态、不发控制action，无生产或物理配置变化。初始化后真实joints/time比较由脚本保留在结果中，准备检查本身不声称已证明运行时相等。 / Parent review of the script diff/config/AST authorized one static process, without an AgentLoop task, historical-state writes, control actions or production/physics edits. The script retains runtime joint/time comparison; preparation checks alone do not claim runtime equality. (local)
+
+### 静态诊断结果 / Static diagnostic results
+
+- [eval] [exp] [完成] 24/24候选完成、0可行，122.422817862s，停止原因为bounded_candidate_budget_completed，PID688240已退出。yaw0 cardinal4为route_collision1/payload_collision2/ik_discontinuity1；yaw0 diagonal4为route2/payload1/continuity1；yaw−π/4八条为route2/continuity4/IK2；yaw+π/4八条为route5/joint_limit2/payload1。合计route10、payload4、continuity6、IK2、limit2，process14/transport10。 / [Completed] All24 candidates completed with0 feasible routes in122.422817862s; the bounded budget ended and PID688240 exited. Group distributions are retained as stated, totaling10 robot collisions,4 payload collisions,6 IK discontinuities,2 IK failures and2 joint-limit violations across14 process and10 transport failures. (local)
+- [eval] [exp] [完成] 真实12维关节数组前后exact相等，simulation time均0.0020833334419876337s；初始化后0控制action/step，历史夹指生产碰撞几何调用5928次，FK(saved_q)与saved_TCP位置/旋转误差均0。捕获中心代理差范数0.048762510mm；fresh BEAKER相对历史acquire位置Δ[+0.013247132,−0.056545192,+0.967681408]mm、旋转差0.000137165rad。 / [Completed] Real12-DOF joint arrays and simulation time remain exactly unchanged, with no post-initialization actions/steps,5928 historical-finger geometry calls and zero saved-state FK position/rotation errors. Capture-center proxy mismatch is0.048762510mm; fresh-versus-historical BEAKER displacement/rotation are retained explicitly. (local)
+- [新增 / Added] 本地 `diagnostic-results.json` L1–L2426保存所有输入、模型配置、24条阶段/失败diagnostics和前后真实状态；`diagnostic-summary.json` L1–L568保存分组、逐候选拒绝及环境漂移；`docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L463–L481追加结果表和证据范围。 / Local full/compact results retain inputs, model configuration, all24 rejection diagnostics, actual state comparisons and environment drift; the report adds the result table and evidence scope.
+
+```diff
+- diagnostic_status = prepared_not_started
++ diagnostic_status = completed_static_diagnostic_only
++ evaluated=24; feasible=0; stop_reason=bounded_candidate_budget_completed
++ failures={route_collision:10,payload_collision:4,ik_discontinuity:6,
++           inverse_kinematics_failed:2,joint_limit_violation:2}
++ real_joints_unchanged=true; simulation_time_unchanged=true
++ before_time_s=after_time_s=0.0020833334419876337
++ FK_saved_q_position_error=0; FK_saved_q_rotation_error=0
+  execution_authorized=false; readiness_or_admission=false
+```
+
+- [docs] [docs] 新鲜BEAKER高度约比历史acquire高0.968mm，结果限定为带记录环境差异的静态诊断，不是历史精确重放或执行许可；没有扩展候选、放宽阈值、改生产/物理配置或启动新任务。Latest5同步，历史v17.10.11及更早月档保留不变；完成记录后暂停写入供主会话审阅，无commit/push。 / Fresh BEAKER height differs by about0.968mm, so these results remain static diagnostics with measured environment drift, not exact historical replay or execution permission. No expanded search, threshold relaxation, production/physics edit or new task occurred. Latest-five entries are synchronized while earlier monthly records remain unchanged; pause edits for parent review without commit/push. (local)
+
 ## v17.10.11 (2026-11-25 20:43) - codex
 
 - [env] [exp] [完成] 从 v17.10.8 的 191713 同任务启动配置复制至独立当前时间目录，仅替换运行路径、版本与元数据；使用已推送 61a52a2a 的累计外退修复代码，保持 60/60 N、0.02/0.2 m/s、retain 4 mm、motion/oracle/阈值及 R05→R03 原指令不变，不复制旧数据库或产物。 / [Completed] Copy the 191713 launch configuration into a new timestamped directory, changing only paths, version and metadata. Use pushed commit 61a52a2a for cumulative-retreat detection while preserving forces, velocities, 4 mm retain, motion/oracle/thresholds and the original R05→R03 instruction; copy no old database or outputs. (local)
@@ -321,125 +378,3 @@ qualified = model.qualify(points, source, relation, 'pour', supported_pose,
 ```
 
 - [eval] [exp] 本轮验证为真实Isaac仿真、顺序只读drive实测及终态视频/回执，不重复运行已通过Host单测；未改生产代码或默认physics。 / Validation consists of actual Isaac execution, sequential read-only drive measurements and terminal video/receipts; already-passed Host tests were not repeated. Production code and default physics remain unchanged. (local)
-
-## v17.10.7 (2026-11-25 19:13) - codex
-
-- [env] [fix] [完成] 修复Isaac agent_host预算接线：compose_host新增默认2的max_replans并传入Coordinator，run_instruction传递现有verification.max_replans_per_episode，保留显式0。 / [Completed] Wire the existing verification replan budget through run_instruction and compose_host to Coordinator, retaining default2 and explicit0. (local)
-- [eval] [fix] [完成] 使用无运动测试验证默认2、自定义4、显式0及真实配置读取路径；stub外部LLM/感知，不启动仿真。 / [Completed] Test default2, custom4, explicit0 and real configuration loading without motion, stubbing external model/perception. (local)
-- [docs] [docs] [完成] 更新报告、精确行号/Diff和最近五条；前轮最终证据提交为d1ce17b7。预算及生命周期由Coordinator拥有，Provider和物理参数不变，不新增schema/gate。 / [Completed] Update report, lines/diff and latest five entries; previous final evidence commit is d1ce17b7. Coordinator retains budget/lifecycle ownership; provider and physical settings remain unchanged without new schemas or gates. (local)
-
-### 所有权与验证边界 / Ownership and validation boundaries
-
-- Host只将已有配置接入Coordinator；预算与生命周期、取消、结算、恢复归Coordinator，Provider不变且可替换，不新增契约。使用当前加载配置为新任务构建Coordinator，不改变旧任务证据。最小失败测试是配置4却得到2；无运动配置集成测试揭示该接线遗漏。 / Host only forwards existing configuration; Coordinator owns budget/lifecycle/cancellation/settlement/recovery, providers remain replaceable and contracts unchanged. Current configuration initializes new task composition without altering historical evidence. The minimal regression is configured4 becoming2, exposed by no-motion configuration integration tests.
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L134、L150、L217：增加默认2参数并接通配置→Host→Coordinator。 / Add the default2 parameter and wire configuration through Host to Coordinator.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L5、L144、L201–L238：默认值断言及真实配置加载的2/4/0无运动测试。 / Add default assertion and real configuration-loading no-motion cases for2/4/0.
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L234–L246：记录根因、所有权、测试及前轮提交d1ce17b7。 / Record root cause, ownership, validation and prior final-evidence commit d1ce17b7.
-- [修改 / Modified] `CHANGELOG.md`：最近五条为17.10.7至17.10.3，与月档全文一致。 / Latest five entries17.10.7 through17.10.3 match their archive records.
-
-```diff
-diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-index ddb77d30..5e2e23c8 100644
---- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-+++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-@@ -131,7 +131,7 @@ Report only measured no-liquid manipulation, never transferred volume or chemica
-
- def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, execute=False,
-                  execution_timeout_s=1800, max_agent_provider_retries=2,
--                 agent_provider_retry_delay_s=1.0):
-+                 agent_provider_retry_delay_s=1.0, max_replans=2):
-     workspace = Path(workspace).expanduser().resolve()
-     workspace.mkdir(parents=True, exist_ok=True)
-     artifact_root = workspace / "artifacts" / "labutopia"
-@@ -147,6 +147,7 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref,
-         workspace=workspace, config=ForgeConfig(execution_timeout_s=execution_timeout_s), client=None,
-         max_agent_provider_retries=max_agent_provider_retries,
-         agent_provider_retry_delay_s=agent_provider_retry_delay_s,
-+        max_replans=max_replans,
-     )
-     assignments = SQLiteAssignmentArtifactStore(workspace / "assignment-artifacts.sqlite3")
-     bundle = build_labutopia_runtime(
-@@ -213,6 +214,7 @@ async def run_instruction(*, profile, workspace, config_path, instruction, senso
-         sensor_ref=sensor_ref, execute=execute, execution_timeout_s=execution_timeout_s,
-         max_agent_provider_retries=config.agents.verification.max_agent_provider_retries,
-         agent_provider_retry_delay_s=config.agents.verification.agent_provider_retry_delay_s,
-+        max_replans=config.agents.verification.max_replans_per_episode,
-     )
-     session_key = f"cli:lab-{uuid4().hex[:12]}"
-     # Deployment guidance belongs to the system context, separate from the instruction.
-diff --git a/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py b/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
-index 7d3f5776..efa3a343 100644
---- a/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
-+++ b/examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
-@@ -2,7 +2,7 @@ import asyncio
- import json
- from dataclasses import replace
- from types import SimpleNamespace
--from unittest.mock import Mock
-+from unittest.mock import AsyncMock, Mock
-
- import pytest
-
-@@ -141,6 +141,7 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path,
-             agent_provider_retry_delay_s=3.5)
-         try:
-             assert coordinator.config.execution_timeout_s == 1800
-+            assert coordinator.max_replans == 2
-             assert coordinator.max_agent_provider_retries == 5
-             assert coordinator.agent_provider_retry_delay_s == 3.5
-             adapter = loop.long_horizon_controller.adapter
-@@ -195,3 +196,43 @@ def test_host_enrolls_real_subtask_contract_and_rejects_other_actions(tmp_path,
-             bundle.client.close()
-             assignments.close()
-     asyncio.run(run(tmp_path))
-+
-+
-+@pytest.mark.parametrize('budget', [None, 4, 0], ids=['default', 'four', 'disabled'])
-+def test_run_instruction_applies_loaded_replan_budget(tmp_path, monkeypatch, budget):
-+    from isaacsim_lab import agent_host
-+
-+    verification = {} if budget is None else {'maxReplansPerEpisode': budget}
-+    config = tmp_path / 'config.json'
-+    config.write_text(json.dumps({
-+        'agents': {'defaults': {'model': 'openai/test-model'}, 'verification': verification},
-+        'providers': {'openai': {'apiKey': 'test-only-key'}},
-+    }))
-+    for name in ('camera.yaml', 'scene.usd', 'robot.usd'):
-+        (tmp_path / name).write_text('test fixture; never loaded by a simulator')
-+    profile = LabUtopiaProfile.from_mapping({
-+        'lab_root': str(tmp_path), 'config_path': 'camera.yaml',
-+        'scene_usd_path': 'scene.usd', 'robot_usd_path': 'robot.usd',
-+        'source_path': '/World/source', 'destination_path': '/World/destination',
-+    }, base_dir=tmp_path)
-+    provider = Mock(generation=SimpleNamespace(max_tokens=2048), _client=None)
-+    monkeypatch.setattr('PhyAgentOS.cli.commands._make_provider', lambda *a, **k: provider)
-+    monkeypatch.setattr('openai.OpenAI', lambda **kwargs: Mock(close=kwargs['http_client'].close))
-+    monkeypatch.setattr(agent_host, 'build_visual_providers', lambda *args: (Mock(), Mock()))
-+    monkeypatch.setattr(agent_host.AgentLoop, 'process_direct', AsyncMock(return_value='no motion'))
-+    monkeypatch.setattr(agent_host.AgentLoop, 'wait_for_long_horizon_tasks', AsyncMock(return_value=[]))
-+    composed = []
-+
-+    def capture_host(**kwargs):
-+        result = compose_host(**kwargs)
-+        composed.append(result[1])
-+        return result
-+
-+    monkeypatch.setattr(agent_host, 'compose_host', capture_host)
-+    report = asyncio.run(agent_host.run_instruction(
-+        profile=profile, workspace=tmp_path, config_path=config,
-+        instruction='Read-only configuration check', sensor_ref='sensor://front',
-+    ))
-+    assert composed[0].max_replans == (2 if budget is None else budget)
-+    assert report['simulated_motion_enabled'] is False
-+    assert report['tasks'] == []
-```
-
-### 验证 / Validation
-
-- [eval] [fix] 上述报告命令：15 passed；两个代码文件Ruff、git diff --check通过；无仿真/硬件运动。 / The documented command passed15 tests; both files passed Ruff and diff whitespace checks; no simulation or hardware motion.
-
-### Git 提交 / Git Commit
-
-- 前轮最终证据 / Previous final evidence: `d1ce17b7`；分支 / Branch: `feature/planning-loop`。本修复待主会话审阅提交。 / This repair awaits parent review and commit.
