@@ -51,6 +51,197 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.3 (2026-11-25 14:25) - codex
+
+- [env] [exp] [完成] 单变量运行 `142657` 将夹持压入量 2 → 4 mm，驱动保持 60 N；R05 抓取成功，倾倒保持 2.833 s、峰值 1.003 rad，退出轴误差 0.0343 rad 超过原 0.02 rad 要求而失败，R03 未执行。录像已分阶段标注保存。 / [Completed] Run 142657 changed only retain overshoot from 2 to 4 mm with the 60 N drive retained. R05 acquisition succeeded and pouring held 2.833 s at 1.003 rad, but exit axis error 0.0343 rad exceeded the existing 0.02 rad criterion; R03 did not execute. Annotated phase videos were retained. (local)
+- [env] [fix] [完成] 一次末端校正已将轴误差 0.3076 降至 0.0343 rad；将重新资格化倾倒退出路径的末端反馈校正扩展至最多三次，每次重测位置/轴误差，复用当前接触、实测 attachment、碰撞、连续性、取消和步数限制，保留原最终阈值。 / [Completed] One terminal correction reduced axis error from 0.3076 to 0.0343 rad. Requalified pour exits now allow at most three feedback corrections, remeasuring endpoint errors and preserving fresh contact, measured attachment, collision, continuity, cancellation, execution bounds and original endpoint criteria. (local)
+- [docs] [docs] [完成] 记录配置差异、历史证据、实际失败结果、测试和视频章节，并滚动最新五版本；修复版 Isaac 复跑待执行，双瓶目标仍未完成。 / [Completed] Record configuration differences, prior evidence, the actual failure, tests and video chapters, and roll the latest-five index. The repaired Isaac replay remains pending and the two-vessel goal remains incomplete. (local)
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2847–L2875：一次末端校正改为最多三次，首次误差保留，回执增加 `attempt_count`。 / Replace one terminal correction with at most three, preserving initial errors and recording attempt count.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3909–L4096：覆盖一次/两次收敛、三次不收敛、第二次校正前失抓、碰撞及取消；后者均只发出原停机保持，不发新运动。 / Cover one/two-step convergence, three-step nonconvergence, lost grip, collision and cancellation before a second correction, allowing only the existing stop hold after rejection.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L1–81：双语需求、证据边界、单变量配置、运行/验证命令、失败测量和修复状态。 / Record requirements, evidence limits, experiment configuration, launch/validation commands, failure measurements and repair status.
+- [新增 / Added] `out/labutopia-elevated-20261125/v17.10.3-r05-r03-4mm-142657/labutopia-ridgebase-elevated-motion.json` L78：运行配置 `finger_retain_overshoot_m` 为 0.004；独立运行目录保存 profile、工件、回执和视频，未复用旧任务数据库。 / The isolated run uses 0.004 m retain overshoot and stores its own profile, artifacts, receipts and videos without reusing a prior task database.
+- [修改 / Modified] `CHANGELOG.md` 最近五版本同步完整归档条目。 / Synchronize the latest-five section with complete archive entries.
+
+```diff
+-  "finger_retain_overshoot_m": 0.002,
++  "finger_retain_overshoot_m": 0.004,
+```
+
+```diff
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+index 80f2d807..9a4ea6ab 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py
+@@ -2845,11 +2845,10 @@ class IsaacPhaseMotion:
+             place_pose_checked = False
+             pour_exit_requalified = False
+-            terminal_exit_checked = False
++            terminal_exit_attempts = 0
+             while True:
+                 point = next(points, None)
+                 if point is None:
+-                    if not pour_exit_requalified or terminal_exit_checked or last_stage != "exit":
++                    if not pour_exit_requalified or last_stage != "exit":
+                         break
+-                    terminal_exit_checked = True
+                     planned = np.asarray(route["steps"][-1]["joints"])
+                     tool = route["target"]["tool_frame"]
+@@ -2859,6 +2858,10 @@ class IsaacPhaseMotion:
+                     if tip_error <= self.config["position_tolerance_m"] and axis_error <= .02:
+                         break
+-                    terminal_exit_correction = {"tip_error_before_m": tip_error,
+-                                                "axis_error_before_rad": axis_error}
++                    if terminal_exit_attempts >= 3:
++                        break
++                    if terminal_exit_correction is None:
++                        terminal_exit_correction = {"tip_error_before_m": tip_error,
++                                                    "axis_error_before_rad": axis_error,
++                                                    "attempt_count": 0}
+                     if not contacts():
+                         raise PhaseMotionError("physical_grasp_lost",
+@@ -2867,4 +2870,6 @@ class IsaacPhaseMotion:
+                     relation = np.linalg.inv(self.tcp(start)) @ observed
+                     goal = self._pour_corrected_joints(start, planned, expected, relation, tool, "exit")
++                    terminal_exit_attempts += 1
++                    terminal_exit_correction["attempt_count"] = terminal_exit_attempts
+                     point = {"stage": "exit", "joints": goal, "hold_s": 0.,
+                              "allow_contact": False, "attached": True}
+diff --git a/examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py b/examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py
+index 9415dfa8..911bacee 100644
+--- a/examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py
++++ b/examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py
+@@ -3910,9 +3910,30 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
+     "passes", "qualification_collision", "live_collision", "grasp_lost",
+     "terminal_corrected", "terminal_collision", "terminal_still_drifted",
++    "terminal_twice_corrected", "terminal_second_collision", "terminal_second_grasp_lost",
++    "terminal_second_cancelled",
+ ])
+ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome):
+-    from isaacsim_lab.phase_motion import local_tool_inverse_kinematics
++    from isaacsim_lab.phase_motion import (
++        GripContactWindow,
++        local_tool_inverse_kinematics,
++        tool_feature_errors,
++    )
+
+     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
++    cancel = Event()
++    second_check = []
++    original_contact_valid = GripContactWindow.valid
++
++    def measure_features(*args):
++        errors = tool_feature_errors(*args)
++        if len(terminal_checks) == 1 and errors[1] > .02:
++            second_check.append((len(commands), model.joints().copy()))
++            if outcome == "terminal_second_cancelled":
++                cancel.set()
++        return errors
++
++    monkeypatch.setattr("isaacsim_lab.phase_motion.tool_feature_errors", measure_features)
++    monkeypatch.setattr(GripContactWindow, "valid", lambda window: (
++        False if outcome == "terminal_second_grasp_lost" and second_check else original_contact_valid(window)))
+     route = arguments["phase_route"]
+     transport = dict(route["steps"][0], stage="transport")
+@@ -3930,5 +3951,7 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+     terminal_waypoint = None
+     terminal_drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .15).as_quat()) @ relation
+-    further_drift = pose_matrix([.006, 0., 0.], Rotation.from_euler("y", .19).as_quat()) @ relation
++    def further_drift(attempt):
++        return pose_matrix([.003 + .003 * attempt, 0., 0.],
++                           Rotation.from_euler("y", .15 + .04 * attempt).as_quat()) @ relation
+     body_pose = model.body_pose
+
+@@ -3936,6 +3959,8 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+         if terminal_waypoint is not None and np.allclose(model.joints(), terminal_waypoint, atol=1e-9):
+             return model.tcp() @ terminal_drift
++        if terminal_checks and (outcome == "terminal_twice_corrected" or outcome.startswith("terminal_second")):
++            return model.tcp() @ further_drift(1)
+         if outcome == "terminal_still_drifted" and terminal_checks:
+-            return model.tcp() @ further_drift
++            return model.tcp() @ further_drift(len(terminal_checks))
+         if terminal_checks:
+             return model.tcp() @ terminal_drift
+@@ -3984,6 +4009,9 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+     def correct(start, planned, target, measured, tool, stage):
+         if terminal_waypoint is not None:
+-            assert start == pytest.approx(terminal_waypoint)
+-            assert measured == pytest.approx(terminal_drift)
++            if not terminal_checks:
++                assert start == pytest.approx(terminal_waypoint)
++                assert measured == pytest.approx(terminal_drift)
++            else:
++                assert measured == pytest.approx(further_drift(len(terminal_checks)))
+             assert target == pytest.approx(model.tcp(original_steps[-1]["joints"]) @ nominal)
+             terminal_checks.append(len(commands))
+@@ -3994,5 +4022,6 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+         if not outcome.startswith("terminal_"):
+             assert measured == pytest.approx(relation)
+-        if outcome == "terminal_collision" and terminal_checks:
++        if ((outcome == "terminal_collision" and terminal_checks)
++                or (outcome == "terminal_second_collision" and len(terminal_checks) == 2)):
+             raise PhaseMotionError("payload_collision", "terminal correction hits receiver")
+         if ((qualifying and outcome == "qualification_collision")
+@@ -4005,5 +4034,5 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", distant_full_pose)
+     monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics", tool_solver)
+-    result = model.execute(arguments, Event())
++    result = model.execute(arguments, cancel)
+
+     assert route["steps"] == original_steps
+@@ -4025,4 +4054,5 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+     if outcome.startswith("terminal_"):
+         correction = feedback["terminal_exit_correction"]
++        assert correction["attempt_count"] == len(terminal_checks)
+         assert correction["axis_error_before_rad"] == pytest.approx(.15)
+         assert correction["tip_error_before_m"] > 0.
+@@ -4031,12 +4061,12 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+     else:
+         assert "terminal_exit_correction" not in feedback
+-    if outcome in {"passes", "terminal_corrected"}:
++    if outcome in {"passes", "terminal_corrected", "terminal_twice_corrected"}:
+         assert readiness["qualification"] == "passed"
+         assert result["operation_completed"] is True
+         assert result["measurements"]["final_tool_tip_error_m"] <= .002
+         assert result["measurements"]["final_tool_axis_error_rad"] <= .02
+-        assert len(terminal_checks) == int(outcome == "terminal_corrected")
++        assert len(terminal_checks) == {"passes": 0, "terminal_corrected": 1, "terminal_twice_corrected": 2}[outcome]
+     elif outcome in {"terminal_collision", "terminal_still_drifted"}:
+-        assert len(terminal_checks) == 1
++        assert len(terminal_checks) == (3 if outcome == "terminal_still_drifted" else 1)
+         assert result["operation_completed"] is False
+         assert result["possession_state"] == "holding"
+@@ -4048,4 +4078,15 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
+             assert result["failure_code"] == "measured_postcondition_failed"
+             assert result["measurements"]["final_tool_axis_error_rad"] > .02
++    elif outcome.startswith("terminal_second"):
++        assert result["operation_completed"] is False
++        assert result["failure_code"] == {
++            "terminal_second_collision": "payload_collision",
++            "terminal_second_grasp_lost": "physical_grasp_lost",
++            "terminal_second_cancelled": "cancelled",
++        }[outcome]
++        assert len(terminal_checks) == (1 if outcome == "terminal_second_grasp_lost" else 2)
++        command_count, stopped_joints = second_check[0]
++        assert len(commands) == command_count + 1  # Existing stop hold; no new motion.
++        assert commands[-1][:7] == pytest.approx(stopped_joints)
+     else:
+         assert readiness["qualification"] == ("rejected" if outcome == "qualification_collision" else "passed")
+```
+
+### 验证 / Validation
+
+- [env] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`：291 passed；原末端校正专项 11 passed。 / The combined phase-motion/contact suite passed 291 tests; the terminal exit cases passed all 11 variants.
+- [chore] [chore] 首次遗漏 workflow 的 PYTHONPATH 导致 105 项失败，补路径后初始 287 项通过；修复后新增 4 项，共 291 项通过。 / The initial command omitted the workflow PYTHONPATH and failed 105 tests; correcting the path passed the original 287, and the repair adds four passing cases.
+- [chore] [chore] `git diff --check` 通过；Ruff 与 HEAD 一致存在四项既有诊断：源码 L1061 I001，测试 L3328/L3414 E731、L4100 I001（HEAD L4059）。修改未增加诊断。 / Diff whitespace validation passes. Ruff retains four HEAD-identical findings: source L1061 I001, test L3328/L3414 E731 and L4100 I001 (HEAD L4059); no new findings were introduced.
+- [env] [exp] `142657` 实跑失败已落盘；本次代码修复的物理效果尚待新一轮 Isaac 执行验证。 / The failed 142657 execution is recorded; the code repair still awaits a fresh Isaac execution.
+
+### Git 提交 / Git Commit
+
+- 当前代码基点 / Execution base: `4e06f62f`，分支 / Branch: `feature/planning-loop`。本版修复待主会话提交。 / This repair awaits the parent session's commit.
+
 ## v17.10.2 (2026-11-25 04:06) - codex
 
 - [env] [fix] Isaac 回放 `031330` 的 R03 在失抓后原位开夹首帧未通过承重复核。局部复现显示，开夹初段台面和单侧指爪分担荷载，期间瓶体高度变化约 0.094 mm。仅在夹爪固定、瓶体距原支撑高度不超过 0.5 mm 且单侧仍有有效载荷时，允许按 75% 瓶重确认继续开夹。开始开夹与开夹后回撤前仍要求至少 90% 实测承重。 / R03 stopped on the first recovery opening frame in Isaac replay `031330`. Isolated simulation replay showed shared support during partial opening with about 0.094 mm vertical bottle travel. Fixed-arm opening accepts 75% of vessel weight only within 0.5 mm of the original seated height with measured unilateral finger load. Admission and retreat still require measured support of at least 90% of vessel weight.
@@ -477,68 +668,3 @@ index 57044f43..68916aed 100644
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `0e192705`，`feature/planning-loop`，2026-11-25 01:27:04 +0800。
-
-## v17.9.14 (2026-11-25 00:16) - codex
-
-- [policy] [fix] [完成] PlanningLoop 接续已通过原调用结算的动作时，复用 Coordinator 已保存的同调用结算，避免用执行后的场景重算成 stale。保留不同调用的冲突检查、未知结果、实际重试与场景刷新。 / Reuse the Coordinator settlement of the same invocation during handoff to the planning loop. Preserve checks for distinct invocations, unknown outcomes, actual retries, and scene refresh.
-
-### 文件变更详情 / File changes
-
-- [policy] [fix] `PhyAgentOS/agent/planning_loop.py` L1664–L1666、L2286–L2308。转发单条终态执行的调用 ID，以同任务、活动修订、节点、工具及调用 ID 查找 Coordinator 有效结算。匹配时继续原有场景刷新和后续执行。 / Forward the invocation ID of a single terminal record and reuse the Coordinator's effective settlement only when task, active revision, node, tool, and invocation match. Continue through the existing scene refresh and execution paths.
-- [policy] [exp] `tests/test_planning_loop.py` L3767–L3867。覆盖同一调用继续下一节点，以及不同或缺失调用 ID 时仍报告冲突。 / Assert continuation for the same invocation and preserved conflict detection when the invocation differs or is absent.
-
-```diff
-@@ -1661,6 +1661,9 @@ class AgentLoopNodeExecutor:
-             revision_id=context.revision_id,
-             node_id=context.node_id,
-             tool_id=records[-1].tool_id,
-+            invocation_id=(
-+                getattr(records[0], "invocation_id", None) if len(records) == 1 else None
-+            ),
-             status=status,
-             scene_write_behavior=scene_write_behavior,
-             world_changed=world_changed,
-@@ -2280,12 +2283,29 @@ class PlanningLoopAdapter:
-                 )
-             ):
-                 continue
--            settlement = settle_node(
--                graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
--                result,
--                current_scene_revision=scene_revision,
--            )
--            self.coordinator.record_node_settlement(settlement)
-+            settlement = None
-+            if result.invocation_id and task.active_revision_id == result.revision_id:
-+                # Foreground reconciliation can settle an invocation before its
-+                # background node turn returns against the already updated scene.
-+                settlement = next(
-+                    (
-+                        item
-+                        for item in self.coordinator.effective_node_settlements(task_id)
-+                        if item.task_id == result.task_id
-+                        and item.revision_id == result.revision_id
-+                        and item.node_id == result.node_id
-+                        and item.source_tool_id == result.tool_id
-+                        and item.invocation_id == result.invocation_id
-+                    ),
-+                    None,
-+                )
-+            if settlement is None:
-+                settlement = settle_node(
-+                    graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
-+                    result,
-+                    current_scene_revision=scene_revision,
-+                )
-+                self.coordinator.record_node_settlement(settlement)
-             if settlement.status == "completed":
-                 completed.append(node_id)
-                 if result.world_changed and result.new_scene_revision:
-```
-
-### 验证 / Validation
-
-- [policy] [exp] 214 项 PlanningLoop、长程续接、多物体及未知动作恢复测试通过，`git diff --check` 通过。原仿真轮次 R05 三阶段完成，宿主因冲突关闭，新一轮用于验证 R03 续接。 / All 214 PlanningLoop, long-horizon, multi-object and unknown-action recovery tests passed, as did the diff check. The original run completed all R05 phases before its host exited on the conflict. A new run will validate continuation to R03.
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `3a449a99`，`feature/planning-loop`，2026-11-25 00:21:25 +0800。

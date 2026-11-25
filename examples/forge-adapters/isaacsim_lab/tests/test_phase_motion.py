@@ -3909,11 +3909,32 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
 @pytest.mark.parametrize("outcome", [
     "passes", "qualification_collision", "live_collision", "grasp_lost",
     "terminal_corrected", "terminal_collision", "terminal_still_drifted",
+    "terminal_twice_corrected", "terminal_second_collision", "terminal_second_grasp_lost",
+    "terminal_second_cancelled",
 ])
 def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome):
-    from isaacsim_lab.phase_motion import local_tool_inverse_kinematics
+    from isaacsim_lab.phase_motion import (
+        GripContactWindow,
+        local_tool_inverse_kinematics,
+        tool_feature_errors,
+    )
 
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
+    cancel = Event()
+    second_check = []
+    original_contact_valid = GripContactWindow.valid
+
+    def measure_features(*args):
+        errors = tool_feature_errors(*args)
+        if len(terminal_checks) == 1 and errors[1] > .02:
+            second_check.append((len(commands), model.joints().copy()))
+            if outcome == "terminal_second_cancelled":
+                cancel.set()
+        return errors
+
+    monkeypatch.setattr("isaacsim_lab.phase_motion.tool_feature_errors", measure_features)
+    monkeypatch.setattr(GripContactWindow, "valid", lambda window: (
+        False if outcome == "terminal_second_grasp_lost" and second_check else original_contact_valid(window)))
     route = arguments["phase_route"]
     transport = dict(route["steps"][0], stage="transport")
     route["steps"] = [transport,
@@ -3929,14 +3950,18 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     terminal_checks = []
     terminal_waypoint = None
     terminal_drift = pose_matrix([.003, 0., 0.], Rotation.from_euler("y", .15).as_quat()) @ relation
-    further_drift = pose_matrix([.006, 0., 0.], Rotation.from_euler("y", .19).as_quat()) @ relation
+    def further_drift(attempt):
+        return pose_matrix([.003 + .003 * attempt, 0., 0.],
+                           Rotation.from_euler("y", .15 + .04 * attempt).as_quat()) @ relation
     body_pose = model.body_pose
 
     def observed_pose(source):
         if terminal_waypoint is not None and np.allclose(model.joints(), terminal_waypoint, atol=1e-9):
             return model.tcp() @ terminal_drift
+        if terminal_checks and (outcome == "terminal_twice_corrected" or outcome.startswith("terminal_second")):
+            return model.tcp() @ further_drift(1)
         if outcome == "terminal_still_drifted" and terminal_checks:
-            return model.tcp() @ further_drift
+            return model.tcp() @ further_drift(len(terminal_checks))
         if terminal_checks:
             return model.tcp() @ terminal_drift
         return body_pose(source)
@@ -3983,8 +4008,11 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
 
     def correct(start, planned, target, measured, tool, stage):
         if terminal_waypoint is not None:
-            assert start == pytest.approx(terminal_waypoint)
-            assert measured == pytest.approx(terminal_drift)
+            if not terminal_checks:
+                assert start == pytest.approx(terminal_waypoint)
+                assert measured == pytest.approx(terminal_drift)
+            else:
+                assert measured == pytest.approx(further_drift(len(terminal_checks)))
             assert target == pytest.approx(model.tcp(original_steps[-1]["joints"]) @ nominal)
             terminal_checks.append(len(commands))
         return original_correct(start, planned, target, measured, tool, stage)
@@ -3993,7 +4021,8 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         assert attached
         if not outcome.startswith("terminal_"):
             assert measured == pytest.approx(relation)
-        if outcome == "terminal_collision" and terminal_checks:
+        if ((outcome == "terminal_collision" and terminal_checks)
+                or (outcome == "terminal_second_collision" and len(terminal_checks) == 2)):
             raise PhaseMotionError("payload_collision", "terminal correction hits receiver")
         if ((qualifying and outcome == "qualification_collision")
                 or (not qualifying and qualification_points and outcome == "live_collision")):
@@ -4004,7 +4033,7 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     model._collisions = collide
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", distant_full_pose)
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_tool_inverse_kinematics", tool_solver)
-    result = model.execute(arguments, Event())
+    result = model.execute(arguments, cancel)
 
     assert route["steps"] == original_steps
     assert np.asarray(attempts[:4]) == pytest.approx(
@@ -4024,20 +4053,21 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     feedback = artifacts[-1][1]
     if outcome.startswith("terminal_"):
         correction = feedback["terminal_exit_correction"]
+        assert correction["attempt_count"] == len(terminal_checks)
         assert correction["axis_error_before_rad"] == pytest.approx(.15)
         assert correction["tip_error_before_m"] > 0.
         assert correction["axis_error_after_rad"] == result["measurements"]["final_tool_axis_error_rad"]
         assert correction["tip_error_after_m"] == result["measurements"]["final_tool_tip_error_m"]
     else:
         assert "terminal_exit_correction" not in feedback
-    if outcome in {"passes", "terminal_corrected"}:
+    if outcome in {"passes", "terminal_corrected", "terminal_twice_corrected"}:
         assert readiness["qualification"] == "passed"
         assert result["operation_completed"] is True
         assert result["measurements"]["final_tool_tip_error_m"] <= .002
         assert result["measurements"]["final_tool_axis_error_rad"] <= .02
-        assert len(terminal_checks) == int(outcome == "terminal_corrected")
+        assert len(terminal_checks) == {"passes": 0, "terminal_corrected": 1, "terminal_twice_corrected": 2}[outcome]
     elif outcome in {"terminal_collision", "terminal_still_drifted"}:
-        assert len(terminal_checks) == 1
+        assert len(terminal_checks) == (3 if outcome == "terminal_still_drifted" else 1)
         assert result["operation_completed"] is False
         assert result["possession_state"] == "holding"
         if outcome == "terminal_collision":
@@ -4047,6 +4077,17 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         else:
             assert result["failure_code"] == "measured_postcondition_failed"
             assert result["measurements"]["final_tool_axis_error_rad"] > .02
+    elif outcome.startswith("terminal_second"):
+        assert result["operation_completed"] is False
+        assert result["failure_code"] == {
+            "terminal_second_collision": "payload_collision",
+            "terminal_second_grasp_lost": "physical_grasp_lost",
+            "terminal_second_cancelled": "cancelled",
+        }[outcome]
+        assert len(terminal_checks) == (1 if outcome == "terminal_second_grasp_lost" else 2)
+        command_count, stopped_joints = second_check[0]
+        assert len(commands) == command_count + 1  # Existing stop hold; no new motion.
+        assert commands[-1][:7] == pytest.approx(stopped_joints)
     else:
         assert readiness["qualification"] == ("rejected" if outcome == "qualification_collision" else "passed")
         assert result["failure_code"] == "payload_collision"

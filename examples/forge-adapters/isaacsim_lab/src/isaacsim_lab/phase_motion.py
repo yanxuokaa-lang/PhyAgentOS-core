@@ -2844,13 +2844,12 @@ class IsaacPhaseMotion:
                       else iter(route.get("execution_steps", route["steps"])))
             place_pose_checked = False
             pour_exit_requalified = False
-            terminal_exit_checked = False
+            terminal_exit_attempts = 0
             while True:
                 point = next(points, None)
                 if point is None:
-                    if not pour_exit_requalified or terminal_exit_checked or last_stage != "exit":
+                    if not pour_exit_requalified or last_stage != "exit":
                         break
-                    terminal_exit_checked = True
                     planned = np.asarray(route["steps"][-1]["joints"])
                     tool = route["target"]["tool_frame"]
                     expected = self.tcp(planned) @ np.asarray(route["tcp_from_object"])
@@ -2858,14 +2857,20 @@ class IsaacPhaseMotion:
                     tip_error, axis_error = tool_feature_errors(observed, expected, tool)
                     if tip_error <= self.config["position_tolerance_m"] and axis_error <= .02:
                         break
-                    terminal_exit_correction = {"tip_error_before_m": tip_error,
-                                                "axis_error_before_rad": axis_error}
+                    if terminal_exit_attempts >= 3:
+                        break
+                    if terminal_exit_correction is None:
+                        terminal_exit_correction = {"tip_error_before_m": tip_error,
+                                                    "axis_error_before_rad": axis_error,
+                                                    "attempt_count": 0}
                     if not contacts():
                         raise PhaseMotionError("physical_grasp_lost",
                                                "fresh bilateral contact required for terminal exit correction")
                     start = self.joints()
                     relation = np.linalg.inv(self.tcp(start)) @ observed
                     goal = self._pour_corrected_joints(start, planned, expected, relation, tool, "exit")
+                    terminal_exit_attempts += 1
+                    terminal_exit_correction["attempt_count"] = terminal_exit_attempts
                     point = {"stage": "exit", "joints": goal, "hold_s": 0.,
                              "allow_contact": False, "attached": True}
                 stage = point["stage"]
