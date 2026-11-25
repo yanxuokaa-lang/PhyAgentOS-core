@@ -247,7 +247,7 @@ The Isaac Host omitted both links from the existing verification configuration t
 
 ## v17.10.8 双夹指力上限对照 / Finger force-limit comparison
 
-原173255两次R03抓取在首触至闭合结束时，第一指分别被推开3.459/4.464 mm，第二指内收约4.0 mm，瓶体水平偏移约3–4 mm；冻结后第二指目标几乎等于实测位置。R05存在同类不对称但成功，因此驱动不对称只是待验证假设，瓶肩几何和抓取方向也可能参与。
+原173255两次R03抓取以close首个 `contact_load_valid=true`（双侧有效载荷）样本至末close为区间，第一指分别被推开3.459/4.464 mm，第二指内收约4.0 mm，瓶体水平偏移约3–4 mm；冻结后第二指目标几乎等于实测位置。R05存在同类不对称但成功，因此驱动不对称只是待验证假设，瓶肩几何和抓取方向也可能参与。
 
 新目录 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.8-r05-r03-symmetric-force-191713` 的13个启动文件沿用173255，仅替换路径和在本地physics配置增加joint2 force60 N、velocity0.2 m/s；joint1仍60 N/0.02 m/s，4 mm压入量、全部motion/oracle/scene/阈值与任务指令不变。默认physics配置及生产phase_motion均未修改。
 
@@ -260,3 +260,33 @@ The Isaac Host omitted both links from the existing verification configuration t
 ```
 
 The independent comparison changes only finger-joint2 force from1200N to60N. Sequential read-only initialization confirmed USD/runtime force, unchanged velocities/gains, and identical before/after joint state and simulation time. The fresh R05→R03 AgentLoop started on efb217c9 with configured budget4; outcomes remain pending. This tests a hypothesis and does not establish the cause of grasp instability.
+
+## 191713 R05 实测结果 / R05 measured result
+
+同一任务 `task_5dfdc6f34774436f` 的R05 acquire/pour/place均succeeded，回执分别为 `a424581412724085a9a02ef4d98af08e.json`、`f1416fd2058d42e18591229175baf5be.json`、`27dd7d2a0015436f93b2a41e048fb5cd.json`。倾倒峰值1.001442rad、连续保持2.816667s、末瓶口误差0.04334mm；原位误差0.202405mm。无液体仿真证明运动目标，R03结果仍待执行。
+
+闭合对比统一以close首个 `contact_load_valid=true`（双侧有效载荷）样本至末close为区间：173255双指位移 `[+3.9607,-3.9995] mm`、瓶世界位移 `[-3.4996,+1.7380,+0.0064] mm`；191713双指位移 `[-3.9966,+4.0135] mm`、瓶位移 `[+3.5949,-1.7855,+0.0002] mm`。驱动力对称后推移方向反转，但侧移未消失。新末close目标减实测为 `[-0.0034,-8.0135] mm`，末lift双侧冲量 `[0.3135,0.3196] N·s`，117/117 lift样本grasp_valid；末attachment误差0.04714mm，首末lift垂直上升60.0746mm。不能据R05结果推断R03已稳定。
+
+R05 succeeded through acquisition, pouring and placement. The comparison uses the first close sample with valid bilateral load, not first unilateral contact. Symmetric force reversed lateral displacement rather than eliminating it. All117 lift samples were valid; R03 outcome remains pending.
+
+R05完整合辑：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/191713_R05完整成功_R03进行中_同一AgentLoop.mp4`；118.800秒、16个阶段章节，ffprobe及ffmpeg全片解码通过。R03于19:49:40选择执行节点，路线搜索8.301秒后获得staged路线（clearance0.04m、axialπ、attempt13），抓取视频正在生成，阶段结果待回执。 / The118.800-second R05 compilation contains16 stage chapters and passed full decoding. R03 acquired a staged route and is executing acquisition; its outcome remains pending.
+
+## 191713 R03 抓取抬升 / R03 acquisition and lift
+
+20:01已落盘R03 acquire回执 `28e717d0996f4276a5465b80e255b42d.json`，状态succeeded；候选 `eedd6244c7c24d95b1e112dc12f34c63-8`（scene:3），既有fallback选择staged路线、axialπ。双侧首次有效close至末close，双指位移 `[-2.43955,+2.44107] mm`，瓶世界位移 `[-2.17118,-1.09123,+0.003754] mm`；末target减实测 `[-3.93020,-4.06980] mm`。该区间目标出现36个不同值，不能描述为全区间冻结。
+
+119个lift样本双侧contact_load全部有效，grasp_valid为116/119，末3帧transform误差略高于8mm；末attachment误差8.133123mm、末冲量 `[0.732445,0.741532] N·s`，首末lift瓶体上升60.114342mm。既有附着运动双侧接触判据判定acquire成功，未改变阈值；不能声称每帧grasp_valid均真。后续倾倒将依据实际测得attachment继续，倾倒/归位结果尚未回执。
+
+R03 acquisition succeeded under the existing bilateral-contact attached-motion criterion. All119 lift samples retained bilateral contact load, while116/119 met grasp_valid; the last attachment error was8.133123mm and object rise60.114342mm. The first-bilateral-valid-close comparison still shows lateral movement, and targets changed during this interval. Thresholds remain unchanged; pouring and placement are still pending.
+
+## 191713 最终结果 / Final result
+
+2026-11-25 20:04:00 +08:00，`acceptance.json` 将同一任务 `task_5dfdc6f34774436f` 标记为failed，6个revision、0次replan，last_failure为subtask_failed。R05三阶段全部成功；R03 acquire成功后，`manipulation.prepare_held` 返回unavailable，原始错误为 `pour_route_unavailable`，未进入倾倒或归位执行。
+
+失败阶段为prepare，possession_state为holding，requires_replan=false、motion_authorized=false。60行原始候选诊断包括panda_hand或payload与TargetBeaker重叠、transport无IK解以及相邻关节变化超过现有连续性约束。全部原始错误保存为运行目录 `r03-pour-route-unavailable.txt`；来源为acceptance中第6个revision、第5条execution_record的subtask_result第3条receipt。没有R03倾倒/归位或安全恢复回执，不能将准备失败写成物理失抓、预算耗尽或已安全放回。Launcher、Host和视频观察器均已退出。
+
+最终同任务合辑：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/191713_R05完成_R03抬升成功_倾倒准备失败_同一AgentLoop.mp4`。178.433333秒、25个阶段章节，ffprobe与ffmpeg全片解码通过；1:58.800进入R03，末章节明确标注抬升成功但后续倾倒准备失败，倾倒/归位未执行。先前“R03进行中”合辑保留为阶段工件，以本终态合辑和acceptance为最终结果。
+
+本轮单项物理配置变化为joint2驱动力1200→60N；观测到R03抓取抬升从前轮失抓变为成功，但侧移和末attachment误差仍存在，完整双瓶目标未完成。这是单次任务对照证据，未证明驱动失配是唯一根因，也未验证重新规划预算4次的实际耗尽行为。生产运动代码、默认physics和阈值均未修改。启动证据commit `378e200a`（2026-11-25 19:26:17 +08:00）已推送；本终态证据待主会话审阅提交。
+
+The task ended failed at20:04:00 with6 revisions and0 replans. R05 completed; R03 acquired and lifted successfully, but held-object preparation found no feasible pouring route. The result retained holding possession and did not request replan; no R03 pouring, placement or safe-return receipt exists. The178.433333-second,25-chapter same-task compilation passed full decoding and labels the terminal preparation failure. This single force-limit comparison does not establish a unique root cause or complete the dual-bottle goal; production motion code, default physics and thresholds are unchanged.
