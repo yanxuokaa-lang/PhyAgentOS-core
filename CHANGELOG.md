@@ -206,7 +206,23 @@
 
 - [chore] [docs] 当前运行代码仍为已推送357cb955de4a156612a95727c15a8ae42954e7de。本轮只整理本地工件与三个文档，没有生产修改、重新运行、commit/push；完成后暂停写入供主会话审阅提交。 / The run still uses pushed code357cb955. Only local evidence and three documents changed; no production edit, rerun or commit/push. Pause writing for parent review and submission. (local)
 
-- [chore] [docs] [计划] 主会话先审阅并提交本轮三个文档；收到其明确的第一提交hash后，再在当前v18.0.2追加真实commit/branch/时间回执、同步Latest5，按授权完成小型日志回执提交并push当前feature/planning-loop。当前先暂停，不自行提交。 / [Planned] Parent first reviews and commits these three documents. After the explicit first-commit identity is supplied, record its real commit/branch/time in this entry, synchronize Latest5 and perform the authorized small receipt commit/push on the current branch. Pause now without committing. (local)
+- [chore] [docs] [完成] 主会话已审阅并提交本轮三个文档；已按其明确hash记录真实commit/branch/时间并同步Latest5。本项由仅含两份日志的独立回执提交及当前feature/planning-loop推送收尾，实际回执提交hash与远端验证结果在交接报告列出，避免自引用提交。 / [Completed] Parent reviewed and committed the three experiment documents. Its actual commit/branch/time is recorded and Latest5 synchronized. A separate two-log receipt commit and push on the current branch close this step; report that commit and remote verification in the handoff without a self-referential log commit. (local)
+
+### 实验提交真实回执 / Actual experiment commit receipt
+
+- [chore] [docs] 主审实验提交 / Reviewed experiment commit: `ffa11b0537392e8fa7771d2c22fa9cbe842e0173`。
+- 分支 / Branch: `feature/planning-loop`；提交时间 / Commit time: `2026-11-26T00:36:10+08:00`。
+- 提交信息 / Message: `v18.0.2: [eval] 验证R05与R03同任务六阶段成功并归档录像证据`。
+- 范围 / Scope: `CHANGELOG.md`、`changelog/2026-11_part5.md`、`docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md`；不含本地out工件或其他untracked文件 / excludes local out artifacts and other untracked files。
+- [docs] [docs] 本回执仅修改当期计划L357并追加本节L359-L373，同步`CHANGELOG.md`对应L209及L211-L225；不改其他历史条目。本地Git读取已确认上述hash/时间/分支/信息。 / This receipt updates only the current plan and appends this section, mirrored at the stated index lines; other history remains unchanged. Local Git confirms the recorded identity/time/branch/message. (local)
+
+```diff
+- current v18.0.2 receipt step: planned; awaiting parent experiment commit
++ current receipt step: completed; actual reviewed experiment commit recorded
++ commit:ffa11b0537392e8fa7771d2c22fa9cbe842e0173
++ branch:feature/planning-loop; time:2026-11-26T00:36:10+08:00
++ Latest5 synchronized; separate two-log receipt commit/push authorized
+```
 
 ## v18.0.1 (2026-11-25 23:12) - codex
 
