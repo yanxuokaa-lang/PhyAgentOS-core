@@ -51,6 +51,63 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.14 (2026-11-25 21:59) - codex
+
+- [eval] [exp] [完成] 独立时间目录复用215141，只准备yaw0、azimuthπ、clearance0.048、tilt1/hold2两条完整路线：原固定lip五waypoint对照；process_only_lowest_rim仅替换stage=process一项，保留原两transport及两exit的pose/duration/stage。目的是隔离整段换点引发早期transport失败的影响，不搜索其他参数。 / [Completed] Reuse215141 in a separate directory for two routes at yaw0, azimuthπ, clearance0.048 and tilt1/hold2: the original fixed-lip five-waypoint control and a process-only lowest-rim replacement retaining both transport and exit waypoints exactly. Isolate the early-transport effect of replacing the feature throughout the route without searching other parameters. (local)
+- [eval] [exp] [完成] 保存逐waypoint对照、old/new process坐标、最低rim跟踪误差，沿用204420真实末态与完整qualify/碰撞/IK/阈值及真实joints/time前后证明。诊断换点不宣称opaque原feature身份相同；domain语义、Provider边界、Runtime生命周期及生产不变。准备script/config/diff和无Isaac几何检查后交主会话审阅，未授权前不启动，不提交。 / [Completed] Record waypoint comparisons, old/new process coordinates and lowest-rim tracking error. Retain204420 state, full qualification/checks and actual-state proof. Alternative geometry is not the original opaque selected feature; domain semantics, Provider boundaries, Runtime lifecycle and production remain unchanged. Prepare script/config/diff and no-Isaac geometry checks for parent review before launch, without commit. (local)
+- [docs] [docs] [完成] 按主会话指正将上一报告末英文“All eight pairs”改为“All eight candidates across four pairs”，记录该小修正；更新本轮报告和Latest5。 / [Completed] Correct the prior report's final English sentence to “All eight candidates across four pairs” as requested by the parent, then update the current report and latest-five index. (local)
+
+### Git 提交 / Git Commit
+
+- 上轮证据 / Previous evidence: `c301b849ad3ce2fa6bb996a757c83c759f6f3498`（主会话已提交并确认推送 / parent committed and confirmed pushed）；分支 / Branch: feature/planning-loop。本轮未commit/push。
+
+### 文件变更详情 / File changes
+
+- [新增 / Added] 独立本地目录 `out/labutopia-elevated-20261125/v17.10.14-r03-process-only-rim-diagnostic-220113/`；`diagnose_r03_pour.py` L1–L371复用215141。L55–L65为两候选与仅process替换函数，L121固定budget2；L287–L331保存逐waypoint三版本矩阵/差值、最低rim误差并沿用完整qualify，成功时保存末process FK跟踪误差；L349–L367保留真实joints/time比较。 / The separate371-line script reuses215141 with two candidates and process-only substitution, records original/all-lowest/applied waypoints and rim error, preserves full qualification and actual-state checks, and adds terminal process FK error for successful routes.
+- [新增 / Added] `diagnostic-config.json` L1–L36记录c301b849、原输入、两route_modes和唯一研究变量；`script-changes.diff` L1–L112记录完整差异；`preparation-checks.json` L1–L588保存两候选/五waypoint精确对比和未启动状态。 / Configuration, full diff and preparation evidence retain provenance, the two route modes, exact five-waypoint comparison and not-started status.
+- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L538按主会话修正“All eight pairs”→“All eight candidates across four pairs”；L541–L559新增本轮准备、几何证据和待审启动命令。 / Correct the requested four-pair wording and append preparation, geometry evidence and the command awaiting review.
+
+```diff
+- yaw0 cardinal4 × [fixed lip, all-waypoint lowest rim]; budget8
++ yaw0 azimuthπ × [fixed lip, process-only lowest rim]; budget2
++ applied[i] = (lowest_pose if stage == 'process' else fixed_pose,
++               original_hold_s, original_stage)
++ waypoint[0,1,3,4].pose = original exactly
++ process_delta_mm = [7.362813093,13.675725722,24.189329225]
++ planned_lowest_rim_error_mm = 28.746480463 -> numerical residual
+  tilt=1,hold=2,clearance=.048,IK/collision/limits remain unchanged
+```
+
+### 验证与状态 / Validation and status
+
+- [eval] [exp] worker Python语法、2唯一候选、参数固定、四个非process pose exact相等、五项duration/stage一致、planned R不变及最低rim目标误差检查通过；原process hold2.6s含settle0.6s保持。未导入/初始化Isaac，尚无路线可行性结果。 / Worker-Python syntax, two unique fixed-parameter candidates, exact non-process poses, unchanged durations/stages/orientation and geometric rim-error checks passed. The original2.6s process hold includes0.6s settle. Isaac was not initialized and no route-feasibility result exists. (local)
+- [docs] [docs] 本轮准备仅变本地诊断script/config与文档；旧实验保留，Latest5同步，真实joints/time与fresh场景差异机制保留。完成准备后暂停供主会话审阅，不启动、不改生产、不commit/push。 / Preparation changes only local diagnostic files and documentation, preserving earlier experiments and state/environment evidence. Synchronize the latest-five entries and pause for review without launch, production edits or commit/push. (local)
+
+### 两路线运行授权 / Two-route run authorization
+
+- [eval] [exp] [完成] 2026-11-25 22:04:01 +0800 主会话审阅220113完整diff/config/AST/preparation通过，批准单进程运行固定两条路线；初始化后不step/action/write，无扩展或生产修改，记录PID/拒绝或完整route及前后状态，结束后完成文档暂停。 / [Completed] Parent review approved the220113 diff/config/AST/preparation and authorized one process for exactly two static routes, without post-initialization steps/actions/writes, search expansion or production edits. Record process/results/state comparisons, then complete documentation and pause. (local)
+
+- [env] [exp] [完成] 2026-11-25T22:04:19.732906+08:00 启动PID722797，代码c301b849，固定两路线；启动前GPU可用9513MiB、RAM22GiB、swap8.6GiB、工作盘52GiB，无旧Isaac worker。`launch-receipt.json` L1–L25保存命令/PID/time/code，报告L562–L566追加启动。 / [Completed] StartedPID722797 with codec301b849 and the fixed two-route budget, with recorded available resources and no previous Isaac worker. The25-line launch receipt and report retain actual start evidence. (local)
+
+### 两路线静态结果 / Two-route static results
+
+- [eval] [exp] [完成] 2/2完成、1条静态可行，61.525906032s，two_route_budget_completed，PID722797已退出。固定lip对照精确复现215141 aziπ的process payload_collision；仅process换最低rim的路线全部五waypoints通过，累计steps60/86/97/108/134，transport86、process11、exit37，总hold2.6s。 / [Completed] Both routes finished with one statically feasible route in61.525906032s. The fixed-lip control exactly reproduces the previous process payload collision; the process-only alternative passes all five waypoints with134 steps and2.6s total hold. (local)
+- [eval] [exp] [完成] 新路线qualified末process最低rim误差Δ[−0.132966655,−0.088251185,+0.033361953]mm、范数0.163038103mm，为静态FK结果。非process4点exact不变，全部duration/stage/旋转及原IK/碰撞/阈值保持；真实joint/time前后exact相等，time0.0020833334419876337s，历史夹指几何调用767次，saved-q FK误差0。 / [Completed] Qualified terminal process FK yields0.163038103mm rim error. Four non-process poses, all durations/stages/orientations and original checks remain unchanged; actual joints/time are identical, historical finger geometry is used767 times and saved-state FK error is zero. (local)
+- [新增 / Added] 本地 `diagnostic-results.json` L1–L4447保存完整2条输入/逐点/过程/结果；`two-route-summary.json` L1–L766保存控制对照一致性、原payload碰撞几何、可行路线计数/末端误差和环境漂移；`qualified-static-route.json` L1–L2624保存完整134 steps，明确非readiness/执行许可。报告 `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L569–L583追加实测及范围。 / Full and compact local results retain the two candidates, control comparison, original collision geometry, complete134-step qualified route, FK error and environment drift, with explicit static-only scope; the report appends results and limits.
+
+```diff
+- fixed_lip: process payload_collision
++ fixed_lip: same process payload_collision (reproduced)
++ process_only_lowest_rim: feasible_static_diagnostic_only
++ stages = transport86 + process11 + exit37; total134steps; hold2.6s
++ qualified_terminal_process_rim_error_mm = 0.163038103
++ real_joints_unchanged=true; simulation_time_unchanged=true
+  four_nonprocess_waypoints = exactly unchanged
+  no readiness, physical execution, selected-feature identity claim or production change
+```
+
+- [docs] [docs] fresh BEAKER仍比历史acquire高0.967681408mm、capture代理差0.048762510mm；成功限定当前fresh静态模型与历史输入，不作为物理倾倒或正式readiness。生产feature身份及路线构造语义由主会话裁决；本轮不改生产、不扩展候选、无硬件运动，Latest5同步并暂停写入供审阅，无commit/push。 / Fresh BEAKER and capture-proxy drift remain measured; success is limited to this static model with historical inputs and is neither physical pouring nor formal readiness. Parent review owns production feature/route semantics. No production edit, candidate expansion or hardware motion occurred; synchronize documentation and pause for review without commit/push. (local)
+
 ## v17.10.13 (2026-11-25 21:50) - codex
 
 - [eval] [exp] [完成] 复用214104脚本、204420真实q/TCP/body/fingers与同scene:4 opening rim，独立时间目录准备8条严格单变量静态对照：yaw0的azimuth0/π/−π/2/+π/2各比较旧固定lip与几何最低rim，全做完不扩展。clearance0.048m、tilt1rad、hold2s及所有IK/碰撞/关节/workspace阈值保持。 / [Completed] Reuse the214104 script, real204420 terminal state and same scene:4 opening rim in a separate directory for eight paired static comparisons: fixed lip versus geometric lowest rim at four yaw-zero cardinal azimuths. Complete all eight without expansion, preserving clearance, tilt, hold and all route-check thresholds. (local)
@@ -337,47 +394,3 @@ def follow_measured_fingers(measured_fingers):
 - [chore] [chore] `.venv/bin/ruff check examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py`、`git diff --check` 通过。生产文件完整 Ruff 未全绿：仅 L1061–L1065 既有 I001 import formatting，已在 `git show HEAD:examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py | .venv/bin/ruff check --stdin-filename examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py -` 复现相同告警，未顺带修改。 / Test-file Ruff and whitespace checks passed. Full production-file Ruff retains the same pre-existing I001 finding reproduced from HEAD; no unrelated formatting edit was made. (local)
 - [eval] [exp] 主会话对 191713 保存轨迹只读重算：R05 首双侧载荷后第 1 帧（0.01667 s）外退 0.145977 mm，旧 guard 已检出；R03 第 2 帧累计外退 0.143545 mm、每帧小于 0.1 mm，minimum reference 可检出。仅为历史检测重算，不是新物理结果。 / Parent read-only recalculation of the saved trajectory shows the old guard detecting R05's first outward step, while the minimum reference detects R03's accumulated second step. This is historical detector evidence, not a new physical result. (local)
 - [docs] [docs] 主会话审阅 helper 和 6 个回归，无 Blocker/Major；本轮没有启动 Isaac 或硬件、未变物理配置，也未证明居中抓持或倾倒成功。实际运动结果需提交后另行验证；执行代理完成文档后暂停写入。 / Parent review found no Blocker/Major. This work launched no Isaac or hardware execution and changed no physics configuration; centered gripping and pouring success still require later live validation. The execution agent pauses edits after documentation completion. (local)
-
-## v17.10.9 (2026-11-25 20:12) - codex
-
-- [env] [exp] [完成] 创建独立本地R03静态倾倒路线诊断：使用191713抬升末态、历史assignment/点云及scene:4 rim特征，按现有qualify检查最多32条方位组合，量化历史观测与新初始化场景差异。初始化后不step、不写关节/物体、不执行动作；历史两指位置仅用于纯计算碰撞几何。 / [Completed] Create an independent static R03 pouring-route diagnostic using the191713 terminal lift sample, historical assignment/clouds and scene:4 rim features. Retain existing qualify checks for at most32 orientation variants and quantify historical/fresh-scene differences. After initialization, do not step, set joints/objects or execute; saved finger positions supply calculation-only collision geometry. (local)
-- [docs] [docs] [完成] 先完成本地脚本交主会话审阅，再运行诊断；保存每条进度/中间JSON、前后真实state/time及限制说明，更新报告和Latest5；不产生readiness/admission，不改生产代码，不启动新任务。 / [Completed] Submit the local script for parent review before running it, then retain per-variant progress/intermediate JSON, before/after real state/time and limitations. Update report and Latest5 without readiness/admission, production edits or a new task. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮终态证据 / Previous terminal evidence: `5d2d1017`（已推送 / pushed）；分支 / Branch: `feature/planning-loop`。本轮待主会话审阅，执行代理不提交/推送。 / This work awaits parent review; the execution agent will not commit or push.
-
-### 文件变更详情 / File changes
-
-- [新增 / Added] 本地 `out/labutopia-elevated-20261125/v17.10.9-r03-pour-diagnostic-201540/diagnose_r03_pour.py` L1–L301；历史取数L24–L53、候选组L56–L66、仅计算的SavedFingerReadback L69–L82、绑定点云与目标变换L149–L180、虚拟夹指几何L182–L193、有界qualify L236–L272、实际state/time回读L279–L287。 / Local diagnostic script: historical inputs, candidate groups, calculation-only finger readback, payload/target transforms, bounded qualification and real-state readbacks.
-- [新增 / Added] 同目录 `diagnostic-config.json` L1–L10：历史run/commit/assignment/feedback路径、clearance0.048/0.04与tilt1rad/hold2s。 / Historical sources and parameters remain explicit in the local configuration.
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L294–L302：静态诊断范围、近似、审阅及启动。 / Diagnostic scope, approximation, review and launch.
-
-```python
-# Calculation inputs only; never written to robot or scene.
-relation = np.linalg.inv(saved_tcp) @ saved_observed_body
-source_lip = _task_conditioned_pour_feature(source_rim, destination_rim)
-model.finger_boxes = historical_finger_boxes  # Original geometry with saved-position readback.
-qualified = model.qualify(points, source, relation, 'pour', supported_pose,
-                          initial_joints=saved_q, initial_pose=saved_tcp, progress=progress)
-```
-
-### 验证与进度 / Validation and progress
-
-- [eval] [exp] [完成] 脚本python语法编译、Ruff通过；主会话审阅通过后20:19:01以PID507170启动，无新AgentLoop任务。 / [Completed] Python syntax compilation and Ruff passed; parent review authorized the20:19:01 launch (PID507170), without a new AgentLoop task. (local)
-- [eval] [exp] [完成] 20:21:21已完成32条、0可行，真实关节/time前后一致；不新增生产机制或放宽约束。 / [Completed] At20:21:21 all32 candidates completed without a feasible route; real joints/time were unchanged, with no production mechanism or relaxed constraint. (local)
-
-### 实测结果 / Measured result
-
-- [eval] [exp] [完成] 32条/139.538秒：6 robot collisions、6 payload collisions、10 IK失败、10 continuity失败；无可行路线，达到预算后停止。FK(savedq)与savedtcp位置/旋转误差均0，真实关节/time前后一致（0.0020833334419876337s），历史finger几何参与7632次检查。 / [Completed]32 candidates in139.538s produced6 robot collisions,6 payload collisions,10 IK failures and10 continuity failures, then stopped at the budget. Saved FK/TCP errors were zero; real joints/time stayed unchanged, and historical-finger geometry participated in7632 checks. (local)
-- [eval] [exp] [完成] 捕获rim中心与末帧observed origin差范数0.047650mm；新鲜BEAKER比历史物理姿态高0.967681mm。此为静态近似，未找到45度对角补充可行路线，不证明全方位不可行。 / [Completed] Captured-rim center differed from terminal observed origin by0.047650mm; fresh BEAKER geometry was0.967681mm higher than the historical physical pose. This approximate static sample found no feasible diagonal extension and does not prove universal infeasibility. (local)
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L304–L312：分组失败统计、近似误差、无运动证据与结论边界。 / Grouped failures, approximation metrics, no-motion evidence and bounded conclusion.
-
-```diff
-- diagnostic_status = pending
-+ diagnostic_status = completed_static_diagnostic_only
-+ candidates = 32; feasible = 0
-+ failure_counts = {robot_collision: 6, payload_collision: 6, IK: 10, continuity: 10}
-+ actual_joints_unchanged = true; simulation_time_unchanged = true
-+ execution_authorized = false; readiness_or_admission = false
-```

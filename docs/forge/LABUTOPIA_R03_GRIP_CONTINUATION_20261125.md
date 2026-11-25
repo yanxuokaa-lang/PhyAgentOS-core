@@ -535,4 +535,49 @@ Parent review authorized the complete eight-candidate paired diagnostic. PID7084
 
 这些结果验证了固定lip与最低rim之间的几何高度差，并记录改选点后的完整路线拒绝；它们未建立可执行路线，也不授权静默替换opaque已选feature。生产语义与公共契约留待主会话裁决。本轮只做已授权8条诊断，无新增候选、阈值调整、真实状态重放或生产变更；完成文档后暂停写入，无commit/push。
 
-All eight pairs completed with no feasible route in73.6810 seconds. The four fixed-lip controls exactly reproduce the previous diagnostic's status and rejection details. Selecting the lowest rim at azimuthπ moves rejection earlier to transport discontinuity, so it does not establish removal of process-stage payload collision; azimuth−π/2 still collides with the payload. Real joints/time remain unchanged, historical-finger geometry is retained, and the measured fresh-scene drift is unchanged. The alternative point remains an explicitly labeled diagnostic variable rather than the original opaque selected feature.
+All eight candidates across four pairs completed with no feasible route in73.6810 seconds. The four fixed-lip controls exactly reproduce the previous diagnostic's status and rejection details. Selecting the lowest rim at azimuthπ moves rejection earlier to transport discontinuity, so it does not establish removal of process-stage payload collision; azimuth−π/2 still collides with the payload. Real joints/time remain unchanged, historical-finger geometry is retained, and the measured fresh-scene drift is unchanged. The alternative point remains an explicitly labeled diagnostic variable rather than the original opaque selected feature.
+
+
+## v17.10.14 仅process换rim静态对照准备 / Process-only rim diagnostic preparation
+
+独立目录：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.14-r03-process-only-rim-diagnostic-220113`。依据v17.10.13：aziπ固定lip的两段transport通过，整段最低rim换点则首个transport目标位移28.746480mm并更早遇IK连续性失败。本轮只比较yaw0、aziπ、clearance0.048m、tilt1rad/hold2s的原固定lip完整五点与process_only_lowest_rim两条路线，不搜索其他角度、clearance或offset。
+
+替换方法：分别由同一process_waypoints生成fixed_points和all_lowest_points，最终只在stage=process使用最低rim的pose，其他四个pose继续用fixed_points。全部duration/stage沿用原值；顺序transport、transport、process、exit、exit，hold为[0,0,2.6,0,0]s（用户hold2s加原settle0.6s）。原q/TCP/body/fingers、全IK/碰撞/关节/workspace检查和真实状态前后比较沿用，不写真实姿态或发action。
+
+无Isaac准备检查确认：indices0/1/3/4的pose逐元素完全相等，五项duration/stage相同，所有planned rotation保持。process TCP位移为 `[+7.362813093,+13.675725722,+24.189329225] mm`；原最低rim世界坐标 `[-0.085917624865,-0.013619184686,0.825281627811] m`，新最低rim及目标点均约 `[-0.078554811772,0.000056541036,0.849470957036] m`。最低rim目标误差范数从28.746480463mm变为8.67e−16mm数值残差；这是waypoint几何结果，尚未证明IK或碰撞可行。
+
+脚本保存逐项fixed/all_lowest/applied矩阵、stage/hold一致性、位置和旋转差；成功时保存完整route.steps及qualified末process的最低rim FK误差，失败则保留原failure_code/detail/diagnostics。另类rim点明确标为诊断变量，不宣称是原opaque选中feature；domain语义与Runtime生命周期、生产代码和物理配置保持不变，仍采用fresh场景并量化与历史差异。
+
+准备完成：worker Python3.11.17 py_compile、两候选唯一性与固定参数、逐点相等和最低rim几何检查通过，尚未初始化Isaac或运行qualify。script/config/diff/preparation-checks均保存在新目录；seed/checkpoint不适用说明、历史输入和环境漂移保留。上一报告英文“四对八条”已按主会话指正为“All eight candidates across four pairs”。
+
+待审运行命令（当前未执行）：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES /home/yanxu/miniconda3/envs/labutopia/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.14-r03-process-only-rim-diagnostic-220113/diagnose_r03_pour.py --config /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.14-r03-process-only-rim-diagnostic-220113/diagnostic-config.json --max-candidates 2
+```
+
+The prepared two-route diagnostic retains all four original transport/exit poses and every duration/stage, replacing only the process pose with the lowest-rim alternative at yaw0/azimuthπ. Pure waypoint geometry reduces the lowest-rim target error from28.746480mm to numerical residual, with unchanged orientation. Complete qualification and actual-state comparisons remain intact; no Isaac initialization or route test has run. Alternative geometry is a labeled diagnostic variable, not the original selected feature, and production/domain/lifecycle behavior remains unchanged.
+
+
+### v17.10.14 授权启动 / Authorized launch
+
+主会话审阅220113完整diff/config/AST/preparation通过后批准单进程两路线诊断；2026-11-25 22:04:19.732906 +08:00 启动PID722797，代码c301b849（上轮push已确认）。启动前GPU可用9513MiB、RAM22GiB、swap8.6GiB、工作盘52GiB，无其他Isaac worker。launch-receipt.json保存命令/时间/PID/资源；准备段的未启动描述保留历史，后续终态以实际结果为准。
+
+Parent review authorized the two-route static diagnostic. PID722797 started at22:04:19.732906+08:00 with codec301b849 and no other Isaac worker present; the launch receipt preserves command, time and resources. Earlier not-started statements describe preparation only.
+
+
+### v17.10.14 两路线静态结果 / Two-route static results
+
+2/2候选完成，原固定lip失败、process_only_lowest_rim完整qualify通过，耗时61.525906032秒，按two_route_budget_completed结束，PID722797已退出。固定lip对照与215141的aziπ在status/failure_code/detail/diagnostics/last_stage完全一致：两段transport分别完成60/86个累计steps，在process触发payload_collision，碰撞对象BEAKER；原始拒绝保存在two-route-summary.json。
+
+仅替换process的路线依次完成两transport（累计60、86）、process（97）与两exit（108、134）。完整134个steps为transport86、process11、exit37，累计hold2.6s（请求2s加原settle0.6s）；所有阶段均通过原workspace、IK、joint limits/delta及robot/payload/finger collision检查。四个非process waypoint仍exact相等，所有hold/stage和planned rotation保持，未改阈值。
+
+最低rim计划点与目标误差仅数值残差；qualified末process用FK计算的误差为 `[-0.132966655,-0.088251185,+0.033361953] mm`，范数 **0.163038103mm**。这是求解路线末process状态的几何误差，不是物理执行误差。完整逐步joints/flags/hold位于qualified-static-route.json，完整输入、逐point比较、进度和结果位于diagnostic-results.json。
+
+原固定lip碰撞细节：payload box center `[-0.052271399,+0.048708451,+0.837624125] m`、half `[0.034607512,0.034607576,0.007560481] m`，checked TCP `[-0.072630726,+0.006962612,+0.870701915] m`，joint delta0.020454998rad，overlap为 `/World/OperationArea/TargetBeaker/Model/mesh`。原diagnostics为null，具体几何按原failure_detail保留，未补造字段。
+
+真实12维joint数组前后exact相等，simulation time均0.0020833334419876337s，初始化后0action/step；历史夹指生产碰撞几何调用767次，FK(saved_q)位置/旋转误差均0。capture中心代理差0.048762510mm；fresh BEAKER相对历史acquire仍为 `[+0.013247132,-0.056545192,+0.967681408] mm`、旋转差0.000137165rad，保存静态模型与历史场景区别。
+
+该两路线对照支持“保留已通过的高位运输/退出，仅修正process目标”这一诊断构造在当前静态模型内可行；它没有生成正式readiness，没有执行物理轨迹，也未解决生产opaque feature身份变更的语义问题。domain/Provider/Runtime边界与生产代码未改，执行许可仍未授予。只做固定两候选，没有继续搜索；文档完成后暂停写入供主会话审阅，无commit/push。
+
+Both fixed candidates completed: the original lip reproduces the payload collision, while replacing only the process pose passes complete qualification with134 steps (86 transport,11 process,37 exit) and2.6s total hold. Qualified terminal process FK gives0.163038mm lowest-rim target error. Real joints/time remain exactly unchanged and measured scene drift is preserved. This is static route evidence only, not readiness, physical execution or permission to change the identity of an opaque selected feature. No further candidate or production change was made.
