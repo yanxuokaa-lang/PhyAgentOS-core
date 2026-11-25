@@ -244,3 +244,19 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robo
 ```
 
 The Isaac Host omitted both links from the existing verification configuration to Coordinator.max_replans. The repair forwards the configured value while preserving default2 and explicit0. Coordinator retains lifecycle and budget ownership; physical grasp stability is unchanged. Real configuration-loading and composition tests passed (15 tests), with external model/perception calls stubbed and no motion enabled.
+
+## v17.10.8 双夹指力上限对照 / Finger force-limit comparison
+
+原173255两次R03抓取在首触至闭合结束时，第一指分别被推开3.459/4.464 mm，第二指内收约4.0 mm，瓶体水平偏移约3–4 mm；冻结后第二指目标几乎等于实测位置。R05存在同类不对称但成功，因此驱动不对称只是待验证假设，瓶肩几何和抓取方向也可能参与。
+
+新目录 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.8-r05-r03-symmetric-force-191713` 的13个启动文件沿用173255，仅替换路径和在本地physics配置增加joint2 force60 N、velocity0.2 m/s；joint1仍60 N/0.02 m/s，4 mm压入量、全部motion/oracle/scene/阈值与任务指令不变。默认physics配置及生产phase_motion均未修改。
+
+先后独立初始化原profile和对照profile，只读两指USD及runtime DOF。原读数joint1为60 N/0.02 m/s，joint2为1200 N/0.2 m/s；新读数为60/60 N，速度仍0.02/0.2 m/s；两指stiffness均1e7、damping均1e5，USD与runtime一致，controller gains也一致。两个诊断初始化后均未调用运动、设置或step，关节数组和simulation time前后相同。首次诊断因Ridgebase没有get_gains方法报错，改为只读articulation controller get_gains后完成；该错误未触发运动。读数分别保存为新目录 `drives-original.json`、`drives-symmetric.json`，诊断脚本为 `diagnose_drives.py`。
+
+2026-11-25 19:22:58 +08:00，新完整R05→R03 AgentLoop启动；Launcher352159、Host352160、观察器352161，session `cli:lab-29cc58c7337b`，19:23:08进入forge_task_create。执行代码为已推送 `efb217c9`，既有配置预算4已由Host修复接入Coordinator。使用独立场景、任务数据库与工件，不复用旧失败任务。仿真结果待回执。
+
+```bash
+.venv/bin/python -u out/labutopia-elevated-20261125/v17.10.8-r05-r03-symmetric-force-191713/launch.py
+```
+
+The independent comparison changes only finger-joint2 force from1200N to60N. Sequential read-only initialization confirmed USD/runtime force, unchanged velocities/gains, and identical before/after joint state and simulation time. The fresh R05→R03 AgentLoop started on efb217c9 with configured budget4; outcomes remain pending. This tests a hypothesis and does not establish the cause of grasp instability.
