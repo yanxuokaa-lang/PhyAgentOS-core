@@ -606,3 +606,64 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-p
 本轮证据为Provider/组合层的无Isaac自动化测试；v14静态几何证据仅用于选择修复方向，本轮未启动Isaac、未发硬件运动，尚无修改后完整R05→R03物理执行结果。既有生命周期与安全检查不变；主审后才由主会话提交并决定完整复测。本轮不commit/push，完成文档后暂停写入。
 
 The fix preserves the selected opaque lip as evidence and records a distinct execution point derived from its freshly qualified circular opening. Current capture lineage is validated before metadata emission, while acquisition geometry/frame context stays intact. Only after all original routes fail does the Adapter reuse the same centered grid and replace the process pose; transport/exit poses, duration/stage, full qualification and safety thresholds remain unchanged. Route target and explicit selection lineage identify the actual derived tip. The five focused suites passed439 tests, including real preparation, fresh-context/client integration, measured alignment and terminal correction; pre-existing Ruff findings remain unchanged. This is Provider/no-Isaac test evidence, with no new physical run or hardware motion, and is paused for parent review without commit/push.
+
+
+### v18.0.0 全流程复测准备 / Full-task retest preparation
+
+本次patch按项目minor10/patch15上限从v17.10.15进位v18.0.0。主会话已审阅并commit/push `2b27db35af78445800509b69e5f33a1a3335ae97`（2026-11-25 22:30:13+08:00）；本轮实际使用该代码，唯一新增运行行为为v15的新鲜圆环来源与有界process-only派生tip，保留61a52a2a累计外退修复。
+
+2026-11-25 22:32:14.855809+08:00准备独立目录 `out/labutopia-elevated-20261125/v18.0.0-r05-r03-derived-rim-223214`。唯一复制源为204420：明确复制13个启动/场景/配置文件，10个逐字节相同；command.json两处、profile.json七处、station.yaml一处仅更新运行路径，共10处。13文件路径归一后完全相同；metadata单独记录新version/code/time、来源/输入/seed/checkpoint不适用及环境漂移，移除旧PID/started_at等运行字段。未复制旧DB、sessions、artifacts或acceptance。
+
+同一个R05→R03 AgentLoop任务指令逐字保持，双指60/60N、速度0.02/0.2m/s、retain4mm、finger_hold_follow=true及全部motion/oracle/阈值不变；configured maxreplans4、provider retry12/delay15s、worker单请求2700s与Coordinator每composite subtask reconciliation3600s保持。新任务将重新初始化场景，不复用旧holding状态。阶段视频观察器及已有完成视频保存脚本原样复制。
+
+准备验证：全部所需配置/资产/解释器路径存在；4个Python脚本在host Python3.13.5与worker Python3.11.17下均语法通过。资源快照GPU可用9512MiB/16311MiB，RAM可用22GiB，swap剩8.1GiB，工作盘52GiB、/tmp11GiB；无旧Isaac/host/诊断进程，保留现有VLLM PID3061和CrossDesk PID3739。资源状态只描述准备时环境；外部模型响应、初始化与调度差异保留为复现限制。
+
+`preparation-review.json`保存13文件比较/metadata差异/参数/路径/语法结果，`configuration-paths.diff`保存10处路径替换，`preparation-resources.txt`保存实际资源。输出将写入新目录acceptance.json、assignment-artifacts.sqlite3、host.log、artifacts及阶段视频；seed/checkpoint无新设置。本次没有增加生产修改或测试，沿用v15的439项已通过证据。
+
+待主审启动命令（尚未执行，无launcher/host PID）：
+
+```bash
+/home/yanxu/PhyAgentOS-forge/.venv/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v18.0.0-r05-r03-derived-rim-223214/launch.py
+```
+
+准备完成，完整物理复测仍未启动；没有动作回执或成功结论。日志从part5开始并同步Archive/Latest5，完成后暂停写入供主会话审阅，无commit/push。
+
+The patch version rolls to v18.0.0 under the project limits. Preparation uses pushed code2b27db35 and only the13 launch/config files from204420: ten remain byte-identical and three change only their ten run-path occurrences. All task, physical, motion, observation and budget settings are preserved; metadata records the distinct derived-tip code change, inputs and environment limits without copying old runtime state. Both Python interpreters pass syntax checks and available resources are recorded. The full physics run has not started; no process IDs or action success are claimed, and preparation is paused for parent review without commit/push.
+
+
+### v18.0.0 授权启动及首运动 / Authorized launch and initial motion
+
+主会话审阅准备结果后批准223214单一完整任务，2026-11-25 22:35:26.481383+08:00独立启动launcher PID767976；host PID767978（22:35:26.499779+08:00）、observer PID767979、Isaac worker PID768359，实际code仍为2b27db35。新任务`task_3e10f3ea283f4407`在同一AgentLoop内执行R05→R03；22:36:58选定R05 grasp_task_affordances，22:38:38.658选定pour_r05执行节点。四PID在2026-11-25T22:43:47.935173+08:00交接时仍存活。
+
+22:41:20.974579+08:00落盘readiness `a59ea91c78eb4af38387892597ca766e.json`：source为`/World/ReagentZones/B/R05/Model/mesh`、acquire156个steps，kinematic/collision/workspace均pass。随后phase-video `ea4630eed7ea4893a5711c1a8fc9c8fd.mp4`持续写入，本代理观测从22:42:20的11010092bytes增至交接时28049452bytes。主会话另观测22:41:28至22:42:28持续增长；这是R05 acquire已开始实际运动的证据，尚无阶段完成回执，未读取未闭合视频推测当前具体夹持阶段。
+
+`launch-receipt.json`保存命令、启动/观察时间、code、四PID、task_id、readiness及视频增长证据；`launcher.pid`、metadata及host/observer日志保留。所有准备参数保持，没有另开实验或修改生产。完整任务仍进行中，监控已交主会话（其只读监控session49993）；本代理完成启动文档后暂停写入，无commit/push。准备段的“尚未启动”仅描述当时状态。
+
+Parent approval launched this single full task at22:35:26+08:00 with launcher/host/observer/worker PIDs767976/767978/767979/768359 and code2b27db35. Task3e10f3ea283f4407 has entered R05 acquisition: readiness records156 steps and passing kinematic/collision/workspace checks, while the phase video grows continuously. This proves initial motion, not phase completion. All four processes remained alive at handoff; the parent now monitors the continuing task. Startup documentation is complete and writing is paused without commit/push.
+
+
+### v18.0.0 运行结束：R05成功，R03未执行 / Run ended with R05 complete and R03 unexecuted
+
+本轮进程已结束，未完成完整任务。acceptance/controller_outcomes与只读`.paos/agent_tasks/tasks.sqlite3`核对一致：`task_3e10f3ea283f4407`的controller状态为`blocked`、revisions1/replans0，task状态为`awaiting_replan`、`terminal_at=null`，最后updated_at为2026-11-25T22:59:18.826179+08:00。四PID767976/767978/767979/768359在收尾时均不存在。运行停止不应写成任务已经进入failed终态；准备与启动小节描述历史时刻。
+
+last_failure原文完整保存于`last-failure-raw.txt`：
+
+```text
+node_turn_incomplete:pour_r03.grasp_task_affordances:node_selection_no_progress: Coordinator facts did not change after a corrective planning turn
+```
+
+R05的prepare/acquire/prepare_held/pour/prepare_held/place六条receipt分别available/succeeded/available/succeeded/available/succeeded，composite subtask completed，最终possession empty。acquire feedback `a8d72a53fcd7415380d90ac86a759d84`的lift共117样本，contact_load_valid和grasp_valid均117/117，首末lift世界z上升60.074618104mm；attachment最大0.047767900mm，末帧0.047140511mm，两个口径分别记录。
+
+pour feedback `5743303c7aab42a08adc78535286c1de`：maximum tilt1.0014421846rad、qualified连续保持2.8166668136s、final tool tip误差0.043337427mm；place feedback `d24e0f74c5794bafb45060b5e9c29ead`：原位归还误差0.202404870mm。三个物理阶段均succeeded，无液体仿真的motion_goal_reached不代表实测液体转移，原metrics的transfer_verified=false保持。420887521字节pour及127417355字节place各只读末64KiB提取终端metrics；acquire读样本核对lift。
+
+R03只完成process_features与prepare_process_features两个只读节点，停止在抓取前grasp_task_affordances的规划轮；无R03 action execution record、assignment、readiness、phase-feedback或phase-video。三份assignment/readiness和三对feedback/video全部属于R05，R05路线没有pour_lip_selection，沿用原搜索成功路线。因此本轮是R05物理回归成功、R03未进入执行，无法评价v15派生瓶口回退的物理效果；没有R03失抓、倾倒失败或恢复动作证据。控制器/Agent原因由主会话继续诊断，本收尾不推断原因。
+
+结果工件位于223214目录：`terminal-summary.json`、`database-terminal-summary.json`、`task-record-raw.json`、`controller-outcomes-raw.json`、`r05-receipts-raw.json`及原始failure文本。保留完整task/controller/receipt与只读DB对照，没有修改数据库或原acceptance。
+
+视频`review-videos/223214_R05全阶段成功_R03未执行_全任务未完成.mp4`沿用既有`save_finished_phase.py`/`add_phase_chapters.py`产生的三段已标注视频；acquire35.2s/2112帧、pour59.35s/3561帧、place24.25s/1455帧，动作共118.8s/7128帧。追加4s/240帧结果说明卡，明确R03未执行、controller blocked/task awaiting_replan、全任务未完成及派生瓶口未实测；说明卡不是模拟动作。
+
+最终合片122.8s、7368帧、17章节；所有逐段chapter起止连续、总duration/frame累加一致，全部packet PTS间隔为1/60s（最大数值舍入误差低于2微秒）。`ffmpeg -v error -xerror ... -f null -`完整解码exit0、无错误，结果卡预览中文字无裁切；`final-video-compilation.json`保存完整probe/连续性/decode结果，`compile_r05_review.py`、ffconcat/ffmetadata保留复现命令。
+
+本轮已完成证据收尾，完整任务未完成。没有重启、重新仿真、生产修改或commit/push；日志/报告/Latest5同步后暂停写入供主审。当前可评估范围是R05动作和R03规划阻塞，派生瓶口的完整R05→R03物理验证仍缺失。
+
+The process run has ended, but the persisted task is awaiting_replan with terminal_at=null and the controller reports blocked/replans0. Read-only database records match acceptance. R05 completed acquisition, pour and return:117/117 valid lift contacts/grasps,60.074618mm rise, maximum/final attachment errors0.047768/0.047141mm,1.001442rad tilt held2.816667s and0.202405mm return error. R03 has no physical-action evidence and did not reach held preparation; R05 selected no derived-tip fallback, so the new rim mechanism remains unevaluated physically. The122.8s/7368-frame/17-chapter video contains118.8s of R05 motion plus a clearly labeled4s incomplete-task result card, with continuous timestamps and successful full decoding. Raw receipts and failure text are preserved; no restart, production edit or commit/push occurred, and writing is paused for review.
