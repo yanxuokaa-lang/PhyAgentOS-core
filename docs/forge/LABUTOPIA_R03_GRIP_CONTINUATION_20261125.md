@@ -123,4 +123,18 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robo
   examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short
 ```
 
-结果：**89 passed**。覆盖超时后后续候选成功且保留原码/消息、两个候选均拒绝时的聚合建议和 refs、其他合同错误立即拒绝，以及既有恢复决策/子任务传播。两个修改代码文件的 Ruff 检查通过；v17.10.4 尚未启动新的仿真。
+结果：**89 passed**。覆盖超时后后续候选成功且保留原码/消息、两个候选均拒绝时的聚合建议和 refs、其他合同错误立即拒绝，以及既有恢复决策/子任务传播。两个修改代码文件的 Ruff 检查通过；v17.10.4 新仿真已于 15:58:43 启动，物理结果待回执。
+
+## v17.10.4 新轮次启动 / New replay launch
+
+已推送实现提交 `69f2724f60b3acc6e85da7ab9945b6f215879ce8`。新运行绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843`。全部物理/候选配置和任务指令沿用 `150350`（仅路径改至新目录）；本次代码差异为候选准备超时分类修复。新目录使用独立工件、任务数据库和会话。
+
+启动命令（仓库根目录）：
+
+```bash
+.venv/bin/python -u out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843/launch.py
+```
+
+2026-11-25 15:58:43 +08:00 启动，Launcher PID `1006855`、Host PID `1006858`、录像观察器 PID `1006859`。15:58:46，AgentLoop 进入任务创建模型调用，session `cli:lab-f0def334d3f4`。录像继续保存到本日 `review-videos`；启动时生产代码 diff 为空。结果待阶段回执，本轮尚未宣告双瓶完成。
+
+Replay 155843 started on pushed commit 69f2724f, preserving the previous run's physics, candidates and user instruction. The launcher, host and video observer are running; execution results remain pending.
