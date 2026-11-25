@@ -1,6 +1,6 @@
 # R03 夹持单变量复跑记录 / R03 grip continuation
 
-日期：2026-11-25（Asia/Shanghai）。状态：`142657` 已失败结束；末端校正修复已通过回归，修复版仿真复跑待执行。
+日期：2026-11-25（Asia/Shanghai）。状态：`142657` 已失败结束；修复版 `150350` 的 R05 抓取、倾倒、归位全周期成功；R03 路线搜索超时，任务失败，R03 未运动。
 
 ## 用户目标 / Required outcome
 
@@ -78,4 +78,49 @@ Launcher PID 为 `889386`，输出写入本轮 `launcher.log`；Host 输出写�
 
 回归增加两次校正成功、持续漂移三次仍失败、第二次校正前失抓、第二次碰撞拒绝和取消覆盖。阶段运动与接触时序合计 **291 passed**，`git diff --check` 通过。Ruff 全文件仍有四项既有诊断，已与 HEAD 逐项对照：`phase_motion.py:1061` 的 I001；`test_phase_motion.py:3328`、`:3414` 的 E731；测试文件原 `:4059`、现 `:4100` 的 I001。修改部分无新增诊断。
 
-契约及模拟单元测试已通过；修复后的 Isaac 物理执行结果待复跑，双瓶任务尚未完成。
+契约及模拟单元测试已通过；修复后的 Isaac 倾倒退出阶段已实跑成功，双瓶任务最终失败，R03 未运动。
+
+## 修复版实跑进展 / Repaired execution progress
+
+运行绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.3-r05-r03-exit-feedback-150350`。任务：`task_6559745fef2c4afc`。执行代码：`b985bf98`；沿用 `142657` 的全部物理与候选配置（4 mm、60 N）。
+
+R05 抓取成功，倾倒阶段回执 `artifacts/labutopia/phase-feedback/6386fe150421405d9775dca466380c17.json` 判定 `succeeded`。两次末端校正将轴误差从 0.3076176026 rad 降至 0.0011673941 rad，瓶口位置误差从 0.0130169489 m 降至 0.00016727365 m；连续对准保持 2.833333 s，峰值 1.0027256 rad。原位置及轴误差阈值均已满足。
+
+R05 归位回执 `artifacts/labutopia/phase-feedback/05bddd6a4d64406b9d9dce172de41e65.json` 已判定 `succeeded`，完成原位放回、松夹与后撤；归位位置误差 0.0009004684613 m（0.9005 mm），旋转误差 0.0064321349 rad。R05 全周期成功；R03 路线搜索超时，任务最终 failed，R03 未运动。
+
+The repaired run completed R05 acquisition and pouring. Two feedback corrections reduced axis error to 0.0011673941 rad and tip error to 0.00016727365 m while preserving the original thresholds. R05 placement, release and retreat also succeeded, with a return position error of 0.9005 mm. R03 acquisition route search timed out; the task failed before R03 motion.
+
+## R05 全周期合辑 / R05 complete-cycle video
+
+绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/150350_R05全周期成功_R03未完成_同一AgentLoop.mp4`。
+
+合辑将同一任务 `task_6559745fef2c4afc` 的三个成功阶段按实际顺序拼接，原片保留。时长 160.250 s，保留 16 个阶段章节；标题明确标注“R05 全周期成功 / R03 未完成”。已通过 ffprobe 元数据检查及 ffmpeg 完整解码检查。
+
+- 00:35.200：移动至烧杯上方。
+- 01:05.717：倾倒与保持；峰值 1.0027256 rad，连续对准保持 2.833333 s。
+- 01:16.400：扶正并离开烧杯；两次末端反馈校正成功。
+- 02:06.133：扶正并移回原位。
+- 02:32.100：下降到原位置。
+- 02:36.700：松开夹爪；02:37.316：后撤。归位位置误差 0.9005 mm。
+
+The 160.250 s video concatenates three successful R05 phases from the same task, preserves 16 chapters and labels R03 as incomplete. Original clips remain available. Video artifacts are stored outside the Git commit.
+
+## 150350 终态与准备超时分类 / Final status and preparation timeout
+
+任务 `task_6559745fef2c4afc` 最终为 `failed`，重规划次数为 0。R05 全周期成功；R03 在准备阶段出现 `route_search_timeout`，未执行运动。搜索工件 `artifacts/labutopia/acquire-search/2b8ee5f6fb724ed09272e7ea2dffadfe.json` 记录用时 600.3088 s、107 次尝试、99 次剪枝和 269 个变体。该有限搜索超时不能代表所有可能路线均不可行。
+
+`LabUtopiaCycleProvider.prepare` 的候选拒绝分类遗漏 `route_search_timeout`，使该结果直接进入默认运行合同错误，返回不可重规划的 `fix_runtime_contract`。v17.10.4 把该码加入既有候选拒绝、可重规划和重选建议集合：原始错误码/消息留在 rejected 诊断；后续已供应候选可继续准备；全部已供应候选失败时沿用 `no_admissible_grasp`、`requires_replan=true`、`select_alternative_candidate` 和实际失败 refs。
+
+搜索机制由 Adapter 拥有，候选选择和重规划仍由 AgentRecoveryDecisions/Coordinator 拥有，Runtime 执行所有权保持原路径。该修复不改变物理阈值或搜索时限，也不把准备结果计作运动成功。
+
+验证命令：
+
+```bash
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src:examples/forge-skills/pick-place-workflow/src \
+  .venv/bin/python -m pytest -q \
+  examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py \
+  tests/test_recovery_decisions.py \
+  examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short
+```
+
+结果：**89 passed**。覆盖超时后后续候选成功且保留原码/消息、两个候选均拒绝时的聚合建议和 refs、其他合同错误立即拒绝，以及既有恢复决策/子任务传播。两个修改代码文件的 Ruff 检查通过；v17.10.4 尚未启动新的仿真。

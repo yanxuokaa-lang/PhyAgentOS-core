@@ -51,11 +51,142 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.4 (2026-11-25 15:54) - codex
+
+- [env] [fix] [完成] 将 `paos_client.py` 的 `route_search_timeout` 分类为可拒绝的候选准备结果，保留原码和消息；尝试后续已供应候选，全部失败沿用 `no_admissible_grasp` 并建议 Agent 重选候选。 / [Completed] Classify route_search_timeout as a candidate preparation rejection, preserve its original code/message, try subsequent supplied candidates and retain no_admissible_grasp with alternative-candidate recovery when all supplied candidates fail. (local)
+- [eval] [exp] [完成] 在 `test_paos_integration.py` 覆盖超时后候选成功、全部超时的重规划建议及 refs、其他合同错误立即拒绝，运行现有 RecoveryDecisions 与 subtask-executor 恢复测试。 / [Completed] Cover a successful candidate after timeout, all-timeout recovery metadata and references, and immediate rejection of other contract errors; run the existing recovery-decision and subtask-executor tests. (local)
+- [docs] [docs] [完成] 补全本次失败诊断、代码 Diff、行号和验证结果，同步最新五版本。搜索机制属于 Adapter，候选选择/重规划属于现有 AgentRecoveryDecisions/Coordinator；Runtime 执行所有权、时限和物理检查不变，无新增门禁。 / [Completed] Record the failure diagnosis, diff, locations and validation and update the latest-five index. Search remains Adapter-owned, selection/replanning remains Agent/Coordinator-owned and Runtime execution ownership, timeouts and physical checks remain intact. No new gate is introduced. (local)
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py` L153、L182、L189–L190：仅在既有候选拒绝、可重规划和重选建议集合加入 `route_search_timeout`。 / Add route_search_timeout only to the existing candidate-rejection, replannability and alternative-candidate recommendation sets.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` L941–L946、L949–L990、L993–L1040：超时后另一个候选成功保留诊断、两个候选均失败返回聚合建议和 refs、合同错误保持立即拒绝。 / Cover successful fallback with timeout diagnostics, aggregate metadata for two rejected candidates and immediate rejection of contract errors.
+- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L3、L81–L126：更新 150350 失败终态、R05 完整成功/未运动 R03 的视频标签、搜索统计、分类根因及修复验证。 / Record the failed 150350 task, completed R05/incomplete R03 video labels, search statistics, classification cause and validation.
+- [修改 / Modified] `CHANGELOG.md`：最新五版本为 17.10.4、17.10.3、17.10.2、17.10.1、17.10.0，完整条目与归档一致。 / Latest-five entries are synchronized with the archive.
+
+```diff
+diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
+index 384aad8e..36a54fd8 100644
+--- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
++++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
+@@ -151,5 +151,5 @@ class LabUtopiaCycleProvider:
+                                 "workspace_violation", "route_collision", "self_collision", "payload_collision",
+                                 "payload_robot_collision", "no_admissible_grasp", "gripper_aperture_exceeded",
+-                                "unsupported_capability_topology"}:
++                                "unsupported_capability_topology", "route_search_timeout"}:
+                     raise PreparationProviderError(code, str(result.get("error_detail", result.get("error", code))),
+                                                    failure_owner="runtime_adapter")
+@@ -180,5 +180,5 @@ class LabUtopiaCycleProvider:
+             requires_replan=any(
+                 item.get("failure_code") in {
+-                    "route_unavailable", "route_collision", "ik_discontinuity",
++                    "route_unavailable", "route_collision", "ik_discontinuity", "route_search_timeout",
+                     "gripper_aperture_exceeded",
+                 }
+@@ -187,5 +187,6 @@ class LabUtopiaCycleProvider:
+             recommended_action=(
+                 "select_alternative_candidate"
+-                if any(item.get("failure_code") in {"route_collision", "ik_discontinuity"} for item in rejected)
++                if any(item.get("failure_code") in {"route_collision", "ik_discontinuity", "route_search_timeout"}
++                       for item in rejected)
+                 else "refresh_grasp_candidates"
+                 if any(item.get("failure_code") in {"route_unavailable", "gripper_aperture_exceeded"}
+diff --git a/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py b/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
+index e77e722c..71f44bcf 100644
+--- a/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
++++ b/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
+@@ -939,10 +939,14 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
+     prepared.clear()
+     engine.failure = 'stale_visual_observation'
+-    with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
++    with pytest.raises(PreparationProviderError, match='stale_visual_observation') as captured:
+         provider.prepare(request)
+     assert len(prepared) == 1
++    assert captured.value.failure_owner == 'runtime_adapter'
++    assert captured.value.requires_replan is False
++    assert captured.value.recommended_action == 'fix_runtime_contract'
+
+
+-def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path):
++@pytest.mark.parametrize("failure_code", ["route_collision", "route_search_timeout"])
++def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path, failure_code):
+     profile = _profile(tmp_path)
+     binding = _binding(profile)
+@@ -963,5 +967,6 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
+         def prepare_manipulation(self, request):
+             if request["candidate_ref"].endswith("/rejected"):
+-                return {"status": "unavailable", "failure_code": "route_collision"}
++                return {"status": "unavailable", "failure_code": failure_code,
++                        "error": "candidate preparation stopped at configured bound"}
+             return {"status": "available", "route_arguments": {"candidate_ref": request["candidate_ref"]}}
+
+@@ -973,6 +978,6 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
+     assert rejected == [{
+         "candidate_ref": "candidate://observed-reagent-a/rejected",
+-        "failure_code": "route_collision",
+-        "error": None,
++        "failure_code": failure_code,
++        "error": "candidate preparation stopped at configured bound",
+     }]
+     assert result["route_arguments"]["rejected_candidates"] == rejected
+@@ -989,4 +994,5 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
+     ("route_collision", "select_alternative_candidate"),
+     ("ik_discontinuity", "select_alternative_candidate"),
++    ("route_search_timeout", "select_alternative_candidate"),
+     ("route_unavailable", "refresh_grasp_candidates"),
+ ])
+@@ -1004,4 +1010,7 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
+     }
+
++    candidates = [candidate, {**candidate, "candidate_ref": candidate["candidate_ref"] + "-second"}]
++    attempted = []
++
+     class Resolver:
+         def resolve(self, observed, request):
+@@ -1011,6 +1020,8 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
+
+     class Engine:
+-        def prepare_manipulation(self, _request):
+-            return {"status": "unavailable", "failure_code": failure_code}
++        def prepare_manipulation(self, request):
++            attempted.append(request["candidate_ref"])
++            return {"status": "unavailable", "failure_code": failure_code,
++                    "error": "bounded search stopped before qualifying a route"}
+
+     provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
+@@ -1019,10 +1030,13 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
+             "perception_binding": binding,
+             "process_type": "pour",
+-            "candidates": [candidate],
++            "candidates": candidates,
+         })
+
++    assert attempted == [item["candidate_ref"] for item in candidates]
++    assert captured.value.code == "no_admissible_grasp"
++    assert "bounded search stopped before qualifying a route" in str(captured.value)
+     assert captured.value.requires_replan is True
+     assert captured.value.recommended_action == recommended_action
+-    assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)
++    assert captured.value.rejected_candidate_refs == tuple(attempted)
+
+
+```
+
+### 验证 / Validation
+
+- [eval] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py tests/test_recovery_decisions.py examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short`：89 passed。 / All 89 PAOS integration, recovery-decision and subtask-executor tests passed.
+- [chore] [chore] `.venv/bin/ruff check examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` 与 `git diff --check` 均通过。 / Ruff on both edited code files and diff whitespace checks passed.
+- [env] [exp] 本版验证为无运动的 Provider 与恢复传播测试；尚未启动 v17.10.4 仿真，不记作双瓶成功。 / This version has no-motion provider and recovery-propagation evidence; no v17.10.4 simulation has started and the two-vessel goal remains incomplete.
+
+### Git 提交 / Git Commit
+
+- 分支 / Branch: `feature/planning-loop`。待主会话审阅提交。 / Awaiting parent-session review and commit.
+
 ## v17.10.3 (2026-11-25 14:25) - codex
 
 - [env] [exp] [完成] 单变量运行 `142657` 将夹持压入量 2 → 4 mm，驱动保持 60 N；R05 抓取成功，倾倒保持 2.833 s、峰值 1.003 rad，退出轴误差 0.0343 rad 超过原 0.02 rad 要求而失败，R03 未执行。录像已分阶段标注保存。 / [Completed] Run 142657 changed only retain overshoot from 2 to 4 mm with the 60 N drive retained. R05 acquisition succeeded and pouring held 2.833 s at 1.003 rad, but exit axis error 0.0343 rad exceeded the existing 0.02 rad criterion; R03 did not execute. Annotated phase videos were retained. (local)
 - [env] [fix] [完成] 一次末端校正已将轴误差 0.3076 降至 0.0343 rad；将重新资格化倾倒退出路径的末端反馈校正扩展至最多三次，每次重测位置/轴误差，复用当前接触、实测 attachment、碰撞、连续性、取消和步数限制，保留原最终阈值。 / [Completed] One terminal correction reduced axis error from 0.3076 to 0.0343 rad. Requalified pour exits now allow at most three feedback corrections, remeasuring endpoint errors and preserving fresh contact, measured attachment, collision, continuity, cancellation, execution bounds and original endpoint criteria. (local)
-- [docs] [docs] [完成] 记录配置差异、历史证据、实际失败结果、测试和视频章节，并滚动最新五版本；修复版 Isaac 复跑待执行，双瓶目标仍未完成。 / [Completed] Record configuration differences, prior evidence, the actual failure, tests and video chapters, and roll the latest-five index. The repaired Isaac replay remains pending and the two-vessel goal remains incomplete. (local)
+- [docs] [docs] [完成] 记录配置差异、历史证据、实际失败结果、测试和视频章节，并滚动最新五版本；修复版 Isaac 已通过 R05 倾倒阶段，R05 归位亦已成功，R03 路线搜索超时，任务失败。 / [Completed] Record configuration differences, prior evidence, the actual failure, tests and video chapters, and roll the latest-five index. The repaired Isaac replay passed the R05 pour phase; R05 placement also succeeded, while R03 route search timed out and the task failed. (local)
 
 ### 文件变更详情 / File changes
 
@@ -236,13 +367,19 @@ index 9415dfa8..911bacee 100644
 - [env] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`：291 passed；原末端校正专项 11 passed。 / The combined phase-motion/contact suite passed 291 tests; the terminal exit cases passed all 11 variants.
 - [chore] [chore] 首次遗漏 workflow 的 PYTHONPATH 导致 105 项失败，补路径后初始 287 项通过；修复后新增 4 项，共 291 项通过。 / The initial command omitted the workflow PYTHONPATH and failed 105 tests; correcting the path passed the original 287, and the repair adds four passing cases.
 - [chore] [chore] `git diff --check` 通过；Ruff 与 HEAD 一致存在四项既有诊断：源码 L1061 I001，测试 L3328/L3414 E731、L4100 I001（HEAD L4059）。修改未增加诊断。 / Diff whitespace validation passes. Ruff retains four HEAD-identical findings: source L1061 I001, test L3328/L3414 E731 and L4100 I001 (HEAD L4059); no new findings were introduced.
-- [env] [exp] `142657` 实跑失败已落盘；本次代码修复的物理效果尚待新一轮 Isaac 执行验证。 / The failed 142657 execution is recorded; the code repair still awaits a fresh Isaac execution.
+- [env] [exp] `142657` 实跑失败已落盘；修复版 `150350` 已通过 R05 倾倒退出阶段，本轮最终失败，R03 未运动。 / The failed 142657 execution is recorded; repaired run 150350 passed the R05 pour exit phase, while the task ultimately failed before R03 motion.
 
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit: `b985bf98`，分支 / Branch: `feature/planning-loop`；已推送 / Pushed。首次实验执行代码 / First experiment code: `4e06f62f`。
 
-- [env] [exp] [计划] 使用实现提交 `b985bf98` 在新独立运行中复跑 R05 → R03，沿用 `142657` 全部物理与候选配置（4 mm、60 N），仅验证已提交的最多三次末端反馈校正；继续保存本日标注录像。 / [Planned] Replay R05 then R03 in a fresh run with implementation commit b985bf98, preserving all 142657 physics and candidate settings (4 mm, 60 N) and testing only the committed terminal feedback correction. Continue saving annotated videos in today's review directory.
+- [env] [exp] [完成] 使用实现提交 `b985bf98` 在新独立运行中复跑 R05 → R03，沿用 `142657` 全部物理与候选配置（4 mm、60 N），仅验证已提交的最多三次末端反馈校正；继续保存本日标注录像。 / [Completed] Replay R05 then R03 in a fresh run with implementation commit b985bf98, preserving all 142657 physics and candidate settings (4 mm, 60 N) and testing only the committed terminal feedback correction. Continue saving annotated videos in today's review directory.
+
+- [env] [exp] [完成] 修复版运行绝对路径 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.3-r05-r03-exit-feedback-150350`，任务 `task_6559745fef2c4afc`。R05 抓取及倾倒成功；倾倒回执 `6386fe150421405d9775dca466380c17.json` 记录两次校正：轴误差 0.3076176026 → 0.0011673941 rad，瓶口位置误差 0.0130169489 → 0.00016727365 m；连续保持 2.833333 s，峰值 1.0027256 rad。R05 归位已成功，回执 `05bddd6a4d64406b9d9dce172de41e65.json` 记录归位误差 0.9005 mm，视频 `7204d5768cbc4d44be2c8529195379d9.mp4` 已完成；R03 路线搜索超时，本轮失败，R03 未运动。 / [Completed] Task task_6559745fef2c4afc in repaired run 150350 completed R05 acquisition and pouring. The pour receipt records two corrections reducing axis error from 0.3076176026 to 0.0011673941 rad and tip error from 0.0130169489 to 0.00016727365 m, with a 2.833333 s aligned hold at a peak 1.0027256 rad. R05 placement succeeded with a 0.9005 mm return error and a completed video. R03 route search timed out; the task failed before R03 motion.
+
+- [env] [exp] 已将 `150350` 同一任务的 R05 抓取、倾倒、归位三段成功录像按顺序合成 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/150350_R05全周期成功_R03未完成_同一AgentLoop.mp4`，时长 160.250 s、16 个章节，保留原片。ffprobe 检查及 ffmpeg 完整解码通过；合辑和原片不加入 Git。R03 未运动，本轮任务失败。 / Concatenated the three successful R05 phases from the same task into the named 160.250 s video with 16 chapters, retaining original clips. ffprobe inspection and full ffmpeg decoding passed. Videos remain outside Git; R03 did not move and the task failed.
+
+- [env] [exp] `150350` 最终任务 `task_6559745fef2c4afc` 为 failed，R05 全周期成功，R03 未运动；搜索工件 `acquire-search/2b8ee5f6fb724ed09272e7ea2dffadfe.json` 记录 600.3088 s、107 次尝试、99 次剪枝、269 个变体，错误 `route_search_timeout`，重规划次数 0。 / Run 150350 ended failed after a complete R05 cycle and before R03 motion. Its acquisition-search artifact records 600.3088 s, 107 attempts, 99 pruned attempts and 269 variants with route_search_timeout and zero replans.
 
 ## v17.10.2 (2026-11-25 04:06) - codex
 
@@ -520,153 +657,3 @@ index 57044f43..68916aed 100644
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `9f755c4c`，`feature/planning-loop`，2026-11-25 02:31:00 +0800。
-
-## v17.9.15 (2026-11-25 01:19) - codex
-
-- [env] [fix] [完成] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` 在瓶体仍处于原支撑位置、低速且双指反馈新鲜时，让失抓恢复在实测臂关节与指距处限时采样。`001734` 的 R03 失败帧中瓶体仍直立，单指窗口有约 0.00328 N·s 的瞬时冲量。仅靠最后一个运动窗口无法知道停止后是否卸载，Git、类型与普通测试也不能提供这一仿真物理事实。使用原有 `settle_s`、碰撞和停机约束，保留开爪与回撤的原有判据和 AgentLoop 的重试所有权。 / Sample at the measured arm and finger positions for a bounded interval after grasp loss when the body remains within its support band at low speed and both fingers have fresh feedback. In the `001734` R03 receipt, the body remained upright and one finger measured about 0.00328 N·s over the aborted-motion window. That window cannot establish whether the fingers unload after stopping. Reuse `settle_s`, collision and stop checks, the existing opening and retreat criteria, and AgentLoop ownership of retries.
-- [env] [exp] [完成] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` 覆盖固定指距下瞬时载荷消退、持续载荷、状态失效和碰撞中止。 / Verify transient unload at fixed aperture, persistent load, invalidated feedback and collision abort.
-
-### 文件变更详情 / File changes
-
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L848–L866、L2443、L2485–L2557、L2679–L2682、L2991–L2994、L3010–L3011。双指必须在当前窗口提交有效数据，固定姿态采样必须取得晚于该步开始的双指反馈。原开爪判据、全指距包络碰撞检查、继续执行的步数及取消控制均保留。反馈记录最近下发的停止、固定、开爪及回撤指距。 / Both fingers must contribute current feedback, and fixed-position sampling requires fresh frames after the step starts. Retain the existing opening criteria, full finger-sweep collision checks, execution budget and cancellation. Record the most recent commanded aperture when stopping, holding, opening or retreating.
-- [env] [exp] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L2451–L2540。以真实执行入口和无运动夹具覆盖瞬时与持续单指载荷，以及离开支撑、重新检测到持有、帧不更新、碰撞、取消。验证固定期间指距不变，且开爪发生在新窗口卸载之后。 / Exercise transient and persistent unilateral load, loss of support, renewed grasp, stale frames, collision, and cancellation through the execution entry point in a no-motion fixture. Assert fixed aperture throughout sampling and fresh unloading before opening.
-
-```diff
-@@ -846,12 +846,19 @@ class GripContactWindow:
-         )
-
--    def current_unloaded(self, *, require_clear=False, whole_interval=True):
--        """Judge both fingers using their latest capture and current interval."""
-+    def has_current_feedback(self, *, after=None):
-+        """Check that both fingers contributed a fresh frame to this interval."""
-         if self.error is not None:
-             raise PhaseMotionError("contact_sampling_failed", str(self.error)) from self.error
-         now = float(self.world.current_time)
-         return len(self.sensors) == 2 and all(
--            latest is not None and latest[0] in frames and now - latest[0] <= self.dt * 2
--            and frames[latest[0]] == 0.
-+            latest is not None and latest[0] in frames and 0. <= now - latest[0] <= self.dt * 2
-+            and (after is None or after < latest[0])
-+            for latest, frames in zip(self.latest, self.frames, strict=True)
-+        )
-+
-+    def current_unloaded(self, *, require_clear=False, whole_interval=True):
-+        """Judge both fingers using their latest capture and current interval."""
-+        return self.has_current_feedback() and all(
-+            frames[latest[0]] == 0.
-             and (not whole_interval or all(impulse == 0. for impulse in frames.values()))
-             and (not require_clear or not latest[1])
-@@ -2434,5 +2441,5 @@ class IsaacPhaseMotion:
-         qualified_start,
-     ):
--        """Open at a fixed arm pose, then reverse the qualified path once clear."""
-+        """Confirm unload at a fixed pose, then open and reverse the qualified path."""
-         if failure not in acquire_failure_recovery_codes(self.config):
-             raise PhaseMotionError("acquire_recovery_not_allowed", failure)
-@@ -2476,16 +2483,10 @@ class IsaacPhaseMotion:
-             return supported, position_error, rotation_error
-
--        held, physical_body = record("recovery_check")
--        supported, _, _ = measure_support(physical_body)
--        clear = contact_window.current_unloaded(require_clear=True, whole_interval=False)
--        residual_unloaded = (
--            failure == "physical_grasp_lost"
--            and support_contact_allowed("lift", physical_body, original, tolerance)
--            and contact_window.current_unloaded()
--        )
--        if held or not supported or not (clear or residual_unloaded):
--            raise PhaseMotionError(
--                "acquire_recovery_possession_uncertain",
--                "safe opening requires a stable supported object and current unloaded fingers",
-+        def in_support_band(pose):
-+            return support_contact_allowed("lift", pose, original, tolerance)
-+
-+        def safe_to_open(pose):
-+            return contact_window.current_unloaded(require_clear=True, whole_interval=False) or (
-+                failure == "physical_grasp_lost" and in_support_band(pose) and contact_window.current_unloaded()
-             )
-
-@@ -2509,4 +2510,6 @@ class IsaacPhaseMotion:
-             ):
-                 raise PhaseMotionError("joint_limit_violation", "safe acquire recovery joint target is invalid")
-+            if fingers.shape != initial_gripper.shape or not np.isfinite(fingers).all():
-+                raise PhaseMotionError("joint_limit_violation", "safe acquire recovery finger target is invalid")
-             measured_relation = np.linalg.inv(self.tcp()) @ self.observed_pose(source)
-             self._collisions(
-@@ -2527,7 +2530,30 @@ class IsaacPhaseMotion:
-             step_count += 1
-             record_frame(stage)
--            record(stage)
-+            feedback = record(stage, commanded_fingers=fingers)
-             if np.max(np.abs(self.joints() - arm)) > self.config["joint_tracking_tolerance_rad"]:
-                 raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
-+            return feedback
-+
-+        held, physical_body = record("recovery_check")
-+        supported, _, _ = measure_support(physical_body)
-+        can_open = not held and supported and safe_to_open(physical_body)
-+        if (not can_open and failure == "physical_grasp_lost" and not held and supported
-+                and in_support_band(physical_body) and contact_window.has_current_feedback()):
-+            hold_arm = self.joints()
-+            hold_fingers = np.asarray(self.robot.get_joint_positions())[finger_indices]
-+            for _ in range(math.ceil(self.config.get("settle_s", 0.) / self.dt)):
-+                held, physical_body = command(hold_arm, hold_fingers, "recovery_settle", True)
-+                supported, _, _ = measure_support(physical_body)
-+                if (held or not supported or not in_support_band(physical_body)
-+                        or not contact_window.has_current_feedback(after=contact_window.start)):
-+                    break
-+                if safe_to_open(physical_body):
-+                    can_open = True
-+                    break
-+        if not can_open:
-+            raise PhaseMotionError(
-+                "acquire_recovery_possession_uncertain",
-+                "safe opening requires a stable supported object and current unloaded fingers",
-+            )
-
-         opening_arm = self.joints().copy()
-@@ -2651,5 +2677,8 @@ class IsaacPhaseMotion:
-             return contact_window.valid()
-
--        def record(stage):
-+        def record(stage, *, commanded_fingers=None):
-+            nonlocal finger_target
-+            if commanded_fingers is not None:
-+                finger_target = commanded_fingers
-             physical_body = self.observed_pose(source)
-             tcp = self.tcp()
-@@ -2960,6 +2989,8 @@ class IsaacPhaseMotion:
-             try:
-                 if changed:
-+                    stop_positions = np.asarray(self.robot.get_joint_positions()).copy()
-                     self.robot.get_articulation_controller().apply_action(
--                        ArticulationAction(joint_positions=np.asarray(self.robot.get_joint_positions()).copy()))
-+                        ArticulationAction(joint_positions=stop_positions))
-+                    finger_target = stop_positions[finger_indices]
-             except Exception as stop_exc:
-                 reference = self._artifact("phase-feedback", {"operation": operation,
-@@ -2978,5 +3009,4 @@ class IsaacPhaseMotion:
-             ):
-                 try:
--                    finger_target = np.asarray(self.scene.get("initial_gripper_positions"), dtype=float)
-                     recovery = self._recover_failed_acquire(
-                         failure=failure,
-```
-
-```diff
-+@pytest.mark.parametrize("outcome", [
-+    "transient", "persistent", "support_lost", "held_again", "stale", "collision", "cancelled",
-+])
-+def test_failed_lift_samples_unload_before_opening_at_fixed_pose(monkeypatch, outcome):
-+    ...
-+    assert settling[-1]["selected_contact_impulse_ns"] == [0., 0.]
-+    assert opening[0]["timestamp_s"] > settling[-1]["timestamp_s"]
-```
-
-### 验证 / Validation
-
-- [env] [exp] 阶段动作和接触时序测试共 273 项通过，`git diff --check` 通过。完整 Isaac 仿真另行验证。 / All 273 phase-motion and contact-timing tests passed, as did the diff check. The full Isaac replay is tracked separately.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `0e192705`，`feature/planning-loop`，2026-11-25 01:27:04 +0800。

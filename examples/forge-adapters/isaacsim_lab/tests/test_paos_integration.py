@@ -938,12 +938,16 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
     prepared.clear()
     engine.failure = 'stale_visual_observation'
-    with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
+    with pytest.raises(PreparationProviderError, match='stale_visual_observation') as captured:
         provider.prepare(request)
     assert len(prepared) == 1
+    assert captured.value.failure_owner == 'runtime_adapter'
+    assert captured.value.requires_replan is False
+    assert captured.value.recommended_action == 'fix_runtime_contract'
 
 
-def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path):
+@pytest.mark.parametrize("failure_code", ["route_collision", "route_search_timeout"])
+def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path, failure_code):
     profile = _profile(tmp_path)
     binding = _binding(profile)
     candidates = [
@@ -962,7 +966,8 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
     class Engine:
         def prepare_manipulation(self, request):
             if request["candidate_ref"].endswith("/rejected"):
-                return {"status": "unavailable", "failure_code": "route_collision"}
+                return {"status": "unavailable", "failure_code": failure_code,
+                        "error": "candidate preparation stopped at configured bound"}
             return {"status": "available", "route_arguments": {"candidate_ref": request["candidate_ref"]}}
 
     provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
@@ -972,8 +977,8 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
     rejected = result["rejected_candidates"]
     assert rejected == [{
         "candidate_ref": "candidate://observed-reagent-a/rejected",
-        "failure_code": "route_collision",
-        "error": None,
+        "failure_code": failure_code,
+        "error": "candidate preparation stopped at configured bound",
     }]
     assert result["route_arguments"]["rejected_candidates"] == rejected
     assert result["route_arguments"]["candidate_ref"] == "candidate://observed-reagent-a/selected"
@@ -988,6 +993,7 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
 @pytest.mark.parametrize("failure_code,recommended_action", [
     ("route_collision", "select_alternative_candidate"),
     ("ik_discontinuity", "select_alternative_candidate"),
+    ("route_search_timeout", "select_alternative_candidate"),
     ("route_unavailable", "refresh_grasp_candidates"),
 ])
 def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
@@ -1003,6 +1009,9 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
         "grasp_frame": {"position_m": [0.01, 0.2, 0.3]},
     }
 
+    candidates = [candidate, {**candidate, "candidate_ref": candidate["candidate_ref"] + "-second"}]
+    attempted = []
+
     class Resolver:
         def resolve(self, observed, request):
             target = _resolved_target(observed)
@@ -1010,20 +1019,25 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
             return target
 
     class Engine:
-        def prepare_manipulation(self, _request):
-            return {"status": "unavailable", "failure_code": failure_code}
+        def prepare_manipulation(self, request):
+            attempted.append(request["candidate_ref"])
+            return {"status": "unavailable", "failure_code": failure_code,
+                    "error": "bounded search stopped before qualifying a route"}
 
     provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
     with pytest.raises(PreparationProviderError, match=failure_code) as captured:
         provider.prepare({
             "perception_binding": binding,
             "process_type": "pour",
-            "candidates": [candidate],
+            "candidates": candidates,
         })
 
+    assert attempted == [item["candidate_ref"] for item in candidates]
+    assert captured.value.code == "no_admissible_grasp"
+    assert "bounded search stopped before qualifying a route" in str(captured.value)
     assert captured.value.requires_replan is True
     assert captured.value.recommended_action == recommended_action
-    assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)
+    assert captured.value.rejected_candidate_refs == tuple(attempted)
 
 
 @pytest.mark.parametrize(("engine_result", "expected_error"), [
