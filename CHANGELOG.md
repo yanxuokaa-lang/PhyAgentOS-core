@@ -51,6 +51,66 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.15 (2026-11-25 22:12) - codex
+
+- [policy] [fix] [完成] 仅Isaac Provider私有几何与路径机制：保留原选中lip证据及qualified opening来源，原centered+offset搜索全失败后复用同24 centered参数点，仅替换process pose；实际derived tip进入route.target，selection显式记录换点与来源。 / [Completed] Preserve selected-lip evidence and qualified source circle, then reuse the same centered grid only after original routes fail; replace only the process pose and record the actual derived execution tip and lineage. (local)
+- [sense] [fix] [完成] held preparation仅更新新鲜pour_opening，保留acquire points/captured pose/geometry；place及缺可选能力/metadata时兼容。当前candidate_set capture必须与binding一致；旧lookup只检查成员，无法阻止旧几何被重新标为fresh，新增比较限于这个实际来源边界，不新增gate/hash/schema。 / [Completed] Refresh only the held pour-opening context while retaining acquisition geometry/frame and optional-provider/place compatibility. Existing membership lookup cannot prevent relabeling stale geometry, so compare existing capture identifiers at the new metadata boundary without a gate/hash/schema. (local)
+- [eval] [fix] [完成] missing/stale/inconsistent/explicit-spout上下文不能启用回退，完整碰撞/IK/连续性/退出验证保留；真实prepare、视觉/客户端集成与execute alignment/末端校正证明实际derived tip贯穿。domain/Tool/AgentLoop与Runtime取消、结算、恢复所有权不变，Provider替换不改caller。 / [Completed] Invalid or ineligible circle context cannot enable fallback; full qualification and exit checks remain. Real preparation, visual/client integration and execution measurements/correction prove the derived tip flows through without changing public semantics or lifecycle ownership. (local)
+
+### 文件变更详情 / File changes
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L70-L71、L1409-L1434：保存opening中心/资格；仅qualified task-conditioned圆环输出带capture/feature lineage的私有metadata。 / Preserve opening center/qualification and emit private current-capture metadata only for qualified derived lips.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py` L231-L246：clear历史pour_opening；仅pour操作从可选execution_context深拷贝新metadata，acquire frame保持。 / Clear old opening metadata and copy only fresh optional pour context while retaining acquisition frame.
+- [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L793-L855：current_pour_opening校验当前arguments lineage及有限圆环，按新capture×已有body_from_observed转换；lowest_pour_rim_tip在原圆环上选择最低点。 / Validate current lineage and circular geometry, transform into the acquired observed frame, and derive its lowest rim point.
+- [新增 / Added] 同文件 / Same file L1846-L1883：原搜索全部失败后的有界process-only回退，原四点不变、完整qualify、首成功停止，route保存新target及selection。 / Bounded process-only fallback after original failures, preserving all other poses and full qualification, stopping on the first success and retaining target/selection.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3909-L3915、L3939-L3940、L3985-L3986、L4043-L4044、L4065-L4071、L4112-L4113、L4120-L4121、L4147、L4156-L4165、L4275-L4412：真实prepare拒绝/通过、四点不变、退出碰撞/连续性、无效context，真实execute按derived tip计算alignment/校正并区分旧tip。 / Exercise real preparation and execution across valid/invalid geometry, unchanged transport/exit, failure checks and distinct old/new tip measurements.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py` L318-L319、L1912-L1993：真实current feature Query/refresh/binding/context→held client request、历史acquire保持、stale candidate_set拒绝与explicit lip无回退metadata。 / Integrate current visual selection, binding and context with the held client while preserving history and rejecting stale circle lineage.
+- [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` L1073-L1108：无可选方法、缺metadata及place兼容，所有操作移除历史圆环，原assignment不变。 / Cover optional capability/metadata and place compatibility without mutating the source assignment.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L584-L608：记录架构、坐标/来源边界、回退行为及测试范围；同步CHANGELOG最近五条完整记录。 / Record architecture, frames/lineage, fallback behavior and test evidence, and synchronize the five latest complete entries.
+
+### 关键 Diff / Key diff
+
+```diff
+  result.update(qualification="task_conditioned_opening_projection", ...)
++ result.update(opening_center_world=source_tip.tolist(), opening_source_role="opening")
++ compare candidate_set capture identifiers against current binding before emitting pour_opening
++ request["observation_model"].pop("pour_opening", None)
++ if operation == "pour" and optional execution_context has current pour_opening:
++     copy only that field, retaining historical acquisition context
+```
+
+```diff
+  original centered + bounded-offset search / ranking
+- if not candidates: raise pour_route_unavailable
++ if not candidates and fresh qualified opening exists:
++     local = inv(current_capture @ body_from_observed)
++     for same centered clearance/yaw/azimuth:
++         derived_tip = center + radius * normalized(project(-R.T @ destination_axis))
++         points = fixed transport/exit + derived process pose only
++         candidate = self.qualify(points, ...)  # complete original checks
++         if candidate:
++             candidate["pour_lip_selection"] = original_tip + derived_tip + source_lineage
++             target = derived_target
++             break
++ if not candidates: raise pour_route_unavailable
+  route.update(target=target, ...)
+```
+
+### 验证 / Validation
+
+- [eval] [fix] 五组集中测试439 passed in26.24s；覆盖phase_motion/contact_timing/visual_perception/paos_integration/phase_pipeline。原24 centered优先及无圆环兼容保持；新几何fixture原60失败、第2回退成功，exit collision/continuity仍拒绝。 / All439 tests passed across the five focused suites; original priority/compatibility remain, the new fixture rejects60 originals then accepts the second fallback, and exit failures still reject. (local)
+- [eval] [fix] real visual Query→refresh→private binding→context→client request测试保留历史acquire frame但采用当前circle；real execute逐样本alignment及terminal correction前误差数值等于derived-tip几何并区别旧tip。 / Actual visual/client composition preserves acquisition frame and current circle lineage; real execution samples and terminal correction errors match the distinct derived tip. (local)
+- [chore] [chore] git diff --check通过；visual/client两源及两测试Ruff通过。phase_motion源I001当前L1124（HEAD L1061）；test_phase_motion E731 L3328/L3414、I001当前L4114（HEAD L4100）均HEAD已有，保留无新lint。 / Diff check and four visual/client files pass Ruff; motion source/test findings are unchanged from HEAD and were not broadened into unrelated cleanup. (local)
+- [eval] [fix] 初次visual/client收集缺既有pick-place-workflow PYTHONPATH，补齐后完整运行；两条新增execute fixture缺tip_axis_local先报unknown，补齐fixture后通过，生产检查不变。本轮无Isaac/硬件运动；439测试属Provider/组合证据，v14静态结果不替代后续完整物理复测。 / Corrected the test environment path and missing test-fixture axis before the complete passing run, without relaxing production checks. This is no-Isaac Provider/composition evidence, not a new physical run. (local)
+
+```bash
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py examples/forge-adapters/isaacsim_lab/tests/test_phase_pipeline.py --tb=short
+```
+
+### Git 提交 / Git Commit
+
+- 上轮证据 / Previous evidence: `7705de1de9acf27163fc73ed2648b5d1d1622357`，commit时间2026-11-25 22:09:48+08:00；主会话已确认push成功。分支 / Branch: feature/planning-loop。本轮待主审，无commit/push；文档完成后暂停写入。 / Parent confirmed the previous commit was pushed; this change remains uncommitted and paused for review.
+
 ## v17.10.14 (2026-11-25 21:59) - codex
 
 - [eval] [exp] [完成] 独立时间目录复用215141，只准备yaw0、azimuthπ、clearance0.048、tilt1/hold2两条完整路线：原固定lip五waypoint对照；process_only_lowest_rim仅替换stage=process一项，保留原两transport及两exit的pose/duration/stage。目的是隔离整段换点引发早期transport失败的影响，不搜索其他参数。 / [Completed] Reuse215141 in a separate directory for two routes at yaw0, azimuthπ, clearance0.048 and tilt1/hold2: the original fixed-lip five-waypoint control and a process-only lowest-rim replacement retaining both transport and exit waypoints exactly. Isolate the early-transport effect of replacing the feature throughout the route without searching other parameters. (local)
@@ -336,61 +396,3 @@
 ```
 
 - [docs] [docs] 抓持修复的实跑证据为R03 lift目标变化116→0、grasp119/119、末attachment0.02533375mm；完整任务仍因后续倾倒准备失败。终态记录完成后暂停写入，交主会话审阅提交；没有准备或运行下一诊断，无生产/参数修改、无硬件运动、无commit/push。 / The repair's live evidence is frozen R03 lift targets,119/119 valid grasp samples and0.02533375mm final attachment error; the full task still fails at subsequent pour preparation. Pause edits for parent review and commit after terminal documentation. No next diagnostic was prepared or run, and no production/parameter change, hardware motion or commit/push occurred. (local)
-
-## v17.10.10 (2026-11-25 20:32) - codex
-
-- [env] [fix] [完成] 修复Isaac Adapter执行循环的既有夹指侧走保护：将逐帧参考改为close→lift持续保存的双指最小实测开度，累计外退超过原1e-4m阈值时冻结最后目标；close与attached-follow共用局部更新逻辑，正常内收仍跟随。 / [Completed] Repair the existing Isaac Adapter finger-divergence protection by retaining per-finger minimum measured openings across close/lift. Freeze the last target after cumulative outward retreat exceeds the unchanged1e-4m threshold; share local update logic while retaining inward following. (local)
-- [eval] [fix] [完成] 真实execute循环覆盖慢性close外退贯穿lift、仅lift外退、内收后累计外退与正常双指内收；复用disabled/release/contact-loss回归。验证旧实现新测试失败，再验证修复后的目标回归、Ruff与diff。 / [Completed] Exercise the real execute loop for slow close drift persisting through lift, lift-only drift, retreat after inward recession and legitimate inward following, retaining disabled/release/contact-loss regressions. Demonstrate regression failure on the old implementation, then run targeted tests, Ruff and diff checks. (local)
-- [docs] [docs] [完成] 只修改phase_motion.py、相应测试与报告/日志/Latest5；不改domain port、Tool、AgentLoop或Coordinator，Runtime仍拥有取消结算恢复；无新增gate/hash/schema，不启动仿真。前轮提交e17645a3已推送。 / [Completed] Change only phase_motion.py, tests and evidence documentation; domain ports, Tools, AgentLoop and Coordinator remain unchanged, with Runtime retaining cancellation/settlement/recovery. No new gate/hash/schema and no simulation launch. Previous commit e17645a3 is pushed. (local)
-
-### 失败场景与归属 / Failure and ownership
-
-191713 R03 close首次双侧载荷至末close36帧双指位移[-2.439553,+2.441075]mm，最大单帧外退0.074374mm，小于既有0.1mm阈值，目标更新35次；lift119帧位移[-8.050825,+8.050924]mm，最大外退0.071133mm、更新116次。逐帧重设reference使累计侧走漏检。修复归Isaac Adapter私有机制，跨实现调用契约不变；每控制interval实测finger/contact为新鲜证据，最小回归是载荷有效的慢外退在execute中冻结目标而双指内收仍跟随。 / In191713, sub-threshold per-frame drift accumulated through close/lift while targets kept following. This is an Adapter-private mechanism repair, supported by measured per-control-interval finger/contact evidence; callers and lifecycle ownership remain unchanged.
-
-### Git 提交 / Git Commit
-
-- 上轮诊断结果 / Previous diagnostic evidence: `e17645a3`（已推送 / pushed）；分支 / Branch: `feature/planning-loop`。主会话代码审阅无 Blocker/Major，待其统一提交；本执行代理不 commit/push。 / Parent code review found no Blocker/Major; parent commit is pending, and the execution agent will not commit or push.
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2777、L2788–L2802、L3027–L3037、L3078–L3085：执行局部的 minimum reference 与共享 follow helper，close/attached 两入口共同锁定累计外退；既有 1e-4 m 阈值不变，正常内收更新 minimum，跨 lift 保留参考。 / An execute-local minimum reference and shared follow helper latch cumulative outward retreat in both close and attached motion. The existing threshold remains unchanged; inward motion updates the minimum and lift retains it.
-- [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L385–L448：3 种慢性外退轨迹 × 任一夹指，共 6 个真实 execute 回归；双侧载荷保持有效，每帧外退 0.07 mm，验证越限前正常更新与越限后直到 lift 结束保持最后目标。 / Six real execute regressions cover three slow-retreat trajectories on either finger, preserving bilateral load and asserting normal updates before crossing and a frozen target through lift afterward.
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L314–L326：历史失效证据、离线检测重算、Adapter 归属、旧实现失败和新实现回归、Ruff 既有问题及尚无新实跑证据。 / Historical failure evidence, offline detector recalculation, Adapter ownership, old/new regression results, the pre-existing Ruff finding and the absence of new live evidence.
-
-**修改前 / Before:**
-
-```python
-# Close compared only with the immediately preceding held sample.
-if (follow_hold and contact_established and last_follow_fingers is not None
-        and np.any(measured_fingers > last_follow_fingers + 1e-4)):
-    follow_diverged = True
-# Following updates then replaced that reference every interval.
-last_follow_fingers = measured_fingers
-# Attached following updated its target without an outward-retreat check.
-```
-
-**修改后 / After:**
-
-```python
-def follow_measured_fingers(measured_fingers):
-    nonlocal finger_target, follow_diverged, minimum_follow_fingers
-    if follow_diverged:
-        return
-    if (minimum_follow_fingers is not None
-            and np.any(measured_fingers > minimum_follow_fingers + 1e-4)):
-        follow_diverged = True
-        return
-    minimum_follow_fingers = (measured_fingers.copy() if minimum_follow_fingers is None
-                              else np.minimum(minimum_follow_fingers, measured_fingers))
-    retain_overshoot = float(self.config.get("finger_retain_overshoot_m", 0.0))
-    finger_target = np.maximum(measured_fingers - retain_overshoot, 0.0)
-# Close and attached-follow both call this execute-local helper.
-```
-
-### 验证与证据边界 / Validation and evidence boundary
-
-- [eval] [fix] 修改生产代码之前，`test_contact_timing.py -k freezes_cumulative_outward_drift --tb=short` 的 6 个新例全部失败（6 failed, 26 deselected, 1.22 s），失败均为累计越限后的 target 未冻结，最大偏离预期 0.49 mm；无需临时恢复生产文件。 / Before production edits, all six new cases failed because targets continued following after cumulative crossing, with a maximum 0.49 mm difference from the expected frozen value; no temporary source restoration was needed. (local)
-- [eval] [fix] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py --tb=short`：297 passed in 10.00 s；含快速侧走、正常双指内收、disabled、release、contact-loss、取消及已有恢复回归。 / The combined motion/contact suite passed all 297 tests, including fast divergence, normal inward following, disabled follow, release, contact loss, cancellation and existing recovery. (local)
-- [chore] [chore] `.venv/bin/ruff check examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py`、`git diff --check` 通过。生产文件完整 Ruff 未全绿：仅 L1061–L1065 既有 I001 import formatting，已在 `git show HEAD:examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py | .venv/bin/ruff check --stdin-filename examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py -` 复现相同告警，未顺带修改。 / Test-file Ruff and whitespace checks passed. Full production-file Ruff retains the same pre-existing I001 finding reproduced from HEAD; no unrelated formatting edit was made. (local)
-- [eval] [exp] 主会话对 191713 保存轨迹只读重算：R05 首双侧载荷后第 1 帧（0.01667 s）外退 0.145977 mm，旧 guard 已检出；R03 第 2 帧累计外退 0.143545 mm、每帧小于 0.1 mm，minimum reference 可检出。仅为历史检测重算，不是新物理结果。 / Parent read-only recalculation of the saved trajectory shows the old guard detecting R05's first outward step, while the minimum reference detects R03's accumulated second step. This is historical detector evidence, not a new physical result. (local)
-- [docs] [docs] 主会话审阅 helper 和 6 个回归，无 Blocker/Major；本轮没有启动 Isaac 或硬件、未变物理配置，也未证明居中抓持或倾倒成功。实际运动结果需提交后另行验证；执行代理完成文档后暂停写入。 / Parent review found no Blocker/Major. This work launched no Isaac or hardware execution and changed no physics configuration; centered gripping and pouring success still require later live validation. The execution agent pauses edits after documentation completion. (local)

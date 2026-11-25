@@ -67,6 +67,8 @@ def _task_conditioned_pour_feature(source, destination, *, tolerance_m=0.004):
         "pour_direction_world": direction.tolist(),
         "pour_target_tip_world": destination_tip.tolist(),
         "qualification": "task_conditioned_opening_projection",
+        "opening_center_world": source_tip.tolist(),
+        "opening_source_role": "opening",
     })
     return result
 
@@ -1404,6 +1406,32 @@ class LabVisualPerception:
             symmetry = selected_source.get("grasp_symmetry")
             if isinstance(symmetry, dict) and symmetry.get("kind") == "axial":
                 context["grasp_symmetry"] = deepcopy(symmetry)
+            if (selected_source.get("qualification") == "task_conditioned_opening_projection"
+                    and selected_source.get("opening_source_role") == "opening"
+                    and source.get("geometry_qualification") in {"validated_observation", "simulator_ground_truth"}):
+                candidate_set = self.process_feature_sets[candidate_set_ref]
+                if any(candidate_set[key] != binding[key] for key in (
+                        "observation_ref", "scene_revision", "frame_id", "calibration_ref")):
+                    raise ValueError("circular opening selection does not match this capture")
+                selected_ref = next(ref for ref in selected_refs
+                                    if candidate_set["candidates"][ref][0] == source["entity_ref"])
+                context["pour_opening"] = {
+                    **{key: binding[key] for key in (
+                        "entity_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+                    )},
+                    "process_feature_candidate_set_ref": candidate_set_ref,
+                    "selected_feature_ref": selected_ref,
+                    "qualification": selected_source["qualification"],
+                    "opening_source_role": selected_source["opening_source_role"],
+                    "geometry_qualification": source["geometry_qualification"],
+                    "geometry_ref": source["geometry_ref"],
+                    "entity_prim_path": self.identities[binding["calibration_ref"]][binding["entity_ref"]]["prim_path"],
+                    "captured_body_pose": deepcopy(context["captured_body_pose"]),
+                    "center_world": deepcopy(selected_source["opening_center_world"]),
+                    "axis_world": deepcopy(selected_source["axis_world"]),
+                    "radius_m": selected_source["rim_radius_m"],
+                    "selected_tip_world": deepcopy(selected_source["tip_world"]),
+                }
         return context
 
     def qualify_grasp_approach(self, request):

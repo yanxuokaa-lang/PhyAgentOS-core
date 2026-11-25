@@ -3906,13 +3906,13 @@ def test_pour_tip_axis_fallback_uses_measured_grip_and_checks_joint_delta(
         assert commands
 
 
-@pytest.mark.parametrize("outcome", [
+@pytest.mark.parametrize(("outcome", "derived_tip"), [(value, False) for value in [
     "passes", "qualification_collision", "live_collision", "grasp_lost",
     "terminal_corrected", "terminal_collision", "terminal_still_drifted",
     "terminal_twice_corrected", "terminal_second_collision", "terminal_second_grasp_lost",
     "terminal_second_cancelled",
-])
-def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome):
+]] + [("terminal_corrected", True)])
+def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypatch, outcome, derived_tip):
     from isaacsim_lab.phase_motion import (
         GripContactWindow,
         local_tool_inverse_kinematics,
@@ -3936,6 +3936,8 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     monkeypatch.setattr(GripContactWindow, "valid", lambda window: (
         False if outcome == "terminal_second_grasp_lost" and second_check else original_contact_valid(window)))
     route = arguments["phase_route"]
+    if derived_tip:
+        _install_prepared_derived_tip(arguments)
     transport = dict(route["steps"][0], stage="transport")
     route["steps"] = [transport,
                       dict(transport, stage="exit", joints=[.05, 0., .02, 0., .1, 0., 0.], hold_s=.03),
@@ -3980,6 +3982,8 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         return far.copy(), True
 
     def tool_solver(*args):
+        if derived_tip:
+            assert args[3]["tip_offset_m"] == route["pour_lip_selection"]["derived_tip_local_m"]
         if not qualification_points:
             attempts.append(args[4].copy())
             return far.copy(), True
@@ -4036,6 +4040,8 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
     result = model.execute(arguments, cancel)
 
     assert route["steps"] == original_steps
+    if derived_tip:
+        assert result["operation_completed"], artifacts[-1][1].get("failure_detail")
     assert np.asarray(attempts[:4]) == pytest.approx(
         np.asarray([first_joints.tolist(), original_steps[1]["joints"]] * 2))
     if outcome == "grasp_lost":
@@ -4056,6 +4062,13 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         assert correction["attempt_count"] == len(terminal_checks)
         assert correction["axis_error_before_rad"] == pytest.approx(.15)
         assert correction["tip_error_before_m"] > 0.
+        if derived_tip:
+            expected = model.tcp(original_steps[-1]["joints"]) @ nominal
+            drifted = model.tcp(terminal_waypoint) @ terminal_drift
+            derived_error = tool_feature_errors(drifted, expected, route["target"]["tool_frame"])[0]
+            old_error = tool_feature_errors(drifted, expected, arguments["manipulation_target"]["tool_frame"])[0]
+            assert correction["tip_error_before_m"] == pytest.approx(derived_error)
+            assert abs(derived_error - old_error) > .0001
         assert correction["axis_error_after_rad"] == result["measurements"]["final_tool_axis_error_rad"]
         assert correction["tip_error_after_m"] == result["measurements"]["final_tool_tip_error_m"]
     else:
@@ -4096,13 +4109,16 @@ def test_pour_requalifies_remaining_exit_after_discontinuous_solutions(monkeypat
         assert {sample["stage"] for sample in artifacts[-1][1]["samples"]} == {"transport"}
 
 
-def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift(monkeypatch):
+@pytest.mark.parametrize("derived_tip", [False, True])
+def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift(monkeypatch, derived_tip):
     from pick_place_workflow.cycle_protocol import evaluate_process_feedback
     from isaacsim_lab.phase_motion import local_inverse_kinematics
 
     model, arguments, commands, artifacts = _pour_correction_execution_fixture(monkeypatch)
     monkeypatch.setattr("pick_place_workflow.cycle_protocol.evaluate_process_feedback", evaluate_process_feedback)
     route = arguments["phase_route"]
+    if derived_tip:
+        _install_prepared_derived_tip(arguments)
     transport = dict(route["steps"][0], stage="transport")
     process = dict(transport, stage="process", hold_s=.2, joints=[.05, 0., 0., 0., 1., 0., 0.])
     route["steps"] = [transport, *(
@@ -4128,7 +4144,7 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
 
     monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics", solve)
     result = model.execute(arguments, Event())
-    assert result["operation_completed"] is True
+    assert result["operation_completed"] is True, (result, artifacts[-1])
     assert result["measurements"]["qualified_tilt_hold_s"] >= .1
     assert len(calls) == 3 and calls[0] == pytest.approx(transport["joints"])
     assert any(command[:7] == pytest.approx(transport["joints"]) for command in commands)
@@ -4136,6 +4152,16 @@ def test_pour_transport_uses_planned_waypoint_then_measures_hold_with_grip_drift
     assert process_samples
     assert all(sample["attachment_rotation_error_rad"] > model.config["grasp_rotation_tolerance_rad"]
                and sample["grasp_valid"] for sample in process_samples)
+
+    if derived_tip:
+        old_tip = arguments["manipulation_target"]["tool_frame"]["tip_offset_m"]
+        for sample in process_samples:
+            body = np.asarray(sample["object_pose"])
+            origin = np.asarray(route["target"]["process_frame"]["origin_m"])
+            expected = np.linalg.norm(body[:3, 3] + body[:3, :3] @ tool["tip_offset_m"] - origin)
+            old_alignment = np.linalg.norm(body[:3, 3] + body[:3, :3] @ old_tip - origin)
+            assert sample["alignment_error_m"] == pytest.approx(expected)
+            assert abs(old_alignment - expected) > .001
 
 
 @pytest.mark.parametrize("stage", ["process", "transport"])
@@ -4246,3 +4272,141 @@ def test_internal_mount_collider_is_checked_except_at_link0_connection(monkeypat
     else:
         check()
     assert queried
+
+
+def _circular_pour_fixture():
+    model, arguments = _pour_preparation_fixture()
+    arguments.update(entity_ref="entity://source", process_feature_candidate_set_ref="features://fresh",
+                     process_feature_refs=["feature://source", "feature://receiver"])
+    arguments["manipulation_target"]["tool_frame"]["tip_offset_m"] = [.02, 0., .08]
+    arguments["manipulation_target"]["tool_frame"]["tip_axis_local"] = [0., 0., 1.]
+    capture = pose_matrix([.4, -.2, .9], Rotation.from_euler("z", .3).as_quat())
+    context = {
+        **{key: arguments[key] for key in ("entity_ref", "observation_ref", "scene_revision", "frame_id",
+                                          "calibration_ref", "process_feature_candidate_set_ref")},
+        "selected_feature_ref": "feature://source", "geometry_ref": "geometry://fresh",
+        "entity_prim_path": arguments["manipulation_target"]["entity_prim_path"],
+        "qualification": "task_conditioned_opening_projection", "opening_source_role": "opening",
+        "geometry_qualification": "validated_observation", "captured_body_pose": capture.tolist(),
+        "center_world": (capture[:3, :3] @ [0., 0., .08] + capture[:3, 3]).tolist(),
+        "selected_tip_world": (capture[:3, :3] @ [.02, 0., .08] + capture[:3, 3]).tolist(),
+        "axis_world": [0., 0., 1.], "radius_m": .02,
+    }
+    arguments["observation_model"].update(pour_opening=context, observation_ref="observation://acquire-old",
+                                          captured_body_pose=np.eye(4).tolist(), geometry_ref="geometry://acquire-old")
+    state = {"stage": None, "attempts": [], "completed": []}
+    actual_qualify = model.qualify
+
+    def qualify(points, *args):
+        state["attempts"].append(points)
+
+        def progress(stage, status, **_details):
+            state["stage"] = stage
+            if status == "completed":
+                state["completed"].append(stage)
+
+        return actual_qualify(points, *args, progress=progress)
+
+    def collide(joints, _source, _contact, _attached, relation, *_args, **_kwargs):
+        if state["stage"] != "process":
+            return
+        body = model.tcp(joints) @ relation
+        # Cartesian fixture receiver: only the opposite-side tilted approach
+        # clears its rim, and the complete source opening must stay above it.
+        radial_down = -body[:3, :3].T @ np.array([0., 0., 1.])
+        radial_down[2] = 0.
+        lowest = np.array([0., 0., .08]) + .02 * radial_down / np.linalg.norm(radial_down)
+        height = (body[:3, :3] @ lowest + body[:3, 3])[2] - .8
+        if body[0, 2] > -.5 or height < .038:
+            raise PhaseMotionError("payload_collision", "process: source rim overlaps receiver")
+
+    model.qualify = qualify
+    model._collisions = collide
+    return model, arguments, state
+
+
+def test_circular_pour_fallback_preserves_transport_exit_and_real_qualification():
+    model, arguments, state = _circular_pour_fixture()
+    before = deepcopy(arguments)
+    route, _ = model.prepare(arguments)
+    selection = route["pour_lip_selection"]
+    assert len(state["attempts"]) == 62  # Existing24 centered +36 offsets, then two same-grid fallbacks.
+    assert selection["strategy"] == "process_only_lowest_qualified_opening_rim"
+    assert selection["original_tip_local_m"] == [.02, 0., .08]
+    assert selection["derived_tip_local_m"] == pytest.approx([-.02, 0., .08])
+    assert route["target"]["tool_frame"]["tip_offset_m"] == selection["derived_tip_local_m"]
+    assert selection["source_lineage"]["observation_ref"] == arguments["observation_ref"]
+    assert selection["opening_center_local_m"] == pytest.approx([0., 0., .08])
+    original, fallback = state["attempts"][1], state["attempts"][-1]
+    for (old_pose, hold, stage), (pose, new_hold, new_stage) in zip(original, fallback, strict=True):
+        assert (hold, stage) == (new_hold, new_stage)
+        assert pose[:3, :3] == pytest.approx(old_pose[:3, :3])
+        if stage != "process":
+            assert np.array_equal(pose, old_pose)
+    assert state["completed"][-5:] == ["transport", "transport", "process", "exit", "exit"]
+    assert {p["stage"] for p in route["steps"]} == {"transport", "process", "exit"}
+    assert arguments == before
+
+
+@pytest.mark.parametrize("change", ["missing", "observation_ref", "scene_revision", "calibration_ref",
+                                     "entity_ref", "selected_feature_ref", "spout", "nan", "zero_radius",
+                                     "selected_tip_mismatch"])
+def test_circular_pour_missing_or_invalid_context_does_not_enable_fallback(change):
+    model, arguments, state = _circular_pour_fixture()
+    opening = arguments["observation_model"]["pour_opening"]
+    if change == "missing":
+        arguments["observation_model"].pop("pour_opening")
+    elif change == "spout":
+        opening["opening_source_role"] = "spout"
+    elif change == "nan":
+        opening["center_world"][0] = float("nan")
+    elif change == "zero_radius":
+        opening["radius_m"] = 0.
+    elif change == "selected_tip_mismatch":
+        opening["selected_tip_world"][0] += .03
+    else:
+        opening[change] = "stale://wrong"
+    with pytest.raises(PhaseMotionError, match="source rim overlaps receiver") as error:
+        model.prepare(arguments)
+    assert error.value.code == "pour_route_unavailable"
+    assert len(state["attempts"]) == 60
+
+
+@pytest.mark.parametrize("failure", ["route_collision", "ik_discontinuity"])
+def test_circular_pour_fallback_cannot_bypass_exit_checks(monkeypatch, failure):
+    model, arguments, state = _circular_pour_fixture()
+    collisions = model._collisions
+    inverse = model.solver.compute_inverse_kinematics
+
+    def collide(*args, **kwargs):
+        collisions(*args, **kwargs)
+        if state["stage"] == "exit" and failure == "route_collision":
+            raise PhaseMotionError(failure, "exit receiver")
+
+    def solve(*args, **kwargs):
+        q, ok = inverse(*args, **kwargs)
+        if state["stage"] == "exit" and failure == "ik_discontinuity":
+            q[-1] = kwargs["warm_start"][-1] + .8
+        return q, ok
+
+    model._collisions = collide
+    model.solver.compute_inverse_kinematics = solve
+    if failure == "ik_discontinuity":
+        monkeypatch.setattr("isaacsim_lab.phase_motion.local_inverse_kinematics",
+                            lambda _fk, _target, seed, *_args: (seed.copy(), False))
+    with pytest.raises(PhaseMotionError) as error:
+        model.prepare(arguments)
+    assert error.value.code == "pour_route_unavailable"
+    assert "process" in state["completed"]
+    assert len(state["attempts"]) == 84
+    assert "exit" in str(error.value)
+
+
+def _install_prepared_derived_tip(arguments):
+    preparation, request, _state = _circular_pour_fixture()
+    prepared, _evidence = preparation.prepare(request)
+    route = arguments["phase_route"]
+    arguments["manipulation_target"] = deepcopy(prepared["target"])
+    arguments["manipulation_target"]["tool_frame"]["tip_offset_m"] = prepared["pour_lip_selection"]["original_tip_local_m"]
+    route["target"]["tool_frame"] = deepcopy(prepared["target"]["tool_frame"])
+    route["pour_lip_selection"] = deepcopy(prepared["pour_lip_selection"])

@@ -581,3 +581,28 @@ Parent review authorized the two-route static diagnostic. PID722797 started at22
 该两路线对照支持“保留已通过的高位运输/退出，仅修正process目标”这一诊断构造在当前静态模型内可行；它没有生成正式readiness，没有执行物理轨迹，也未解决生产opaque feature身份变更的语义问题。domain/Provider/Runtime边界与生产代码未改，执行许可仍未授予。只做固定两候选，没有继续搜索；文档完成后暂停写入供主会话审阅，无commit/push。
 
 Both fixed candidates completed: the original lip reproduces the payload collision, while replacing only the process pose passes complete qualification with134 steps (86 transport,11 process,37 exit) and2.6s total hold. Qualified terminal process FK gives0.163038mm lowest-rim target error. Real joints/time remain exactly unchanged and measured scene drift is preserved. This is static route evidence only, not readiness, physical execution or permission to change the identity of an opaque selected feature. No further candidate or production change was made.
+
+
+### v17.10.15 新鲜圆环派生执行点修复 / Fresh-opening derived execution-tip fix
+
+2026-11-25 22:12开始编码，基于已提交并推送的v17.10.14 `7705de1de9acf27163fc73ed2648b5d1d1622357`（commit时间22:09:48+08:00）。使用anti-minimal-implementation及robotics-safety-implementation；本轮修改限制在Isaac Adapter私有感知上下文、路径构造与现有客户端组合。domain语义、公共MANIPULATION_TARGET_SCHEMA、Tool/AgentLoop及Runtime取消、结算、恢复所有权保持。
+
+原opaque pour_lip继续保留为输入证据；仅由qualified opening派生的候选保留原opening center/axis/radius及来源资格。execution_context通过当前candidate_set的observation/scene/frame/calibration检查后输出pour_opening，包含当前capture pose、geometry/entity及selected feature。具体新增来源检查针对旧candidate_set被当前binding重新标为fresh的失败，既有成员检查不能证明capture相同；没有新增hash、schema或独立gate。显式pour_lip/spout不获得可重选圆环资格。
+
+prepare_held先移除历史pour_opening，再通过已有可选resolver取当前pour上下文；仅operation=pour且process_type=pour解析圆环。acquire的points_ref/captured_body_pose/geometry_ref与其他历史坐标信息完整保留。place及不提供新能力/metadata的Provider保持兼容；输入assignment及调用方数据不原地修改。
+
+原centered及bounded-offset搜索和成功排名完整保留。仅原路线全部失败时，以同一24个centered参数点作有界回退；fresh opening按`inv(current captured_body_pose @ body_from_observed)`转换到已建立的observed local。每个候选计算倾斜后圆环最低点，沿用原fixed transport/exit四点，只替换process pose，hold/stage及完整workspace、IK、joint limits/delta、robot/payload/finger collision和退出验证均保留。首条成功回退后停止，route.pour_lip_selection记录原tip→derived tip及来源，route.target携带实际执行tip，明确它是来源圆环上的派生点而非原选中点。
+
+Provider测试的Cartesian场景先拒绝原24 centered和36 offset路线，第2个同网格回退成功；四个非process pose逐元素相同，五阶段完整qualify。missing/stale/不一致lineage、spout、非有限/退化圆环、exit collision和exit continuity失败维持unavailable。真实visual.propose→refresh_process→_bind_execution→execution_context→client held request集成核对新鲜圆环与保留的历史acquire frame；执行fixture消费真实prepare生成的派生tip，逐样本alignment数值和末端校正前误差与派生点一致，且可区分旧tip。
+
+验证命令：
+
+```bash
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py examples/forge-adapters/isaacsim_lab/tests/test_phase_pipeline.py --tb=short
+```
+
+结果439 passed in26.24s，git diff --check通过。visual_perception/paos_client及对应两测试文件Ruff通过；phase_motion源I001（当前L1124、HEAD L1061）与其测试E731×2（L3328/L3414）、I001（当前L4114、HEAD L4100）均为HEAD已有，未顺带修复。初次集中调用因PYTHONPATH缺pick-place-workflow无法收集，补齐已有package路径后执行上述完整验证；两条新execute测试最初fixture缺tip_axis_local导致unknown，补齐测试fixture后通过，未据此放宽生产检查。
+
+本轮证据为Provider/组合层的无Isaac自动化测试；v14静态几何证据仅用于选择修复方向，本轮未启动Isaac、未发硬件运动，尚无修改后完整R05→R03物理执行结果。既有生命周期与安全检查不变；主审后才由主会话提交并决定完整复测。本轮不commit/push，完成文档后暂停写入。
+
+The fix preserves the selected opaque lip as evidence and records a distinct execution point derived from its freshly qualified circular opening. Current capture lineage is validated before metadata emission, while acquisition geometry/frame context stays intact. Only after all original routes fail does the Adapter reuse the same centered grid and replace the process pose; transport/exit poses, duration/stage, full qualification and safety thresholds remain unchanged. Route target and explicit selection lineage identify the actual derived tip. The five focused suites passed439 tests, including real preparation, fresh-context/client integration, measured alignment and terminal correction; pre-existing Ruff findings remain unchanged. This is Provider/no-Isaac test evidence, with no new physical run or hardware motion, and is paused for parent review without commit/push.

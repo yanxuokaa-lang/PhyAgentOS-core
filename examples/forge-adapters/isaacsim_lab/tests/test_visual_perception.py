@@ -315,6 +315,8 @@ def test_task_conditioned_pour_feature_uses_same_capture_openings_and_rejects_ax
     expected /= np.linalg.norm(expected)
     assert feature["feature_role"] == "pour_lip"
     assert feature["qualification"] == "task_conditioned_opening_projection"
+    assert feature["opening_source_role"] == "opening"
+    assert feature["opening_center_world"] == source["tip_world"]
     assert np.asarray(feature["pour_direction_world"]) == pytest.approx(expected)
     assert np.asarray(feature["tip_world"]) == pytest.approx(
         np.asarray(source["tip_world"]) + expected * source["rim_radius_m"]
@@ -1907,3 +1909,85 @@ def test_resolve_passes_operation_into_process_feature_selection_validation():
         "width_m": .052, "height_m": .02, "depth_m": .03,
     }
     visual._bind_execution.assert_called_once()
+
+
+@pytest.mark.parametrize("source_role", ["opening", "pour_lip"])
+def test_held_client_projects_current_circle_but_preserves_acquisition_frame(source_role):
+    from isaacsim_lab.paos_client import LabUtopiaCycleProvider
+
+    identity = {"observation_ref": "observation://held", "scene_revision": "scene:held",
+                "frame_id": "front", "calibration_ref": "artifact://calibration/held"}
+    source_ref, destination_ref = "entity://bottle", "entity://beaker"
+    rim = {"feature_kind": "rim", "feature_role": source_role, "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "rim_radius_m": .02,
+           "origin_world": [0., 0., .8], "size_m": [.1, .1, .4]}
+    if source_role == "pour_lip":
+        rim["pour_direction_world"] = [1., 0., 0.]
+    receiver = {**rim, "feature_role": "opening", "tip_world": [.3, .4, 1.]}
+    visual = object.__new__(LabVisualPerception)
+    visual.observations = {identity["calibration_ref"]: {
+        ref: {**identity, "entity_ref": ref, "category": category,
+              "geometry_qualification": "validated_observation", "geometry_ref": f"artifact://geometry/{name}",
+              "points_ref": f"artifact://points/{name}", "world_from_camera": np.eye(4).tolist(),
+              "process_feature_candidates": [feature]}
+        for ref, name, category, feature in (
+            (source_ref, "held-bottle", "reagent_bottle", rim),
+            (destination_ref, "held-beaker", "mixing_vessel", receiver))}}
+    visual.process_feature_sets, visual.identities, visual.capabilities = {}, {}, {}
+    visual.captures = {identity["calibration_ref"]: (identity, None)}
+    captured_body = np.eye(4)
+    captured_body[:3, 3] = [.01, -.02, .8]
+    visual.engine = SimpleNamespace(bind_observed_entities=Mock(return_value={
+        "status": "available", "capabilities": {}, "records": [
+            {"entity_ref": source_ref, "prim_path": "/private/source", "captured_body_pose": captured_body.tolist()},
+            {"entity_ref": destination_ref, "prim_path": "/private/beaker"}]}))
+    query = visual.propose({**identity, "operation": "pour", "entity_refs": [source_ref, destination_ref]})
+    selected = [item["feature_ref"] for item in query["candidates"]]
+    binding = {**identity, "entity_ref": source_ref, "destination_ref": "destination://beaker",
+               "held_invocation_ref": "invocation://acquired", "operation": "pour",
+               "process_feature_candidate_set_ref": query["candidate_set_ref"], "process_feature_refs": selected}
+    acquisition = {"points_ref": "artifact://points/acquisition", "geometry_ref": "artifact://geometry/acquisition",
+                   "captured_body_pose": np.eye(4).tolist(), "observation_ref": "observation://acquisition",
+                   "world_from_camera": np.eye(4).tolist(), "pour_opening": {"stale": True}}
+    body_from_observed = np.eye(4)
+    body_from_observed[:3, 3] = [.003, .004, .005]
+    assignment_ref = "artifact://assignments/acquired"
+    document = {"assignment": {"entity_ref": source_ref}, "route_arguments": {
+        "process_type": "pour", "observation_model": acquisition,
+        "phase_route": {"body_from_observed": body_from_observed.tolist()},
+        "manipulation_target": {"entity_prim_path": "/private/source", "destination_prim_path": "/private/beaker",
+                                "grasp_frame": {"retained": True}}}}
+    before = deepcopy(document)
+    seen = []
+    engine = SimpleNamespace(prepare_held=lambda request: (seen.append(request) or {
+        "status": "unavailable", "error": "test stops at no-motion engine boundary"}))
+    provider = LabUtopiaCycleProvider(engine, target_resolver=visual, assignment_store={assignment_ref: document})
+    provider.result_resolver = lambda _ref: {"status": "succeeded", "result": {
+        "assignment_ref": assignment_ref,
+        "capability_outcome_summary": {"outcome_known": True, "possession_state": "holding"}}}
+    result = provider.prepare_held(binding)
+    assert result["error"] == "test stops at no-motion engine boundary"
+    request, = seen
+    context = request["observation_model"]
+    assert {key: value for key, value in context.items() if key != "pour_opening"} == {
+        key: value for key, value in acquisition.items() if key != "pour_opening"}
+    assert request["manipulation_target"]["grasp_frame"] == {"retained": True}
+    if source_role == "opening":
+        opening = context["pour_opening"]
+        assert {key: opening[key] for key in identity} == identity
+        assert opening["center_world"] == rim["tip_world"]
+        assert opening["radius_m"] == .02
+        assert opening["selected_feature_ref"] == selected[0]
+        assert opening["geometry_ref"] == "artifact://geometry/held-bottle"
+        assert opening["captured_body_pose"] == captured_body.tolist()
+        local = np.linalg.inv(captured_body @ body_from_observed)
+        expected_tip = local @ np.r_[opening["selected_tip_world"], 1.]
+        assert request["manipulation_target"]["tool_frame"]["tip_offset_m"] == pytest.approx(expected_tip[:3])
+        assert opening["selected_tip_world"] != opening["center_world"]
+        visual.process_feature_sets[query["candidate_set_ref"]]["observation_ref"] = "observation://old"
+        with pytest.raises(ValueError, match="selection does not match this capture"):
+            visual.execution_context(binding)
+    else:
+        assert "pour_opening" not in context
+    assert document == before
+    visual.engine.bind_observed_entities.assert_called_once()

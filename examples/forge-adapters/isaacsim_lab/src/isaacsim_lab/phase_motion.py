@@ -790,6 +790,69 @@ def process_waypoints(operation, parameters, tcp, body, tcp_from_object, target,
     return values
 
 
+def current_pour_opening(arguments, target, body_from_observed, tolerance):
+    """Resolve fresh Provider-private opening evidence into the acquired frame."""
+    opening = arguments.get("observation_model", {}).get("pour_opening")
+    if opening is None:
+        return None
+    if not isinstance(opening, dict):
+        raise PhaseMotionError("pour_opening_invalid", "opening context must be a mapping")
+    for key in ("entity_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+                "process_feature_candidate_set_ref"):
+        if not arguments.get(key) or opening.get(key) != arguments[key]:
+            raise PhaseMotionError("pour_opening_stale", f"opening {key} differs from current held preparation")
+    if (not opening.get("selected_feature_ref")
+            or opening["selected_feature_ref"] not in arguments.get("process_feature_refs", ())
+            or opening.get("entity_prim_path") != target["entity_prim_path"]
+            or not opening.get("geometry_ref")):
+        raise PhaseMotionError("pour_opening_stale", "opening source or selected feature differs from held preparation")
+    if (opening.get("qualification") != "task_conditioned_opening_projection"
+            or opening.get("opening_source_role") != "opening"
+            or opening.get("geometry_qualification") not in {"validated_observation", "simulator_ground_truth"}):
+        raise PhaseMotionError("pour_opening_invalid", "selected feature is not derived from a qualified circular opening")
+    try:
+        capture = np.asarray(opening["captured_body_pose"], dtype=float)
+        center = np.asarray(opening["center_world"], dtype=float)
+        axis = np.asarray(opening["axis_world"], dtype=float)
+        selected = np.asarray(opening["selected_tip_world"], dtype=float)
+        radius = opening["radius_m"]
+        if (capture.shape != (4, 4) or not np.isfinite(capture).all()
+                or not np.allclose(capture[3], [0., 0., 0., 1.])
+                or not np.allclose(capture[:3, :3].T @ capture[:3, :3], np.eye(3), atol=1e-6)
+                or np.linalg.det(capture[:3, :3]) <= 0
+                or any(v.shape != (3,) or not np.isfinite(v).all() for v in (center, axis, selected))
+                or isinstance(radius, bool) or not isinstance(radius, (int, float))
+                or not math.isfinite(radius) or radius <= 0 or np.linalg.norm(axis) < 1e-9):
+            raise ValueError("non-finite or degenerate circular opening geometry")
+        local = np.linalg.inv(capture @ body_from_observed)
+        center = local[:3, :3] @ center + local[:3, 3]
+        axis = local[:3, :3] @ axis
+        axis /= np.linalg.norm(axis)
+        selected = local[:3, :3] @ selected + local[:3, 3]
+        tip = np.asarray(target["tool_frame"]["tip_offset_m"], dtype=float)
+        if (np.linalg.norm(selected - tip) > tolerance
+                or abs(float(axis @ (selected - center))) > tolerance
+                or abs(float(np.linalg.norm(selected - center)) - radius) > tolerance):
+            raise ValueError("selected lip does not match the current opening and refreshed target")
+    except (KeyError, TypeError, ValueError, np.linalg.LinAlgError) as exc:
+        raise PhaseMotionError("pour_opening_invalid", str(exc)) from exc
+    return center, axis, float(radius), deepcopy(opening)
+
+
+def lowest_pour_rim_tip(opening, rotation, destination_axis):
+    """Choose the lowest point on the same qualified circle for this rotation."""
+    center, axis, radius, _lineage = opening
+    destination_axis = np.asarray(destination_axis, dtype=float)
+    if (destination_axis.shape != (3,) or not np.isfinite(destination_axis).all()
+            or np.linalg.norm(destination_axis) < 1e-9):
+        raise PhaseMotionError("pour_opening_invalid", "destination axis is degenerate")
+    downhill = -rotation.T @ (destination_axis / np.linalg.norm(destination_axis))
+    downhill -= axis * float(downhill @ axis)
+    if not np.isfinite(downhill).all() or np.linalg.norm(downhill) < 1e-9:
+        raise PhaseMotionError("pour_opening_invalid", "tilted opening has no unique lowest rim point")
+    return center + radius * downhill / np.linalg.norm(downhill)
+
+
 class GripContactWindow:
     """Selected-body contact load over one control interval's physics substeps."""
 
@@ -1780,6 +1843,44 @@ class IsaacPhaseMotion:
                             break
                     if candidates:
                         break
+            if not candidates:
+                try:
+                    opening = current_pour_opening(arguments, target, relation, self.config["position_tolerance_m"])
+                except PhaseMotionError as exc:
+                    failures.append(f"circular opening fallback rejected: {exc.code}: {exc}")
+                    opening = None
+                if opening is not None:
+                    for clearance, yaw, azimuth, fixed_points in centered:
+                        try:
+                            process_pose = next(pose for pose, _, stage in fixed_points if stage == "process")
+                            tip = lowest_pour_rim_tip(
+                                opening, (process_pose @ tcp_from_object)[:3, :3], target["process_frame"]["axis"],
+                            )
+                            derived_target = deepcopy(target)
+                            derived_target["tool_frame"]["tip_offset_m"] = tip.tolist()
+                            candidate_config = {**self.config, "pour_lip_clearance_m": clearance,
+                                                "pour_yaw_rad": yaw, "pour_azimuth_rad": azimuth}
+                            derived_points = process_waypoints(operation, arguments["parameters"], tcp, body,
+                                                               tcp_from_object, derived_target, candidate_config)
+                            points = [(new_pose if stage == "process" else pose, hold, stage)
+                                      for (pose, hold, stage), (new_pose, _, _)
+                                      in zip(fixed_points, derived_points, strict=True)]
+                            candidate = qualify_pour(points, clearance, yaw, azimuth, np.zeros(3))
+                        except PhaseMotionError as exc:
+                            failures.append(f"circular opening fallback: {exc.code}: {exc}")
+                            continue
+                        if candidate is not None:
+                            candidate["pour_lip_selection"] = {
+                                "strategy": "process_only_lowest_qualified_opening_rim",
+                                "original_tip_local_m": deepcopy(target["tool_frame"]["tip_offset_m"]),
+                                "derived_tip_local_m": tip.tolist(),
+                                "opening_center_local_m": opening[0].tolist(),
+                                "opening_axis_local": opening[1].tolist(), "opening_radius_m": opening[2],
+                                "source_lineage": opening[3],
+                            }
+                            candidates.append(candidate)
+                            target = derived_target
+                            break
             if not candidates:
                 raise PhaseMotionError("pour_route_unavailable", "\n".join(failures) or "lip clearance exceeds alignment tolerance")
             route = min(candidates, key=lambda item: (abs(item["pour_yaw_rad"]), -item["pour_lip_clearance_m"], float(np.abs(np.diff(

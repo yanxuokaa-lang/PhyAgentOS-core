@@ -1070,3 +1070,39 @@ def test_held_preparation_preserves_candidate_failure_details(engine_result, exp
     })
 
     assert result == {"status": "unavailable", "motion_authorized": False, "error": expected_error}
+
+
+@pytest.mark.parametrize("operation,context_capability", [
+    ("pour", "absent"), ("pour", "missing_metadata"), ("place", "must_not_call"),
+])
+def test_held_optional_opening_context_compatibility(operation, context_capability):
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    old_context = {"geometry_ref": "artifact://geometry/acquire", "points_ref": "artifact://points/acquire",
+                   "pour_opening": {"observation_ref": "observation://old"}}
+    document = {"assignment": {"entity_ref": "entity://source"}, "route_arguments": {
+        "process_type": "pour", "manipulation_target": {}, "phase_route": {}, "observation_model": old_context}}
+    before = deepcopy(document)
+    assignment_ref = "artifact://assignments/acquired"
+    resolver = SimpleNamespace(refresh_process=lambda _arguments, target, **_kwargs: target)
+    if context_capability != "absent":
+        resolver.execution_context = Mock(return_value={})
+        if context_capability == "must_not_call":
+            resolver.execution_context.side_effect = AssertionError("place does not request new opening geometry")
+    seen = []
+    provider = LabUtopiaCycleProvider(
+        SimpleNamespace(prepare_held=lambda request: (seen.append(request) or {"status": "unavailable", "error": "stop"})),
+        target_resolver=resolver, assignment_store={assignment_ref: document})
+    provider.result_resolver = lambda _ref: {"status": "succeeded", "result": {
+        "assignment_ref": assignment_ref,
+        "capability_outcome_summary": {"outcome_known": True, "possession_state": "holding"}}}
+    result = provider.prepare_held({"entity_ref": "entity://source", "held_invocation_ref": "invocation://acquire",
+                                    "operation": operation})
+    assert result["error"] == "stop"
+    request, = seen
+    assert request["observation_model"] == {key: value for key, value in old_context.items() if key != "pour_opening"}
+    assert document == before
+    if context_capability == "must_not_call":
+        resolver.execution_context.assert_not_called()

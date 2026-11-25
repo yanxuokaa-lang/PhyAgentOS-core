@@ -228,6 +228,8 @@ class LabUtopiaCycleProvider:
                 raise ValueError("held source entity differs from requested entity")
             request = {**deepcopy(document["route_arguments"]), **deepcopy(dict(arguments)),
                        "assignment": assignment}
+            if isinstance(request.get("observation_model"), dict):
+                request["observation_model"].pop("pour_opening", None)
             refresh = getattr(self.target_resolver, "refresh_process", None)
             if refresh is not None:
                 # The held schema carries no process_type; the merged request's
@@ -237,6 +239,11 @@ class LabUtopiaCycleProvider:
                     {**arguments, "process_type": request.get("process_type")},
                     request["manipulation_target"],
                     observation_model=request["observation_model"], phase_route=request["phase_route"])
+                context = getattr(self.target_resolver, "execution_context", None)
+                if callable(context) and request.get("operation") == "pour" and request.get("process_type") == "pour":
+                    current = context({**arguments, "process_type": request["process_type"]})
+                    if isinstance(current, Mapping) and isinstance(current.get("pour_opening"), Mapping):
+                        request["observation_model"]["pour_opening"] = deepcopy(current["pour_opening"])
             result = prepare(request)
             if not isinstance(result, Mapping) or result.get("status") != "available":
                 return {"status": "unavailable", "motion_authorized": False,
