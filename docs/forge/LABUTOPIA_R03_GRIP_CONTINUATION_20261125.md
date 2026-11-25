@@ -160,3 +160,61 @@ PYTHONPATH=examples/forge-skills/pick-place-workflow/src:examples/forge-adapters
   examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py \
   examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py --tb=short
 ```
+
+## v17.10.6 连续复跑 / Continuous replay
+
+2026-11-25 16:51:11 +08:00，使用已提交 `2dcf0aaa0c670c991d495cc05d8fd1734a5abc30`（v17.10.5 观测重采集修复）启动新轮次。运行目录：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.6-r05-r03-stale-recapture-165053`。Launcher PID `1064556`、Host PID `1064557`、录像观察器 PID `1064558`；16:51:14 进入任务创建，session `cli:lab-23e4b67abf89`。启动不代表任务完成。
+
+复制 `155843` 的 13 个启动配置/脚本，仅替换运行目录；JSON/Python 语法、实际文件依赖和指令一致性检查通过。源/目标 `/World/...` 是 USD prim，未将其视为磁盘文件。物理、候选、世界坐标、TCP 标定和停止/恢复路径均继承 `155843`（4 mm 夹持压入量、60 N 上限）。新运行使用独立数据库和工件，视频由既有观察器标注到同日 `review-videos`。未重复运行此前通过的 104 项测试，本轮验证是实际 Isaac 无液体仿真。
+
+Replay 165053 started on committed 2dcf0aaa with unchanged physics, candidates, coordinate/calibration assumptions, stop/recovery behavior and R05→R03 instruction. Thirteen launcher/configuration files differ only in run-directory references; syntax, filesystem dependencies and instruction checks passed. Separate task/artifact stores and the existing annotated-video observer are active. The previous 104 passing tests are not repeated; actual simulation provides the new evidence. Outcome remains pending.
+
+```bash
+.venv/bin/python -u out/labutopia-elevated-20261125/v17.10.6-r05-r03-stale-recapture-165053/launch.py
+```
+
+## 165053 主机重启中断与 173255 复跑 / Reboot interruption and replay
+
+165053 的任务 `task_fb7fbc55bef24d9d` 最后已落盘阶段回执为 R05 acquire `succeeded`（`phase-feedback/a529e3ea9c8849aeaae7fcd351a90069.json`）；未生成 acceptance.json，未获得倾倒终态。主机于 2026-11-25 17:25:38 重启，原场景和进程消失。该轮记录为主机重启导致执行中断，不能判为动作失败或双瓶完成。旧启动日志的 memory pressure 提示不能单独确立重启原因；已保留原始工件与视频。
+
+17:32:55 +08:00 使用相同提交 `2dcf0aaa` 和原 4 mm/60 N 配置启动全新完整任务，目录 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.6-r05-r03-post-reboot-173255`；Launcher `15236`、Host `15237`、录像观察器 `15238`，session `cli:lab-aaabb2d12eff`。13 个启动配置/脚本归一化路径后与 165053 一致；未复制旧数据库、工件或持瓶状态。启动前可用 RAM 20 GiB、空闲 swap 13 GiB、工作盘 58 GiB、GPU 空闲约 10.8 GiB；现有推理服务保持运行。该轮状态待实际回执。
+
+Run 165053 was interrupted by a host reboot, with only R05 acquisition confirmed successful and no final acceptance or pouring receipt. No action failure is inferred. Replay 173255 starts a fresh scene and complete task on the same commit, physics and instruction, preserving old evidence and leaving the existing inference service running. Resource availability was checked because the prior interruption had memory-pressure messages; its cause remains unconfirmed.
+
+```bash
+.venv/bin/python -u out/labutopia-elevated-20261125/v17.10.6-r05-r03-post-reboot-173255/launch.py
+```
+
+## 173255 R05 全周期结果 / R05 complete cycle
+
+同一任务 `task_8f67e002d7364db8` 的 R05 抓取、倾倒、归位松夹后撤三个回执均 `succeeded`。抓取回执 `75c8a6c0ca094575bc039c0686fd10a6.json`，垂直抬升约58.54 mm；倾倒回执 `151d0885612c43e0b9ab706c3b871432.json`，峰值1.0027256 rad、连续对准保持2.833333 s、瓶口位置误差0.1673 mm、轴误差0.0011674 rad；归位回执 `3e72675907cc4aa3be3104bffe83b841.json`，原位误差0.9005 mm、旋转误差0.006432 rad。原安全阈值和4 mm/60 N保持不变。无液体仿真只证明运动目标，液体转移未测量。
+
+R05合辑绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R05全周期成功_R03待完成_同一AgentLoop.mp4`。160.250秒，来自同一任务的三个阶段，保留16个章节；ffprobe检查与ffmpeg完整解码通过。R03尚待完成，合辑不代表双瓶任务成功。
+
+All three R05 phase receipts succeeded in the same task. Continuous aligned hold reached 2.833333 seconds and original-slot return error was 0.9005 mm. The 160.250-second video retains 16 phase chapters and passed full decoding. This liquid-free simulation proves motion targets only; R03 remains pending.
+
+## 173255 R03 候选搜索进展 / Candidate-search progress
+
+同一任务在 R05 结算并重新观察后进入 R03，scene revision 为 `labutopia-tabletop-rod-rack-v1:5a88bc08455c4b4c9067f34f83fb9ec1:3`。首个候选 `candidate://simulator-truth-R03/b6160a8d743c4295bb6e06b44e7717f6-8` 搜索600.928秒后以 `route_search_timeout` 拒绝：128次尝试、122次剪枝、269个变体；回执 `acquire-search/a811aeefe5d3445b9cddf52034f84964.json`，`world_change_started=false`。
+
+原Action随后自动准备另一个已供应候选 `candidate://simulator-truth-R03/b6160a8d743c4295bb6e06b44e7717f6-12`，由 `acquire-search/c5eef3d3387d497daa898dd0bfec7519.json` 和 fallback `d0c6f4458f864c158c41eaf725272eb2.json` 证明。这是不同候选的准备搜索，尚未发生R03运动，也不是重新执行已完成R05。原 `--execution-timeout-s=3600` 保持不变，其语义为每个 composite subtask 的 Coordinator Action reconciliation 预算，不是从 Host 启动开始计时。
+
+R03 candidate -8 timed out after 600.928 seconds without world changes; the same Action proceeded to supplied candidate -12. This confirms candidate rejection fallback rather than a repeated identical candidate or a restarted task. R03 motion and overall completion remain unproven.
+
+## 173255 R03 首抓失败与安全恢复 / First acquisition and safe recovery
+
+候选-12的第136个路线尝试得到available（`acquire-search/068b7f81d6264a3ca107da7535c8a928.json`），随后真实执行抓取。阶段回执 `phase-feedback/5da98a9cf4d24fa0819b387895053087.json` 为 `failed/physical_grasp_lost`，失败说明为双侧接触载荷在附着运动中丢失；同时 `returned_to_safe_pose=true`、`observation_ready=true`，恢复终点 `qualified_route_start`。原Agent在同一任务重新观察并继续准备，未重做已完成R05。
+
+最后lift样本的双侧接触冲量为 `[0.004484,0] N·s`，contact_load_valid和grasp_valid为false，contact_manifold_valid仍true；瓶体垂直位移仅0.153 mm，attachment误差8.105 mm。原地测量后支撑力0.93923 N、瓶重0.981 N（约95.7%），随后安全开夹并沿合格来路回撤。恢复完成时无接触载荷或manifold，瓶体原位误差回执为3.316 mm。
+
+标注视频：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R03_抓取抬升_失抓后恢复成功_6783ffaa.mp4`。58.600秒抬升、58.967秒失抓测量、59.567秒开夹、62.433秒沿来路回撤。恢复成功不等于R03任务完成，重抓结果仍待实跑。
+
+Candidate -12 found a route, but acquisition lost bilateral load during lift. The Adapter safely opened the gripper and retreated along the qualified route, returning explicit observation-ready evidence. The original Agent continues with fresh observations while preserving completed R05 work. R03 remains incomplete.
+
+## 173255 二次准备与中间结论 / Second preparation and interim result
+
+18:43:22，原Agent再次选择R03 execute_subtask；新搜索 `acquire-search/b803576328014a20899b7b8b312f3d96.json` 使用 scene revision `:4` 和候选 `candidate://simulator-truth-R03/09ae35cde54945c2ae78591c4298b233-8`。与首抓失败的旧候选 `b6160a8d743c4295bb6e06b44e7717f6-12` 对比，grasp-predictions中同一固定相机坐标下的拟议抓取中心相差5.190 mm，接近方向相差0.3403°。因此证据支持重新感知后的不同候选引用/抓取中心，尚不能称为显著不同方向的抓法；最终路线可能使用额外轴对称旋转，当前仅比较候选提案。
+
+恢复合辑：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R05完成_R03失抓后恢复成功_同一AgentLoop.mp4`（277.333秒，完整解码通过）。当前中间结论：R05完整成功；R03首抓失败后安全恢复；原Agent正在二次准备，双瓶任务仍进行中、尚未完成。
+
+At 18:43:22 the same Agent selected the second R03 Action with fresh scene revision :4 and candidate 09ae…-8. Proposed center and approach differ from the failed candidate by 5.190 mm and 0.3403 degrees in the fixed camera frame, so this does not establish a substantially different approach direction. The 277.333-second recovery compilation passed full decoding. R05 succeeded, first R03 acquisition safely recovered, and second preparation remains in progress.

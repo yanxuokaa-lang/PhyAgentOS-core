@@ -51,6 +51,65 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.6 (2026-11-25 16:50) - codex
+
+- [env] [exp] [进行中] 使用已提交 2dcf0aaa 的 stale 重采集修复启动独立 R05→R03 连续 AgentLoop 仿真；复制 155843 的配置仅替换运行路径，保留 4 mm/60 N、原任务与安全检查，保存阶段录像。 / [In progress] Replay the continuous R05→R03 AgentLoop task on committed 2dcf0aaa, copying 155843 configuration with run paths replaced and preserving 4 mm/60 N, task instruction and safety checks; retain annotated phase videos. (local)
+- [docs] [docs] [进行中] 更新 docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md 与 CHANGELOG.md，记录启动命令、进程、终态证据和精确行号/Diff。 / [In progress] Update the continuation report and changelog index with launch command, processes, outcome evidence and precise lines/diff. (local)
+
+### 文件变更详情 / File changes
+
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L164–L220：记录两次启动、重启中断、R05成功、R03失抓恢复与二次准备，含配置一致性、证据和视频。 / Record both launches, reboot interruption, R05 success, R03 recovery and second preparation with configuration/evidence/video details.
+- [新增 / Added] `out/labutopia-elevated-20261125/v17.10.6-r05-r03-stale-recapture-165053/launch.py` L1–L57 及同目录配置：沿用 155843 启动器，运行产物保留本地。 / Reuse the 155843 launcher and configurations; retain run artifacts locally.
+
+```diff
+- run = out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843
++ run = out/labutopia-elevated-20261125/v17.10.6-r05-r03-stale-recapture-165053
+- git_commit = 69f2724f60b3acc6e85da7ab9945b6f215879ce8
++ git_commit = 2dcf0aaa0c670c991d495cc05d8fd1734a5abc30
+```
+
+### 验证 / Validation
+
+- [eval] [exp] 13 个配置/脚本归一化路径后与 155843 一致；JSON/Python 语法及文件依赖通过，AgentLoop 于 16:51:14 进入 task_creation，终态待实际回执。 / All 13 files match 155843 after path normalization; JSON/Python syntax and file dependencies passed, AgentLoop entered task_creation at 16:51:14, final outcome awaits receipts.
+
+### Git 提交 / Git Commit
+
+- 执行代码 / Execution code: `2dcf0aaa`；分支 / Branch: `feature/planning-loop`。本轮记录待主会话审核提交。 / This run record awaits parent review and commit.
+
+### 主机重启中断与复跑计划 / Host restart and replay plan
+
+- [env] [exp] [完成] 165053 未生成 acceptance.json，最后已完成回执为 R05 acquire succeeded；主机于 2026-11-25 17:25:38 重新启动，原仿真场景及进程已消失，不能复用旧 holding 状态。旧启动日志出现 memory pressure，但尚未确认重启根因；此结果记录为执行中断，不判定动作失败。保留旧工件，以相同代码、原任务和 4 mm/60 N 参数创建独立新场景完整复跑。 / [Completed] Run 165053 has no acceptance.json; the last completed receipt is R05 acquire succeeded. The host rebooted at 17:25:38, losing the simulation and processes, so prior holding state cannot be reused. Memory-pressure messages do not establish the reboot cause. Record an interrupted execution rather than action failure; preserve artifacts and replay the full task in a new scene with unchanged code and 4 mm/60 N settings. (local)
+- [env] [exp] 启动前资源实测：可用 RAM 20 GiB、swap 余量13 GiB、工作盘余量58 GiB、RTX5060Ti 16311 MiB中已用5502 MiB。 / Pre-launch resources: 20 GiB available RAM, 13 GiB free swap, 58 GiB free disk, GPU 5502/16311 MiB used. (local)
+
+- [env] [exp] [进行中] 17:32:55 已启动独立 173255 轮，Launcher15236/Host15237/观察器15238；13 个配置/脚本仅替换路径，执行代码仍为2dcf0aaa。 / [In progress] Started independent replay 173255 at 17:32:55, with launcher15236/host15237/observer15238; thirteen files differ only in paths and execution code remains 2dcf0aaa. (local)
+- [docs] [docs] 报告新增 L176–L186，区分重启中断与动作失败并记录新运行命令；新增运行目录 `v17.10.6-r05-r03-post-reboot-173255` 的启动器 L1–L57，未复用旧场景状态。 / Append report lines176–186 to distinguish reboot interruption from action failure and document replay; the new run reuses launcher lines1–57 without old scene state. (local)
+
+```diff
+- active_run = v17.10.6-r05-r03-stale-recapture-165053
++ interrupted_run = v17.10.6-r05-r03-stale-recapture-165053
++ active_run = v17.10.6-r05-r03-post-reboot-173255
+```
+
+- [env] [exp] [完成] 173255 R05全周期实跑成功，倾倒1.0027256rad连续保持2.833333s，归位误差0.9005mm；R03待完成。 / [Completed] R05 completed its full cycle in 173255 with 1.0027256rad tilt, 2.833333s aligned hold and 0.9005mm return error; R03 remains pending. (local)
+- [docs] [docs] 报告新增L188–L194及本地视频索引：保存同任务R05合辑160.250秒/16章节，ffmpeg完整解码通过。 / Append report lines188–194 and local video index for a 160.250-second, 16-chapter same-task R05 video; full ffmpeg decoding passed. (local)
+
+- [env] [exp] R03候选-8搜索600.928秒超时后，原Action继续候选-12准备；尚无R03运动。报告新增L196–L202，每个 composite subtask 的 Coordinator Action reconciliation 预算保持3600秒。 / After R03 candidate -8 timed out at 600.928 seconds, the same Action continued preparation of candidate -12; no R03 motion yet. Append report lines196–202 and retain the 3600-second Coordinator Action reconciliation budget per composite subtask. (local)
+
+- [env] [exp] R03候选-12获得路线，实抓抬升发生physical_grasp_lost，安全松夹回撤成功；原Agent同任务重新观察继续准备，R03未完成。报告新增L204–L212，记录接触载荷/支撑和视频章节。 / Candidate -12 found a route but lost grasp during lift; safe release and retreat succeeded, and the same Agent task resumes fresh preparation. R03 remains incomplete; report lines204–212 record contact/support evidence and video chapters. (local)
+
+### 中间验收 / Interim acceptance
+
+- [docs] [docs] [完成] 报告L214–L220补二次候选与首抓提案差异（5.190 mm/0.3403°），明确R03仍在准备，双瓶未完成；恢复合辑277.333秒完整解码通过。 / [Completed] Report lines214–220 compare the second candidate with the first proposal (5.190 mm/0.3403 degrees), retain incomplete dual-bottle status, and record the fully decoded 277.333-second recovery compilation. (local)
+- [chore] [chore] 本轮无生产代码变更；执行配置/指令按原设置复制，已有104测试未重复。实际运行证据与日志均UTF-8可读，git diff --check通过；当前仅提交中间记录，运行继续。 / No production code changed; settings/instruction were copied unchanged and prior104 tests were not repeated. Live simulation evidence and UTF-8 records are readable, diff whitespace checks passed; this is an interim record while execution continues. (local)
+
+```diff
+- latest_evidence = v17.10.5 unit tests; simulation not started
++ R05 = acquire/pour/place succeeded in task_8f67e002d7364db8
++ R03_first = physical_grasp_lost; returned_to_safe_pose=true; observation_ready=true
++ R03_second = fresh scene revision :4; candidate 09ae...-8; preparation in progress
++ overall = in progress, dual-bottle completion not established
+```
+
 ## v17.10.5 (2026-11-25 16:33) - codex
 
 - [policy] [fix] [完成] 在通用 `PerceptionBindingAdapter.bind` 与 `bind_async` 中仅对 scene.observe 明确 stale 重采集，最多三次总尝试，保留 max_age_ms；available 后才启动后续理解/抓取/能力查询，仅使用新采集身份和工件。其他状态及查询异常立即按原逻辑拒绝。 / [Completed] Retry only explicitly stale scene.observe results in synchronous/asynchronous perception binding, at most three total captures with the same age limit; only the available capture supplies identity/artifacts to subsequent queries. Other statuses and query exceptions retain immediate rejection. (local)
@@ -598,52 +657,3 @@ index 3abc51fc..80f2d807 100644
 ### Git 提交 / Git Commit
 
 - 实现提交 / Implementation commit `80cee4e0`，`feature/planning-loop`，2026-11-25 04:09:52 +0800。
-
-## v17.10.1 (2026-11-25 03:09) - codex
-
-- [policy] [fix] Isaac 回放 `023108` 中，R05 的抓取、倾倒和放置都已完成，但前台工具迭代用尽后将整个任务结算为失败，R03 未运行。语义任务创建持久化 PlanGraph 成功后，由前台直接交接后台控制器。 / In Isaac replay `023108`, R05 acquisition, pour and return settled successfully, but the foreground iteration limit failed the task before R03 ran. Successful semantic creation now hands the persisted PlanGraph to the background controller.
-- [env] [fix] 模拟执行提示在语义建图后结束前台回合，并让 AgentLoop 为分配到的就绪节点选择工具。保留查询模式说明和动作资格约束。 / Execution guidance yields the foreground after semantic graph creation and directs AgentLoop to select tools for assigned ready nodes. Read-only guidance and motion qualification are preserved.
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `PhyAgentOS/agent/loop.py` L1813–L1815、L2125–L2131、L3282–L3286。复用既有成功结果判定和计划交接，普通创建继续前台流程，语义创建仍使用原有决策时限。 / Reuse the existing success predicate and planning handoff. Ordinary creation continues in the foreground, and semantic creation retains its decision deadline.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L99–L101。 / Clarify foreground and per-node responsibilities in execution mode.
-- [修改 / Modified] `tests/test_agent_foundation.py` L70、L1424–L1490。覆盖最后一次前台迭代成功建图时的后台启动和同批工具延后，以及普通创建、建图失败、无控制器。 / Cover controller startup and deferral in the final foreground iteration, ordinary creation, failed semantic creation and controller absence.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L57–L58。 / Assert background handoff and assigned-node guidance.
-
-```diff
-diff --git a/PhyAgentOS/agent/loop.py b/PhyAgentOS/agent/loop.py
-index 78bb8fb7..df97cbcf 100644
---- a/PhyAgentOS/agent/loop.py
-+++ b/PhyAgentOS/agent/loop.py
-@@ -1813 +1813,3 @@ class AgentLoop:
--                        if tool_call.name in yield_after_tools and tool_call.name != "forge_plan_select":
-+                        if tool_call.name in yield_after_tools and tool_call.name not in {
-+                            "forge_plan_select", "forge_task_create",
-+                        }:
-@@ -2123,0 +2126,4 @@ class AgentLoop:
-+                        and (
-+                            tool_call.name != "forge_task_create"
-+                            or tool_call.arguments.get("semantic_subtasks")
-+                        )
-@@ -3277 +3283 @@ class AgentLoop:
--                    frozenset({"forge_task_materialize_plan"})
-+                    frozenset({"forge_task_materialize_plan", "forge_task_create"})
-diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-index 2868423c..ddb77d30 100644
---- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-+++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py
-@@ -99 +99,3 @@ def environment_guidance(sensor_ref, execute):
--        "After task creation, use existing planning tools to select and execute ready nodes. "
-+        "After successful semantic task creation, end the foreground turn so the background "
-+        "controller can advance the persisted plan. When assigned a ready node, use existing "
-+        "planning tools to select and execute that node. "
-```
-
-### 验证 / Validation
-
-- [policy] [exp] Agent 基础与 Isaac host 测试 172 项通过。长流程控制器、PlanningLoop、执行结算恢复、恢复决策和 Isaac 子任务续接测试 232 项通过。 / All 172 Agent foundation and Isaac host tests passed, along with 232 long-horizon controller, PlanningLoop, effect recovery, recovery decision and Isaac subtask continuation tests.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit `d09ca13f`，`feature/planning-loop`，2026-11-25 03:13:01 +0800。
