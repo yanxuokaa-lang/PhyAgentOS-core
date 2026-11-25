@@ -290,3 +290,23 @@ R03 acquisition succeeded under the existing bilateral-contact attached-motion c
 本轮单项物理配置变化为joint2驱动力1200→60N；观测到R03抓取抬升从前轮失抓变为成功，但侧移和末attachment误差仍存在，完整双瓶目标未完成。这是单次任务对照证据，未证明驱动失配是唯一根因，也未验证重新规划预算4次的实际耗尽行为。生产运动代码、默认physics和阈值均未修改。启动证据commit `378e200a`（2026-11-25 19:26:17 +08:00）已推送；本终态证据待主会话审阅提交。
 
 The task ended failed at20:04:00 with6 revisions and0 replans. R05 completed; R03 acquired and lifted successfully, but held-object preparation found no feasible pouring route. The result retained holding possession and did not request replan; no R03 pouring, placement or safe-return receipt exists. The178.433333-second,25-chapter same-task compilation passed full decoding and labels the terminal preparation failure. This single force-limit comparison does not establish a unique root cause or complete the dual-bottle goal; production motion code, default physics and thresholds are unchanged.
+
+## v17.10.9 静态倾倒路线诊断 / Static pouring-route diagnostic
+
+上一轮终态证据已提交并推送 `5d2d1017`。新本地脚本位于 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.9-r03-pour-diagnostic-201540/diagnose_r03_pour.py`，配置为同目录diagnostic-config.json。脚本读取191713历史assignment（74d7bd9b…）与R03抬升末反馈（28e717d0…），以 `inv(saved_tcp) @ saved_observed_body` 建立实测attachment，绑定原点云碰撞几何。scene:4的R03、BEAKER唯一rim先经现有task-conditioned函数派生pour lip，再按refresh_process公式转换到末态observed body frame；观测中心/轴与末帧差异单独量化，不伪造成功的持瓶准备route。
+
+静态候选分三组：yaw0与现有四个正交azimuth、两种clearance共8条；yaw0与四个对角azimuth、相同clearance共8条；仍无解时补yaw±π/2的16条对角候选。上限32条，无offset；找到可行路线后不继续扩展。qualify保留现有IK、关节连续性、工作空间、机械臂/两指/payload碰撞检查，初态仅以initial_joints/initial_pose传入。两指碰撞通过局部SavedFingerReadback向原finger_boxes提供历史实测位置，不写真实机器人。
+
+主会话审阅后于2026-11-25 20:19:01 +08:00启动唯一诊断进程PID507170，使用原profile.worker_python_path与OMNI_KIT_ACCEPT_EULA=YES；每个候选/阶段实时输出diagnostic.log并保存diagnostic-results.json。初始化后不step、不设置关节或物体、不执行动作；前后真实关节及simulation time将记录对照。新鲜初始化障碍场景与历史持瓶状态不同，BEAKER新旧位置另测；结果仅为静态诊断，不能作为readiness/admission或执行许可。启动前脚本语法编译与Ruff通过，结果尚待完成。
+
+The parent-reviewed static diagnostic reads the saved terminal R03 attachment and historical point cloud, derives a same-capture pour lip, and checks at most32 orientation variants without offsets. Historical finger openings are injected only into the existing finger-box calculation; all route checks remain active. The fresh initialized obstacle scene differs from the historical state, so measured mismatches and unchanged real joints/time are recorded. PID507170 started at20:19:01; outcomes remain pending and cannot authorize execution.
+
+## v17.10.9 诊断结果 / Diagnostic result
+
+2026-11-25 20:21:21 +08:00，32条静态候选检查完成，耗时139.538秒，0条可行；进程507170正常退出。原8条正交候选得到2条process机械手碰撞、4条process payload碰撞、2条transport IK失败。新增yaw0的8条对角候选得到4条process机械臂碰撞、2条process payload碰撞、2条transport IK失败；其中+π/4两种clearance均为panda_link6与桌面碰撞，−π/4为panda_hand与烧杯碰撞，−3π/4为payload与烧杯碰撞。最后16条yaw±π/2对角候选全部在transport失败（6条IK失败、10条关节连续性不满足）。没有超出32条，也未加offset或放宽阈值。
+
+保存末关节的FK与保存TCP位置/旋转误差均为0。捕获R03 rim中心减末态observed origin为 `[-0.006709,-0.046692,-0.006732] mm`，范数0.047650mm；拟合axis与末态observed z夹角0.001488412rad。这是观测特征差异代理量，不等同于精确的两次物理位姿变化。新初始化BEAKER物理位置减历史acquire物理位置为 `[+0.013247,-0.056545,+0.967681] mm`，旋转差0.000137165rad；历史scene:4与scene:3 rim仅y差−0.000037893mm。新鲜场景的烧杯约高0.968mm，因此不称历史精确重放。
+
+真实关节数组前后完全一致，simulation time前后均为0.0020833334419876337s；历史finger readback参与7632次原finger_boxes调用。所有候选都保留原IK、joint delta、workspace、robot/finger/payload collision检查，无运动执行，也未输出readiness/admission。完整配置、每候选阶段/失败码/几何诊断、前后state/time保存于本地diagnostic-results.json与diagnostic.log。本有界样本未支持“仅补45度对角方位即可找到可行路线”，未证明所有其他方位均不可行；后续诊断由主会话裁决。
+
+All32 bounded static candidates failed:6 robot collisions,6 payload collisions,10 IK failures and10 continuity failures. Saved-state FK exactly matched the saved TCP. Actual joints and simulation time remained unchanged. Fresh BEAKER geometry was0.968mm higher than the historical acquisition state, so results remain approximate static diagnostics rather than an exact replay or admission. This sample did not find a feasible route by adding the tested diagonal azimuths; it does not establish infeasibility for every possible orientation.

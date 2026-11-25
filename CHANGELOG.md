@@ -51,6 +51,50 @@
 
 ## 最近五版本 / Latest five versions
 
+## v17.10.9 (2026-11-25 20:12) - codex
+
+- [env] [exp] [完成] 创建独立本地R03静态倾倒路线诊断：使用191713抬升末态、历史assignment/点云及scene:4 rim特征，按现有qualify检查最多32条方位组合，量化历史观测与新初始化场景差异。初始化后不step、不写关节/物体、不执行动作；历史两指位置仅用于纯计算碰撞几何。 / [Completed] Create an independent static R03 pouring-route diagnostic using the191713 terminal lift sample, historical assignment/clouds and scene:4 rim features. Retain existing qualify checks for at most32 orientation variants and quantify historical/fresh-scene differences. After initialization, do not step, set joints/objects or execute; saved finger positions supply calculation-only collision geometry. (local)
+- [docs] [docs] [完成] 先完成本地脚本交主会话审阅，再运行诊断；保存每条进度/中间JSON、前后真实state/time及限制说明，更新报告和Latest5；不产生readiness/admission，不改生产代码，不启动新任务。 / [Completed] Submit the local script for parent review before running it, then retain per-variant progress/intermediate JSON, before/after real state/time and limitations. Update report and Latest5 without readiness/admission, production edits or a new task. (local)
+
+### Git 提交 / Git Commit
+
+- 上轮终态证据 / Previous terminal evidence: `5d2d1017`（已推送 / pushed）；分支 / Branch: `feature/planning-loop`。本轮待主会话审阅，执行代理不提交/推送。 / This work awaits parent review; the execution agent will not commit or push.
+
+### 文件变更详情 / File changes
+
+- [新增 / Added] 本地 `out/labutopia-elevated-20261125/v17.10.9-r03-pour-diagnostic-201540/diagnose_r03_pour.py` L1–L301；历史取数L24–L53、候选组L56–L66、仅计算的SavedFingerReadback L69–L82、绑定点云与目标变换L149–L180、虚拟夹指几何L182–L193、有界qualify L236–L272、实际state/time回读L279–L287。 / Local diagnostic script: historical inputs, candidate groups, calculation-only finger readback, payload/target transforms, bounded qualification and real-state readbacks.
+- [新增 / Added] 同目录 `diagnostic-config.json` L1–L10：历史run/commit/assignment/feedback路径、clearance0.048/0.04与tilt1rad/hold2s。 / Historical sources and parameters remain explicit in the local configuration.
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L294–L302：静态诊断范围、近似、审阅及启动。 / Diagnostic scope, approximation, review and launch.
+
+```python
+# Calculation inputs only; never written to robot or scene.
+relation = np.linalg.inv(saved_tcp) @ saved_observed_body
+source_lip = _task_conditioned_pour_feature(source_rim, destination_rim)
+model.finger_boxes = historical_finger_boxes  # Original geometry with saved-position readback.
+qualified = model.qualify(points, source, relation, 'pour', supported_pose,
+                          initial_joints=saved_q, initial_pose=saved_tcp, progress=progress)
+```
+
+### 验证与进度 / Validation and progress
+
+- [eval] [exp] [完成] 脚本python语法编译、Ruff通过；主会话审阅通过后20:19:01以PID507170启动，无新AgentLoop任务。 / [Completed] Python syntax compilation and Ruff passed; parent review authorized the20:19:01 launch (PID507170), without a new AgentLoop task. (local)
+- [eval] [exp] [完成] 20:21:21已完成32条、0可行，真实关节/time前后一致；不新增生产机制或放宽约束。 / [Completed] At20:21:21 all32 candidates completed without a feasible route; real joints/time were unchanged, with no production mechanism or relaxed constraint. (local)
+
+### 实测结果 / Measured result
+
+- [eval] [exp] [完成] 32条/139.538秒：6 robot collisions、6 payload collisions、10 IK失败、10 continuity失败；无可行路线，达到预算后停止。FK(savedq)与savedtcp位置/旋转误差均0，真实关节/time前后一致（0.0020833334419876337s），历史finger几何参与7632次检查。 / [Completed]32 candidates in139.538s produced6 robot collisions,6 payload collisions,10 IK failures and10 continuity failures, then stopped at the budget. Saved FK/TCP errors were zero; real joints/time stayed unchanged, and historical-finger geometry participated in7632 checks. (local)
+- [eval] [exp] [完成] 捕获rim中心与末帧observed origin差范数0.047650mm；新鲜BEAKER比历史物理姿态高0.967681mm。此为静态近似，未找到45度对角补充可行路线，不证明全方位不可行。 / [Completed] Captured-rim center differed from terminal observed origin by0.047650mm; fresh BEAKER geometry was0.967681mm higher than the historical physical pose. This approximate static sample found no feasible diagonal extension and does not prove universal infeasibility. (local)
+- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L304–L312：分组失败统计、近似误差、无运动证据与结论边界。 / Grouped failures, approximation metrics, no-motion evidence and bounded conclusion.
+
+```diff
+- diagnostic_status = pending
++ diagnostic_status = completed_static_diagnostic_only
++ candidates = 32; feasible = 0
++ failure_counts = {robot_collision: 6, payload_collision: 6, IK: 10, continuity: 10}
++ actual_joints_unchanged = true; simulation_time_unchanged = true
++ execution_authorized = false; readiness_or_admission = false
+```
+
 ## v17.10.8 (2026-11-25 19:16) - codex
 
 - [env] [exp] [完成] 在独立本地运行中对照夹指驱动力：复制173255启动配置，仅新增joint2 max_force_n=60、max_velocity_m_s=0.2，保留joint1 60/0.02、4mm、场景/候选/阈值和R05→R03指令。先初始化只读原60/1200及新60/60的USD/runtime DOF驱动，确认初始化后state/time不变，再启动完整仿真；不改默认配置/生产运动代码。 / [Completed] In an independent local replay, add only finger-joint2 force60N with existing velocity0.2m/s; preserve joint1 60N/0.02m/s,4mm,scene/candidates/thresholds and R05→R03 instruction. Read USD/runtime drives after initialization without subsequent state/time changes before executing simulation; default configurations and production motion code remain unchanged. (local)
@@ -444,140 +488,3 @@ index b3b73253..17b3a8c7 100644
 ### Git 提交 / Git Commit
 
 - 分支 / Branch: `feature/planning-loop`。待主会话审阅提交。 / Awaiting parent-session review and commit.
-
-## v17.10.4 (2026-11-25 15:54) - codex
-
-- [env] [fix] [完成] 将 `paos_client.py` 的 `route_search_timeout` 分类为可拒绝的候选准备结果，保留原码和消息；尝试后续已供应候选，全部失败沿用 `no_admissible_grasp` 并建议 Agent 重选候选。 / [Completed] Classify route_search_timeout as a candidate preparation rejection, preserve its original code/message, try subsequent supplied candidates and retain no_admissible_grasp with alternative-candidate recovery when all supplied candidates fail. (local)
-- [eval] [exp] [完成] 在 `test_paos_integration.py` 覆盖超时后候选成功、全部超时的重规划建议及 refs、其他合同错误立即拒绝，运行现有 RecoveryDecisions 与 subtask-executor 恢复测试。 / [Completed] Cover a successful candidate after timeout, all-timeout recovery metadata and references, and immediate rejection of other contract errors; run the existing recovery-decision and subtask-executor tests. (local)
-- [docs] [docs] [完成] 补全本次失败诊断、代码 Diff、行号和验证结果，同步最新五版本。搜索机制属于 Adapter，候选选择/重规划属于现有 AgentRecoveryDecisions/Coordinator；Runtime 执行所有权、时限和物理检查不变，无新增门禁。 / [Completed] Record the failure diagnosis, diff, locations and validation and update the latest-five index. Search remains Adapter-owned, selection/replanning remains Agent/Coordinator-owned and Runtime execution ownership, timeouts and physical checks remain intact. No new gate is introduced. (local)
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py` L153、L182、L189–L190：仅在既有候选拒绝、可重规划和重选建议集合加入 `route_search_timeout`。 / Add route_search_timeout only to the existing candidate-rejection, replannability and alternative-candidate recommendation sets.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` L941–L946、L949–L990、L993–L1040：超时后另一个候选成功保留诊断、两个候选均失败返回聚合建议和 refs、合同错误保持立即拒绝。 / Cover successful fallback with timeout diagnostics, aggregate metadata for two rejected candidates and immediate rejection of contract errors.
-- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L3、L81–L140：更新 150350 失败终态、R05 完整成功/未运动 R03 的视频标签、搜索统计、分类根因及修复验证。 / Record the failed 150350 task, completed R05/incomplete R03 video labels, search statistics, classification cause and validation.
-- [修改 / Modified] `CHANGELOG.md`：最新五版本为 17.10.4、17.10.3、17.10.2、17.10.1、17.10.0，完整条目与归档一致。 / Latest-five entries are synchronized with the archive.
-
-```diff
-diff --git a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
-index 384aad8e..36a54fd8 100644
---- a/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
-+++ b/examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py
-@@ -151,5 +151,5 @@ class LabUtopiaCycleProvider:
-                                 "workspace_violation", "route_collision", "self_collision", "payload_collision",
-                                 "payload_robot_collision", "no_admissible_grasp", "gripper_aperture_exceeded",
--                                "unsupported_capability_topology"}:
-+                                "unsupported_capability_topology", "route_search_timeout"}:
-                     raise PreparationProviderError(code, str(result.get("error_detail", result.get("error", code))),
-                                                    failure_owner="runtime_adapter")
-@@ -180,5 +180,5 @@ class LabUtopiaCycleProvider:
-             requires_replan=any(
-                 item.get("failure_code") in {
--                    "route_unavailable", "route_collision", "ik_discontinuity",
-+                    "route_unavailable", "route_collision", "ik_discontinuity", "route_search_timeout",
-                     "gripper_aperture_exceeded",
-                 }
-@@ -187,5 +187,6 @@ class LabUtopiaCycleProvider:
-             recommended_action=(
-                 "select_alternative_candidate"
--                if any(item.get("failure_code") in {"route_collision", "ik_discontinuity"} for item in rejected)
-+                if any(item.get("failure_code") in {"route_collision", "ik_discontinuity", "route_search_timeout"}
-+                       for item in rejected)
-                 else "refresh_grasp_candidates"
-                 if any(item.get("failure_code") in {"route_unavailable", "gripper_aperture_exceeded"}
-diff --git a/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py b/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
-index e77e722c..71f44bcf 100644
---- a/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
-+++ b/examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
-@@ -939,10 +939,14 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
-     prepared.clear()
-     engine.failure = 'stale_visual_observation'
--    with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
-+    with pytest.raises(PreparationProviderError, match='stale_visual_observation') as captured:
-         provider.prepare(request)
-     assert len(prepared) == 1
-+    assert captured.value.failure_owner == 'runtime_adapter'
-+    assert captured.value.requires_replan is False
-+    assert captured.value.recommended_action == 'fix_runtime_contract'
-
-
--def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path):
-+@pytest.mark.parametrize("failure_code", ["route_collision", "route_search_timeout"])
-+def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp_path, failure_code):
-     profile = _profile(tmp_path)
-     binding = _binding(profile)
-@@ -963,5 +967,6 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
-         def prepare_manipulation(self, request):
-             if request["candidate_ref"].endswith("/rejected"):
--                return {"status": "unavailable", "failure_code": "route_collision"}
-+                return {"status": "unavailable", "failure_code": failure_code,
-+                        "error": "candidate preparation stopped at configured bound"}
-             return {"status": "available", "route_arguments": {"candidate_ref": request["candidate_ref"]}}
-
-@@ -973,6 +978,6 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
-     assert rejected == [{
-         "candidate_ref": "candidate://observed-reagent-a/rejected",
--        "failure_code": "route_collision",
--        "error": None,
-+        "failure_code": failure_code,
-+        "error": "candidate preparation stopped at configured bound",
-     }]
-     assert result["route_arguments"]["rejected_candidates"] == rejected
-@@ -989,4 +994,5 @@ def test_prepare_records_rejected_candidates_on_response_and_route_arguments(tmp
-     ("route_collision", "select_alternative_candidate"),
-     ("ik_discontinuity", "select_alternative_candidate"),
-+    ("route_search_timeout", "select_alternative_candidate"),
-     ("route_unavailable", "refresh_grasp_candidates"),
- ])
-@@ -1004,4 +1010,7 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
-     }
-
-+    candidates = [candidate, {**candidate, "candidate_ref": candidate["candidate_ref"] + "-second"}]
-+    attempted = []
-+
-     class Resolver:
-         def resolve(self, observed, request):
-@@ -1011,6 +1020,8 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
-
-     class Engine:
--        def prepare_manipulation(self, _request):
--            return {"status": "unavailable", "failure_code": failure_code}
-+        def prepare_manipulation(self, request):
-+            attempted.append(request["candidate_ref"])
-+            return {"status": "unavailable", "failure_code": failure_code,
-+                    "error": "bounded search stopped before qualifying a route"}
-
-     provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
-@@ -1019,10 +1030,13 @@ def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
-             "perception_binding": binding,
-             "process_type": "pour",
--            "candidates": [candidate],
-+            "candidates": candidates,
-         })
-
-+    assert attempted == [item["candidate_ref"] for item in candidates]
-+    assert captured.value.code == "no_admissible_grasp"
-+    assert "bounded search stopped before qualifying a route" in str(captured.value)
-     assert captured.value.requires_replan is True
-     assert captured.value.recommended_action == recommended_action
--    assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)
-+    assert captured.value.rejected_candidate_refs == tuple(attempted)
-
-
-```
-
-### 验证 / Validation
-
-- [eval] [exp] `PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py tests/test_recovery_decisions.py examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short`：89 passed。 / All 89 PAOS integration, recovery-decision and subtask-executor tests passed.
-- [chore] [chore] `.venv/bin/ruff check examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` 与 `git diff --check` 均通过。 / Ruff on both edited code files and diff whitespace checks passed.
-- [env] [exp] 本版验证为无运动的 Provider 与恢复传播测试；v17.10.4 仿真已于 15:58:43 启动，实跑以 waiting_for_user 停止，R05 倾倒后归位观测被报告为不可用或过期，双瓶尚未完成。 / This version has no-motion provider and recovery-propagation evidence; the v17.10.4 replay started at 15:58:43 and execution evidence remains pending; the two-vessel goal remains incomplete.
-
-### Git 提交 / Git Commit
-
-- 实现提交 / Implementation commit: `69f2724f`，分支 / Branch: `feature/planning-loop`；已推送 / Pushed。
-
-- [env] [exp] [完成本轮] 以已推送提交 `69f2724f` 启动新的 R05 → R03 同任务复跑，沿用 `150350` 全部物理、候选和任务指令，仅验证候选准备搜索超时分类修复；新运行使用独立任务数据库、工件和会话。 / [Replay finished] Start a fresh R05 then R03 task on pushed commit 69f2724f with all 150350 physics, candidate settings and task instructions preserved, testing only the candidate preparation timeout classification repair. Use independent task state, artifacts and sessions.
-
-- [env] [exp] 新运行 `/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843` 于 2026-11-25 15:58:43 +08:00 启动；Launcher/Host/录像观察器 PID 分别为 `1006855`/`1006858`/`1006859`。命令 `.venv/bin/python -u out/labutopia-elevated-20261125/v17.10.4-r05-r03-route-recovery-155843/launch.py`；15:58:46 已进入任务创建模型调用。配置和用户指令与 `150350` 归一化路径后完全一致，生产代码 diff 为空。 / Replay 155843 launched at 15:58:43 +08:00 with launcher/host/observer PIDs 1006855/1006858/1006859 and entered task-creation model inference at 15:58:46. Configuration and instruction match 150350 after path normalization, and the production diff is empty. The replay stopped waiting_for_user after an unavailable-or-stale placement-refresh observation report.
-
-- [env] [exp] `155843` 的 `task_321b838973ed4938` 以 `waiting_for_user` 停止：R05 抓取和倾倒成功，归位刷新报告观测“不可用或过期”，使 driver 返回 outcome_unknown，R03 未执行。观测 calibration `b02c15ef9e8e4062a415ff79fe3d8e41.json` 至 state `97103928097a4fe697204820a17d503e.json` 的工件写入间隔约 1.235 s，超过 max_age_ms=1000；后续恢复观测 freshness=540 ms 为 available。原始首次响应未保存，mtime 与后续成功支持瞬时过期解释，未确证首次 status=stale。 / Task task_321b838973ed4938 stopped waiting_for_user after successful R05 acquisition and pouring. An unavailable-or-stale placement refresh report produced outcome_unknown and R03 did not execute. The calibration-to-state artifact interval was about 1.235 s against max_age_ms=1000; a later recovery observation was available at 540 ms freshness. The original response was not retained; these timings support transient staleness without establishing its original status.
