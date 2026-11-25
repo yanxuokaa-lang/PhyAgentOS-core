@@ -684,3 +684,86 @@ The process run has ended, but the persisted task is awaiting_replan with termin
 v18.0.0证据已提交并推送`a8b08049b4325d8f234951bf72db4b5d35aa76f7`。本轮v18.0.1实现待主审，尚未commit/push；日志与Latest5完成后暂停写入。
 
 The stopped run exposed a current-scene contract failure: cached scene:0 process features were accepted after R05 advanced the live scene to scene:3. The fix reads the live revision only in the Isaac proposal boundary and preserves explicit Provider failures in the generic endpoint after its existing identity check. Historical acquisition access, offline/legacy compatibility, public schemas and lifecycle ownership remain unchanged. A real stale response now traverses the existing result projection, settlement and continuation path; fresh receipts generate only R03 while retaining completed R05, and unknown/partial effects still block continuation. All208 focused tests and Ruff pass. This is no-motion integration evidence; no new physical outcome or derived-rim validation is claimed. The preceding evidence commit is pushed and this change awaits review without commit/push.
+
+
+### v18.0.2 完整复测准备 / Full-task rerun preparation
+
+v18.0.1已主审通过并提交/推送`357cb955de4a156612a95727c15a8ae42954e7de`，HEAD、origin/feature/planning-loop及远端实际分支一致。当前仅准备独立目录`out/labutopia-elevated-20261125/v18.0.2-r05-r03-fresh-process-232254`，prepared_at2026-11-25T23:22:54.729504+08:00，尚未启动、无PID/task_id；等待主会话启动审阅。
+
+唯一配置来源仍为204420的13个启动/场景/config文件。10个逐字节相同；command.json有2处、profile.json有7处、station.yaml有1处运行路径变化，三文件路径归一后与来源完全一致，其他内容未改。没有复制旧DB/artifacts/acceptance或任务状态。60/60N、0.02/0.2m/s、retain4mm、finger_hold_follow、motion/oracle/所有阈值、R05→R03原指令、maxreplans4、worker2700s与每subtask reconciliation3600s全部保持。
+
+实际代码为357cb955。相较223214，新增行为仅是v18.0.1的live process-feature revision检查和endpoint失败状态传递；已有累计夹指外退保护与派生瓶口回退保留。metadata记录204420来源code/config、223214对照、fresh场景输入、seed/checkpoint不适用、metrics路径及外部模型/初始化时序漂移。preparation-review.json与configuration-paths.diff保存逐文件比较和完整路径diff。
+
+2026-11-25T23:24:27+08:00资源：GPU16311MiB、已用6336MiB、剩9510MiB；RAM可用22GiB，swap剩8.1GiB；工作盘剩51GiB、/tmp所在盘剩11GiB。没有旧Isaac worker/host/diagnostic/launcher；VLLM3061和CrossDesk3739保留。所需路径全部存在，四个Python脚本在宿主3.13.5和worker3.11.17下语法通过，未运行其入口。
+
+```bash
+/home/yanxu/PhyAgentOS-forge/.venv/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v18.0.2-r05-r03-fresh-process-232254/launch.py
+```
+
+本轮准备完成并暂停写入供主审。没有启动Isaac、硬件运动、生产代码修改、新线程或新提交；完整任务执行与结果将在授权启动后记录。
+
+Preparation is complete for the isolated232254 run with pushed code357cb955. Exactly13 launch/config files come from204420: ten are byte-identical and three contain only ten run-path replacements. All task, physics, motion, oracle, threshold and budget settings remain unchanged, and no old task state was copied. Required paths and both Python syntax checks pass; resources and absent simulation processes are recorded. The run has not started and has no PID/task identity. Writing pauses for launch review without production changes, another thread or another commit.
+
+
+### v18.0.2 已启动并交接 / Started and handed off
+
+主会话审阅232254准备工件后授权启动单一完整任务。2026-11-25T23:26:14.437180+08:00启动launcher874137；host874139在23:26:14.455479启动，observer874140、worker874562。code357cb955、原13文件配置与物理/预算参数保持；task_id=`task_b62f628f0b344c34`，session=`cli:lab-2ae0de50dc65`，创建attempt1。
+
+23:27:46 R05.prepare_process_features出现rounds2/correction_used=false的临时no-progress警告，原有纠正规划于23:28:01成功选定prepare，23:28:11成功选定grasp_task_affordances；随后四准备查询均succeeded，23:29:49.758选定R05 manipulation.execute_subtask、Runtime accepted。该临时警告已经现有纠正规划消解，没有为此增加重试或修改代码。
+
+首运动证据：readiness `464e49903fad47fc8b2bf3e6c681f100.json` captured_at23:32:36.126092+08:00，operation acquire、source为R05、156steps，kinematic/collision/workspace均pass。phase-video `85d39faae5c5485b9ed3a2881f969e8a.mp4`从23:33:01的3932204bytes增长至23:33:43.997617的11796524bytes，证明R05 acquire实际运动已开始，尚不声明阶段完成。
+
+`launch-receipt.json`记录命令/code/PID/time/task与readiness/video增长，四PID在23:33:43.997617交接时均存活。主会话只读监控session6409继续，本代理完成启动日志/报告/Latest5后暂停写入。任务仍进行中；不另开第二轮、不改生产、不commit。准备小节未启动描述保留为历史时点。
+
+Parent approval launched the single prepared run at23:26:14+08:00 with code357cb955 and unchanged parameters. The four recorded processes remain alive, and taskb62f628f0b344c34 has entered actual R05 acquisition:156-step readiness passes all existing checks and the phase video grows from3,932,204 to11,796,524bytes. An earlier temporary planning-progress warning was resolved by the existing corrective turn. The parent now monitors the continuing task; writing pauses without another run, production change or commit.
+
+
+### v18.0.2 同一任务六阶段成功终态 / Successful six-phase terminal result
+
+本轮232254已完成。原始`acceptance.json`的controller与task均为`succeeded`；terminal_at=`2026-11-25T16:21:25.072789Z`，即北京时间**2026-11-26 00:21:25.072789**。只读tasks.sqlite3中的完整task与acceptance一致：6个revision、实际1次replan（预算4）、last_failure=null，最终possession_state=empty。launcher/host/observer/worker874137/874139/874140/874562均已退出；主会话只读监控60713正常exit0。运行代码仍为357cb955；本收尾没有改生产、重启或重新仿真。
+
+成功包含一次已恢复的查询失败，不能解读为从未失败。task.evidence_errors仍原样保存两条历史记录：`planning Query failure requires recovery: pour_r03.process_features`、`replan requested: Refresh the scene before binding the next unfinished lab subtask.`。`historical-recovery-evidence.json`保存原stale Query、最初revision settlements和事件2138–2141；终态last_failure=null与历史错误保留同时成立。
+
+R05的唯一composite Action为`tool_be7db9439c4b41f1`，位于原revision_2a5a25fc73e94392；R03唯一Action为`tool_93302ce7ae5b4e0e`，位于最终revision_815e683cb3734f93。两者各执行一次，均为completed、outcome_known=true、possession_state=empty、requires_replan=false；最终scene分别:3/:6。原R05 Action与completed settlement保留，最终revision仅包含R03的四个准备Query和Action，无R05重复动作。每个Action均有prepare/acquire/prepare_held/pour/prepare_held/place六条完整receipt；`object.pour`的内部receipt.phase为process，报告统一使用倾倒/pour语义。
+
+**新鲜证据续接链**：R05完成后，R03原scene:0 process Query `tool_ec9e09cd00244c9b`返回stale、空candidates；Query传输记录为succeeded，但其Provider结果为stale、settlement为failed。既有恢复事件在23:50:37–38触发一次replan；`tool_e39e002d8deb4320`重新observe得到scene:3，随后understand `tool_b2834a2ee5614130`、grasp.propose `tool_e6c3c9b664cb45e7`、capabilities `tool_d9da500e8122412c`及四个R03准备Query均沿用同一scene:3 identity。新calibration为`7c40225f8600427084f8e1f04dca44a2`，最终选中grasp candidate后缀`6bc91c9b702d486faab54d0ab7d1e80e-8`。6个revision的预算标记为true/true/false/false/false/false，因此扣除初始revision后的实际replan是1，后续discovery片段不额外消耗该预算。
+
+| 对象/阶段 | feedback文件ID | readiness文件ID / steps | 实际结果 |
+|---|---|---|---|
+| R05 acquire | 78b818136b38455597d2b5d603f57e0c | 464e49903fad47fc8b2bf3e6c681f100 / 156 | succeeded，holding |
+| R05 pour | 4470b6f5a9b54fc883442c1749a26105 | 4c1e280331744f65a80c76f3c3b89536 / 124 | succeeded，holding |
+| R05 place | 627673e5206549c98eb712b8e19c6193 | 65b8158458ad4f5fb0c8a6078cb92d5a / 60 | succeeded，empty，scene:3 |
+| R03 acquire | 13296f3c0a18462cb21e57c471b83277 | 52e45488b90843d88d1296951d9d1bdb / 227 | succeeded，holding |
+| R03 pour | db938df002b9418cb2a6b36c4c88c5d4 | 26b825092bf746d7852102c949a0299f / 134 | succeeded，holding |
+| R03 place | 1d6a31f94d9d4b5b9352a8c777606cf1 | bbcb4c60dc45486aad41a6d7ce0883e3 / 72 | succeeded，empty，scene:6 |
+
+六份readiness的kinematic/collision/workspace均pass。以下抬升位移使用首末lift样本，attachment同时记录最大值与末值，避免和整个acquire视频起止位移混用：
+
+| 测量 | R05 | R03 |
+|---|---:|---:|
+| lift双侧载荷有效/抓取有效 | 117/117；117/117 | 119/119；119/119 |
+| lift瓶体世界z上升 | 60.074618104 mm | 60.112610999 mm |
+| lift attachment最大/末帧误差 | 0.047767900 / 0.047140511 mm | 0.026054555 / 0.025333750 mm |
+| maximum tilt | 1.001442185 rad | 1.001374408 rad |
+| qualified/longest/aligned连续保持 | 2.816666814 s | 2.850000149 s |
+| pour valid_sample_count | 170 | 172 |
+| final tool tip误差 | 0.043337427 mm | 0.066562027 mm |
+| final tool axis误差 | 0.001174436 rad | 0.000022169 rad |
+| place原位位置误差 | 0.202404870 mm | 0.193503214 mm |
+| place原位旋转误差 | 0.001061612 rad | 0.001669958 rad |
+
+**派生圆环实跑证据**：R05继续使用原成功路线，无pour_lip_selection；R03 pour assignment `8a236524eff5402f81c9da6de206ffc1`实际选择`process_only_lowest_qualified_opening_rim`，yaw0、azimuthπ、clearance0.048m、offset[0,0,0]、same_side_ingress。完整134steps包含transport86/process11/exit37，准备与执行均成功。新鲜held preparation来自scene:4、calibration `43f030a714294d69aa009922693428be`、geometry `2f26b545adec4e5698e95a518ed2de8a`、selected_feature `7f9dd732571449749215638ad7e403d0`，资格为task_conditioned_opening_projection。原acquire observation_model仍保留scene:3；独立pour_opening携带scene:4且与本次request的observation/scene/frame/calibration逐字段一致。
+
+原选定tip local为[0.006757905394,0.012683652783,0.039640719027]m，派生实际tip为[-0.006765897442,-0.012682963933,0.039600071254]m，opening radius=0.014373240231m。route.target.tool_frame.tip_offset_m与selection.derived_tip_local_m完全相同，source_lineage与本次pour_opening完全相同；原selected feature身份保留为来源证据，并未把派生点描述成原物理点。`assignment-route-evidence.json`保存两种frame/identity、实际target、selection和路线参数；没有放宽原IK、碰撞或接触阈值。
+
+**最终松夹证据**：两份place receipt均empty。末控制样本均stage=retreat、finger_target_m=[0.04,0.04]；R05实测[0.039999656379,0.039999667555]m，R03实测[0.039999645203,0.039999634027]m；grasp_valid/contact_load_valid均false，和归位后张开夹指、后撤画面一致。`final-release-evidence.json`保存末样本及原反馈引用，place仅从尾256KiB提取；两份acquire各读取一次样本，其余巨大pour/place仅尾64KiB提取metrics，未重复整读倾倒反馈。主会话已核对R03抬升末帧、倾倒保持、扶正与归位松夹末帧；四张原图复制至review-stills供复核。
+
+**完整录像**：`review-videos/232254_R05_R03_六阶段成功_同任务完整录像.mp4`依次包含六段真实运动35.20/59.35/24.25/59.633333/65.383333/32.316667s，共276.133333s/16568帧；六张2.5s阶段卡和5s终态卡共20s，最终296.133333s/17768帧/39章节。大字号卡片明确对象、阶段、结果和右侧固定R01近景限制；固定视角不冒充R03证据，原始三视图运动流stream-copy保留，说明卡不计为模拟动作。
+
+逐段视频流帧数/时长、章节覆盖以及最终全片帧数/时长/章节/packet PTS连续性均通过。R03 place容器因章节毫秒舍入比视频流长0.000333s，合片按实际1939帧/60fps指定段时长，避免把章节舍入引入帧间隔。最终帧间隔误差低于2微秒，完整`ffmpeg -v error -xerror ... -f null -`解码exit0、日志零字节；本代理终态卡及主审phase-05/终态卡均目视文字完整、无裁切，主审另独立核对manifest通过。`final-video-compilation.json`、decode.log、ffconcat/ffmetadata与本地compile_task_review.py保留复现证据。
+
+**证据层级与范围**：v18.0.1的208项集中测试证明Provider当前revision/endpoint状态、legacy替换兼容与既有恢复组合；v17.10.15的439项测试证明派生几何与执行数据链。这两组是既有无运动测试，当前收尾没有重跑。此次同一真实Isaac场景的六阶段反馈、readiness、视频和终态settlement补齐实跑证据：stale恢复后仅续R03，派生tip用于实际倾倒并成功归位。task.verification.mode=off，成功取自既有Coordinator/Runtime及阶段回执，不另宣称独立goal-verifier通过。两瓶pour均process_completed=true、result_meaning=motion_goal_reached；液体量unmeasured、transfer_verified=false，因此只证明无液体运动目标完成。单轮结果仍受模型响应、IK与物理调度、初始化时序影响，不替代多次可靠性统计。
+
+本轮继续保留13源配置归一比对、代码357cb955、原60/60N、0.02/0.2m/s、retain4mm与预算4；metadata中的输入场景/config、seed/checkpoint不适用和环境漂移说明保持。终态raw task/controller/receipts、历史恢复、lineage、路线、六阶段metrics、释放样本与合片验证均保存于232254。当前v18.0.2日志/Latest5同步后暂停，交主审；没有新commit/push。
+
+The same persisted task succeeded at00:21:25.072789 on26November2026 (Asia/Shanghai), with six revisions and one replan out of four. One stale scene:0 process-feature query was recovered through fresh scene:3 discovery, retaining the completed R05 action and executing R03 once. Both composite actions completed with known outcomes and empty possession; historical recovery messages remain in the task record despite final last_failure=null. All six physical phases succeeded with passing readiness. R05/R03 lift contact and grasp validity were117/117 and119/119; return errors were0.202405/0.193503mm. R03 used the fresh scene:4 process-only lowest qualified rim, with matching lineage and executed target, reaching1.001374rad and2.850000s continuous aligned hold before returning and releasing. The296.133333s compilation preserves276.133333s of original motion and adds20s of readable cards;17768frames,39chapters, timestamp continuity and full decoding pass. Fixed R01 imagery is explicitly identified. Existing208/439-test evidence remains separate from this live simulation; no tests or simulation were repeated during closure. This demonstrates motion completion in a no-liquid simulation, with liquid quantity unmeasured and transfer unverified. All evidence is local and ready for review without another commit/push.
