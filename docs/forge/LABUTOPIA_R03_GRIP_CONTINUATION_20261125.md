@@ -218,3 +218,15 @@ Candidate -12 found a route, but acquisition lost bilateral load during lift. Th
 恢复合辑：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R05完成_R03失抓后恢复成功_同一AgentLoop.mp4`（277.333秒，完整解码通过）。当前中间结论：R05完整成功；R03首抓失败后安全恢复；原Agent正在二次准备，双瓶任务仍进行中、尚未完成。
 
 At 18:43:22 the same Agent selected the second R03 Action with fresh scene revision :4 and candidate 09ae…-8. Proposed center and approach differ from the failed candidate by 5.190 mm and 0.3403 degrees in the fixed camera frame, so this does not establish a substantially different approach direction. The 277.333-second recovery compilation passed full decoding. R05 succeeded, first R03 acquisition safely recovered, and second preparation remains in progress.
+
+## 173255 最终结果 / Final result
+
+2026-11-25 19:07:56 +08:00，`acceptance.json` 确认同一任务 `task_8f67e002d7364db8` 最终 `failed`。R05全周期成功；R03两次真实抓取均在抬升时 `physical_grasp_lost`，两次均完成安全开夹与合格来路回撤，原任务内的首次恢复→重新感知→二次准备→二次实际抓取已经发生，但R03倾倒/归位未完成。
+
+第二次失败回执为 `phase-feedback/d61b588684fe4cf0932130118527b5d4.json`；最后lift样本双侧冲量 `[0.002127,0] N·s`，接触载荷及manifold均无效，瓶体垂直位移0.0365 mm、attachment误差6.415 mm。原地测量末支撑0.98858 N，恢复完成后 `returned_to_safe_pose=true`、`observation_ready=true`，原位误差3.743 mm。
+
+第二次安全恢复后，控制器请求再次replan并返回 `runner_error:AgentTaskError:replan budget exhausted (2)`；最终记录11个revision、2次replan。启动metadata/临时配置指定 `maxReplansPerEpisode=4`，而运行Coordinator实际上限为2（错误栈直接显示）。该差异需后续定位配置传递，不能靠metadata声称已有4次预算；本轮没有改动生产代码或扩大预算。
+
+最终合辑绝对路径：`/home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/review-videos/173255_R05完成_R03两次失抓均恢复_任务失败_同一AgentLoop.mp4`。381.050秒、30章节，ffmpeg完整解码通过；全部片段来自同一任务，标明任务失败。2:40.250进入R03首抓，4:37.333进入第二次重抓。现有证据证明恢复和重抓链路，不能证明双瓶完成，也不能证明4 mm/60 N已经解决R03持瓶稳定性。
+
+At 19:07:56 the acceptance record marked the task failed. R05 completed; both R03 lift attempts lost bilateral load and safely recovered. The original Agent reobserved and physically retried, but R03 pouring/placement remained incomplete. Recovery after the second attempt exhausted the actual Coordinator replan limit of2 despite launch configuration requesting4; this discrepancy requires diagnosis. The 381.050-second, 30-chapter same-task video passed full decoding and explicitly labels failure.
