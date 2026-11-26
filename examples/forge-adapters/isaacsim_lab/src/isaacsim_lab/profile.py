@@ -63,6 +63,8 @@ class LabUtopiaProfile:
     supported_operations: tuple[str, ...] = ("pour_cycle", "stir_cycle", "manipulation_cycle")
     headless: bool = True
     camera_render_frames: int = 4
+    video_sensor_refs: tuple[str, ...] = ()
+    video_overlay: bool = True
     motion_config_path: Path | None = None
     physics_config_path: Path | None = None
     perception_config_path: Path | None = None
@@ -137,6 +139,8 @@ class LabUtopiaProfile:
             supported_operations=_operations(value.get("supported_operations", ("pour_cycle", "stir_cycle", "manipulation_cycle"))),
             headless=bool(value.get("headless", True)),
             camera_render_frames=_positive_int(value, "camera_render_frames", 4),
+            video_sensor_refs=_video_sensor_refs(value.get("video_sensor_refs", ())),
+            video_overlay=bool(value.get("video_overlay", True)),
             motion_config_path=path_value("motion_config_path") if value.get("motion_config_path") else None,
             physics_config_path=path_value("physics_config_path") if value.get("physics_config_path") else None,
             perception_config_path=path_value("perception_config_path") if value.get("perception_config_path") else None,
@@ -441,3 +445,11 @@ def _entity_ref(path: str) -> str:
 
 def _destination_ref(path: str) -> str:
     return f"destination://{path.rsplit('/', 1)[-1]}"
+
+
+def _video_sensor_refs(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)) or any(
+        not isinstance(ref, str) or not ref.strip() for ref in value
+    ):
+        raise LabProfileError("video_sensor_refs must be a sequence of non-empty sensor refs")
+    return tuple(value)

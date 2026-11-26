@@ -28,6 +28,20 @@ def test_paos_input_projects_bottle_and_beaker_refs(tmp_path):
     assert value["parameters"]["tilt_rad"] > 0
 
 
+def test_video_profile_defaults_and_explicit_two_view_configuration(tmp_path):
+    from dataclasses import asdict
+
+    original = profile(tmp_path)
+    assert original.video_sensor_refs == ()
+    assert original.video_overlay is True
+    value = {key: str(item) if hasattr(item, "as_posix") else item
+             for key, item in asdict(original).items()}
+    value.update(video_sensor_refs=["sensor://global", "sensor://wrist"], video_overlay=False)
+    configured = LabUtopiaProfile.from_mapping(value)
+    assert configured.video_sensor_refs == ("sensor://global", "sensor://wrist")
+    assert configured.video_overlay is False
+
+
 def test_previous_input_cannot_change_scene_identity(tmp_path):
     with pytest.raises(LabProfileError, match="different source"):
         profile(tmp_path).paos_input({"entity_ref": "entity://other"})

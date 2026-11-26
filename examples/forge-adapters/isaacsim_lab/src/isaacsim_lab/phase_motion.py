@@ -2377,7 +2377,9 @@ class IsaacPhaseMotion:
             result["video_error"] = "opencv_unavailable"
             return result
         relative = Path("phase-video") / f"{uuid4().hex}.mp4"
-        recorder = _EpisodeVideoRecorder(self.artifact_root / relative, cv2, np, fps=1 / self.dt)
+        recorder = _EpisodeVideoRecorder(
+            self.artifact_root / relative, cv2, np, fps=1 / self.dt,
+            sensor_refs=self.profile.video_sensor_refs, overlay=self.profile.video_overlay)
         camera_error = None
 
         def record_frame(stage):

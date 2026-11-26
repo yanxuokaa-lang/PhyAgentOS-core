@@ -52,6 +52,62 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.0.3 (2026-11-26 13:10) - codex
+
+### 计划与边界 / Plan and ownership
+
+- [eval] [fix] [已停止/未交付] 用户要求完整动作视频仅含全局与真正腕部两窗口，无任何文字卡、字幕或第三窗。232254原station wrist_camera错误引用/World/PreviewCameras/ThirdPerson，前两窗重复、第三窗固定R01，旧帧不含真实腕部图像。新增Isaac Adapter所属离线render_recorded_task_views.py，读取成功任务六阶段逐帧joints/finger_positions/object_pose/tcp_pose与route.body_from_observed/source_path，构造固定panda_hand相机，仅渲染原记录；不新建AgentLoop、不执行物理动作、不重跑成功任务、不改原证据。 / [Stopped/not delivered] Produce the requested uninterrupted global-plus-real-wrist video without cards, subtitles or a third panel. The original wrist configuration points to the global camera, so a real wrist view must be rerendered from recorded state. Add an Adapter-owned offline renderer using the six recorded phases and rigid transforms, with a fixed hand-mounted camera and no task/physics re-execution or source-evidence changes. (local)
+- [env] [exp] [已停止/未交付] 沿用anti-minimal-implementation、robotics-safety-implementation和experiment-reproducibility：Adapter私有USD/FK/相机机制保持在脚本，通用domain/Tool/AgentLoop/Runtime生命周期不改。独立带时间目录保存code/config/input、轻量轨迹缓存、TCP姿态验证、timeline不推进证据；从左原全局第二窗口裁取，右为同记录时间的腕部渲染。先最多12张抓取/倾倒/回正/释放预览供主审；姿态不可靠则报告，不冒充实测相机。 / [Stopped/not delivered] Keep private USD/FK/camera mechanisms inside the Adapter and leave public semantics/lifecycle unchanged. Save reproducibility data, a compact trajectory cache, TCP checks and paused-timeline evidence in an isolated output. Preview at most12 frames before full rendering; report unreliable reconstruction instead of claiming recorded wrist imagery. (local)
+- [eval] [exp] [已停止/未交付] 验收目标原16568帧/276.133333s/60fps，双窗且无叠字；相关小型坐标/帧映射测试、语法/Ruff与预览先行，主审后才全片并做ffprobe/PTS/完整decode。此重渲染只为视频展示，不产生新的运动成功证据。当前不commit/push。 / [Stopped/not delivered] Preserve16568 frames at60fps and276.133333s, with two unlabelled views. Validate transforms/frame mapping and previews first; full rendering and media checks follow review. Rerendering is presentation evidence, not a new motion success. No commit/push yet. (local)
+
+### Git 来源 / Git source
+
+- 上轮实验 / Previous experiment: ffa11b0537392e8fa7771d2c22fa9cbe842e0173；日志回执 / Receipt:309f3afe057e2b7ae07b2890d5796eaa56af3208，2026-11-26T00:38:10+08:00，feature/planning-loop，已push并核对远端一致 / pushed and remote-matched。
+
+### 用户转向与新实跑计划 / User-directed replacement plan
+
+- [eval] [docs] [已停止/未交付] 用户明确改为“重新再跑一个例子，按照我们说的这种两个视角”。离线方案停止，两个preview进程均已退出，未生成预览或全片；16568帧缓存与两次失败报告保留于131023。第一次stage默认厘米造成FK误差，设为原运行1m后残差23.16µm；不再继续离线诊断。新增renderer与5项测试移入该输出目录归档，不纳入生产提交。 / [Stopped/not delivered] User now requests a new live example. Stop offline rendering; both preview processes exited and produced no images/video. Preserve cache and reports; archive the renderer/tests locally. The unit correction reduced FK residual to23.16µm, with no further replay work. (local)
+- [sense] [fix] [准备完成] Adapter profile新增可选video_sensor_refs（默认空=全部）与video_overlay（默认true），Recorder按指定顺序录像，缺失指定ref只记video_error、不替代、不阻断运动。接入所有现有recorder创建路径；新实例只录全局和腕部且overlay=false。 / [Prepared] Add Adapter-private camera selection/overlay options with compatible defaults, wire every recorder path, and report missing selected sensors as recording errors without substitution or motion gating. (local)
+- [env] [exp] [准备完成] 独立新目录复制成功232254必要13配置/脚本，不带DB/工件；保留60/60N、.02/.2、retain4mm、原六阶段指令与replan4。真实arm_camera位于panda_hand，固定手部外参[-.10,0,0]朝hand-local[0,0,.18]，12mm/24×18mm aperture；仅静态初始化抓图供主审，不启动完整任务。 / [Prepared] Prepare an isolated live run from the successful configuration, retaining all motion/task parameters. Author a fixed hand-mounted camera, then capture only a static two-view preview for review before the complete task. (local)
+- [model] [docs] 架构六项：通用domain/Tool语义不变；相机注册/选择/录像属于Isaac Adapter；替换Provider不影响调用者；证据新鲜边界为新实例当前真实capture；生命周期/取消/settlement仍原Runtime/Coordinator；最小泄漏测试为默认兼容、两窗顺序、无叠字、指定ref缺失不替代。 / Architecture: public semantics unchanged; Isaac owns camera/recording mechanisms; providers remain replaceable; evidence comes from the new instance's live capture; existing owners retain lifecycle/cancellation/settlement; focused tests cover defaults, view order, overlays and missing sensors. (local)
+- [eval] [exp] [准备完成] 相关profile/recorder无运动测试与lint，真实Adapter注册路径静态capture验证相机父节点、尺寸、颜色与不同视角。预览后暂停供主审；不commit/push、不执行抓取。 / [Prepared] Run focused no-motion tests/lint and actual Adapter camera capture; verify parenting, dimensions, colors and distinct views, then pause without commit/push or manipulation. (local)
+
+### 实现与静态预览完成 / Implementation and static preview completed
+
+- [sense] [fix] 显式ref存在但图像为空时，旧compose会跳过该图而生成单窗，不能满足本次双窗录制；仅显式选择分支检查基本图像shape，记录video_sensor_invalid并跳帧。缺失ref同样记录错误；不新增运动门禁、公共schema或重试。 / Explicitly selected empty images would otherwise silently yield a single panel. Check only selected images' basic shape, record a video error and skip that frame; no motion gate, public schema or retry is added. (local)
+- [eval] [exp] 新独立目录132940仅复制232254的11必要文件，省略watch_progress/save_finished_phase；launch去掉旧observer，保留服务创建失败有限重试且tasks一旦存在不重建。原指令、60/60N、.02/.2、retain4mm、motion/oracle/阈值/replan4相同；新profile两refs/overlayfalse及真实arm_camera是本轮展示变化。 / Copy eleven required files, omit annotation observers, and preserve bounded creation retries without recreating an existing task. Motion/instruction/budget parameters remain identical; only recording selection and the real wrist camera change. (local)
+- [eval] [exp] 静态真实Adapter初始化后使用既有play→World.render32→pause；PID1387258于13:33:27启动并正常退出。preview为2560×960，左全局右腕部，父节点panda_hand、RGBA尺寸1200×1600/960×1280，左右不同，无叠字。一帧recorder视频available且无error；q完全相同、simtime前后均0.0020833334419876337s。主审与执行代理目视通过。 / The real Adapter static preview passed at2560×960 with distinct global/wrist views, correct parenting, no overlay and successful one-frame recording. Joints and simulation time were unchanged during render-only capture; parent and executor visually accepted it. (local)
+- [eval] [exp] 首静态preview因暂停timeline导致Annotator无图，已保留失败报告并复用现有observe_in_session语义修正；没有执行抓取、创建任务或修改运动机制。 / Preserve the initial paused-timeline capture failure and correct the preview using existing observation render semantics, without task creation, manipulation or motion changes. (local)
+- [eval] [exp] `PYTHONPATH=<metadata.pythonpath> .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests/{test_profile,test_engine,test_phase_motion}.py -q`：373passed/25.43s。profile/engine及两对应test Ruff通过；phase_motion既有I001与其测试既有2×E731/1×I001经HEAD核对未新增；git diff --check通过。 / Focused tests passed373/25.43s; four files are lint-clean, with pre-existing findings unchanged in the phase-motion files. Diff checks pass. (local)
+
+### 精确文件范围 / Exact changed ranges
+
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py` L66-L67、L142-L143、L450-L455：可选录像refs/overlay及配置解析 / optional recording configuration。 (local)
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L237-L270、L1341-L1343、L1569、L1741、L2140-L2148：Recorder选择/叠字与全部episode接线 / recorder selection/overlay and episode wiring。 (local)
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2380-L2382：阶段录像接入profile / phase recorder wiring。 (local)
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_profile.py` L31-L44、`tests/test_engine.py` L1212-L1259、`tests/test_phase_motion.py` L3270-L3271（后两相对同Adapter目录）：默认/显式配置、顺序、无叠字、缺失/空图和原fixture / focused recording tests and existing fixture。 (local)
+- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L772-L784：准备与静态证据 / preparation and static evidence。 (local)
+- [本地 / Local] 132940中`labutopia-ridgebase-elevated.usda` L56-L65、station.yaml L23-L30与profile.json末段定义固定真腕相机和两窗录制；configuration.diff、production-test.diff、validation.json、static-preview-report.json保留具体对照与测量。原131023代码/测试仅归档，不作为生产提交。 / Local configuration and evidence preserve the exact camera setup, diffs and measurements; offline files remain archive-only. (local)
+
+### 关键 Diff / Key diff
+
+```diff
++ video_sensor_refs: tuple[str, ...] = ()
++ video_overlay: bool = True
+- frame = compose(all_camera_display); always_overlay(lines)
++ selected = camera_display ordered by configured refs (default: all)
++ missing/invalid selected image -> video_error; skip frame
++ frame = compose(selected); overlay only when configured
++ every recorder creation receives profile.video_sensor_refs/video_overlay
+- wrist_camera.prim_path = /World/PreviewCameras/ThirdPerson
++ wrist_camera.prim_path = /World/Ridgebase/panda_hand/arm_camera
++ live profile: [global, wrist], overlay=false; no annotation observer
+```
+
+### 当前交接 / Current handoff
+
+- [chore] [docs] 实现与静态预览完成，完整任务明确待启动。当前HEAD309f3afe（上轮回执），本轮尚未commit/push；主审提交后刷新新metadata为实际commit并另行启动，不复用preview进程或物理状态。 / Implementation/static preview are complete; the full task remains unstarted. Current HEAD is309f3afe and no new commit/push has occurred; refresh metadata after the parent's reviewed commit and start a fresh instance separately. (local)
+
 ## v18.0.2 (2026-11-25 23:22) - codex
 
 ### 准备计划 / Preparation plan
@@ -481,60 +537,3 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-p
 ### Git 提交 / Git Commit
 
 - 上轮证据 / Previous evidence: `7705de1de9acf27163fc73ed2648b5d1d1622357`，commit时间2026-11-25 22:09:48+08:00；主会话已确认push成功。分支 / Branch: feature/planning-loop。本轮待主审，无commit/push；文档完成后暂停写入。 / Parent confirmed the previous commit was pushed; this change remains uncommitted and paused for review.
-
-## v17.10.14 (2026-11-25 21:59) - codex
-
-- [eval] [exp] [完成] 独立时间目录复用215141，只准备yaw0、azimuthπ、clearance0.048、tilt1/hold2两条完整路线：原固定lip五waypoint对照；process_only_lowest_rim仅替换stage=process一项，保留原两transport及两exit的pose/duration/stage。目的是隔离整段换点引发早期transport失败的影响，不搜索其他参数。 / [Completed] Reuse215141 in a separate directory for two routes at yaw0, azimuthπ, clearance0.048 and tilt1/hold2: the original fixed-lip five-waypoint control and a process-only lowest-rim replacement retaining both transport and exit waypoints exactly. Isolate the early-transport effect of replacing the feature throughout the route without searching other parameters. (local)
-- [eval] [exp] [完成] 保存逐waypoint对照、old/new process坐标、最低rim跟踪误差，沿用204420真实末态与完整qualify/碰撞/IK/阈值及真实joints/time前后证明。诊断换点不宣称opaque原feature身份相同；domain语义、Provider边界、Runtime生命周期及生产不变。准备script/config/diff和无Isaac几何检查后交主会话审阅，未授权前不启动，不提交。 / [Completed] Record waypoint comparisons, old/new process coordinates and lowest-rim tracking error. Retain204420 state, full qualification/checks and actual-state proof. Alternative geometry is not the original opaque selected feature; domain semantics, Provider boundaries, Runtime lifecycle and production remain unchanged. Prepare script/config/diff and no-Isaac geometry checks for parent review before launch, without commit. (local)
-- [docs] [docs] [完成] 按主会话指正将上一报告末英文“All eight pairs”改为“All eight candidates across four pairs”，记录该小修正；更新本轮报告和Latest5。 / [Completed] Correct the prior report's final English sentence to “All eight candidates across four pairs” as requested by the parent, then update the current report and latest-five index. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮证据 / Previous evidence: `c301b849ad3ce2fa6bb996a757c83c759f6f3498`（主会话已提交并确认推送 / parent committed and confirmed pushed）；分支 / Branch: feature/planning-loop。本轮未commit/push。
-
-### 文件变更详情 / File changes
-
-- [新增 / Added] 独立本地目录 `out/labutopia-elevated-20261125/v17.10.14-r03-process-only-rim-diagnostic-220113/`；`diagnose_r03_pour.py` L1–L371复用215141。L55–L65为两候选与仅process替换函数，L121固定budget2；L287–L331保存逐waypoint三版本矩阵/差值、最低rim误差并沿用完整qualify，成功时保存末process FK跟踪误差；L349–L367保留真实joints/time比较。 / The separate371-line script reuses215141 with two candidates and process-only substitution, records original/all-lowest/applied waypoints and rim error, preserves full qualification and actual-state checks, and adds terminal process FK error for successful routes.
-- [新增 / Added] `diagnostic-config.json` L1–L36记录c301b849、原输入、两route_modes和唯一研究变量；`script-changes.diff` L1–L112记录完整差异；`preparation-checks.json` L1–L588保存两候选/五waypoint精确对比和未启动状态。 / Configuration, full diff and preparation evidence retain provenance, the two route modes, exact five-waypoint comparison and not-started status.
-- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L538按主会话修正“All eight pairs”→“All eight candidates across four pairs”；L541–L559新增本轮准备、几何证据和待审启动命令。 / Correct the requested four-pair wording and append preparation, geometry evidence and the command awaiting review.
-
-```diff
-- yaw0 cardinal4 × [fixed lip, all-waypoint lowest rim]; budget8
-+ yaw0 azimuthπ × [fixed lip, process-only lowest rim]; budget2
-+ applied[i] = (lowest_pose if stage == 'process' else fixed_pose,
-+               original_hold_s, original_stage)
-+ waypoint[0,1,3,4].pose = original exactly
-+ process_delta_mm = [7.362813093,13.675725722,24.189329225]
-+ planned_lowest_rim_error_mm = 28.746480463 -> numerical residual
-  tilt=1,hold=2,clearance=.048,IK/collision/limits remain unchanged
-```
-
-### 验证与状态 / Validation and status
-
-- [eval] [exp] worker Python语法、2唯一候选、参数固定、四个非process pose exact相等、五项duration/stage一致、planned R不变及最低rim目标误差检查通过；原process hold2.6s含settle0.6s保持。未导入/初始化Isaac，尚无路线可行性结果。 / Worker-Python syntax, two unique fixed-parameter candidates, exact non-process poses, unchanged durations/stages/orientation and geometric rim-error checks passed. The original2.6s process hold includes0.6s settle. Isaac was not initialized and no route-feasibility result exists. (local)
-- [docs] [docs] 本轮准备仅变本地诊断script/config与文档；旧实验保留，Latest5同步，真实joints/time与fresh场景差异机制保留。完成准备后暂停供主会话审阅，不启动、不改生产、不commit/push。 / Preparation changes only local diagnostic files and documentation, preserving earlier experiments and state/environment evidence. Synchronize the latest-five entries and pause for review without launch, production edits or commit/push. (local)
-
-### 两路线运行授权 / Two-route run authorization
-
-- [eval] [exp] [完成] 2026-11-25 22:04:01 +0800 主会话审阅220113完整diff/config/AST/preparation通过，批准单进程运行固定两条路线；初始化后不step/action/write，无扩展或生产修改，记录PID/拒绝或完整route及前后状态，结束后完成文档暂停。 / [Completed] Parent review approved the220113 diff/config/AST/preparation and authorized one process for exactly two static routes, without post-initialization steps/actions/writes, search expansion or production edits. Record process/results/state comparisons, then complete documentation and pause. (local)
-
-- [env] [exp] [完成] 2026-11-25T22:04:19.732906+08:00 启动PID722797，代码c301b849，固定两路线；启动前GPU可用9513MiB、RAM22GiB、swap8.6GiB、工作盘52GiB，无旧Isaac worker。`launch-receipt.json` L1–L25保存命令/PID/time/code，报告L562–L566追加启动。 / [Completed] StartedPID722797 with codec301b849 and the fixed two-route budget, with recorded available resources and no previous Isaac worker. The25-line launch receipt and report retain actual start evidence. (local)
-
-### 两路线静态结果 / Two-route static results
-
-- [eval] [exp] [完成] 2/2完成、1条静态可行，61.525906032s，two_route_budget_completed，PID722797已退出。固定lip对照精确复现215141 aziπ的process payload_collision；仅process换最低rim的路线全部五waypoints通过，累计steps60/86/97/108/134，transport86、process11、exit37，总hold2.6s。 / [Completed] Both routes finished with one statically feasible route in61.525906032s. The fixed-lip control exactly reproduces the previous process payload collision; the process-only alternative passes all five waypoints with134 steps and2.6s total hold. (local)
-- [eval] [exp] [完成] 新路线qualified末process最低rim误差Δ[−0.132966655,−0.088251185,+0.033361953]mm、范数0.163038103mm，为静态FK结果。非process4点exact不变，全部duration/stage/旋转及原IK/碰撞/阈值保持；真实joint/time前后exact相等，time0.0020833334419876337s，历史夹指几何调用767次，saved-q FK误差0。 / [Completed] Qualified terminal process FK yields0.163038103mm rim error. Four non-process poses, all durations/stages/orientations and original checks remain unchanged; actual joints/time are identical, historical finger geometry is used767 times and saved-state FK error is zero. (local)
-- [新增 / Added] 本地 `diagnostic-results.json` L1–L4447保存完整2条输入/逐点/过程/结果；`two-route-summary.json` L1–L766保存控制对照一致性、原payload碰撞几何、可行路线计数/末端误差和环境漂移；`qualified-static-route.json` L1–L2624保存完整134 steps，明确非readiness/执行许可。报告 `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L569–L583追加实测及范围。 / Full and compact local results retain the two candidates, control comparison, original collision geometry, complete134-step qualified route, FK error and environment drift, with explicit static-only scope; the report appends results and limits.
-
-```diff
-- fixed_lip: process payload_collision
-+ fixed_lip: same process payload_collision (reproduced)
-+ process_only_lowest_rim: feasible_static_diagnostic_only
-+ stages = transport86 + process11 + exit37; total134steps; hold2.6s
-+ qualified_terminal_process_rim_error_mm = 0.163038103
-+ real_joints_unchanged=true; simulation_time_unchanged=true
-  four_nonprocess_waypoints = exactly unchanged
-  no readiness, physical execution, selected-feature identity claim or production change
-```
-
-- [docs] [docs] fresh BEAKER仍比历史acquire高0.967681408mm、capture代理差0.048762510mm；成功限定当前fresh静态模型与历史输入，不作为物理倾倒或正式readiness。生产feature身份及路线构造语义由主会话裁决；本轮不改生产、不扩展候选、无硬件运动，Latest5同步并暂停写入供审阅，无commit/push。 / Fresh BEAKER and capture-proxy drift remain measured; success is limited to this static model with historical inputs and is neither physical pouring nor formal readiness. Parent review owns production feature/route semantics. No production edit, candidate expansion or hardware motion occurred; synchronize documentation and pause for review without commit/push. (local)

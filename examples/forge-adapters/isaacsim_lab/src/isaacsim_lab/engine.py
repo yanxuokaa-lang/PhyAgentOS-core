@@ -234,11 +234,14 @@ def _unsupported_operation_result(operation: Any) -> dict[str, Any]:
 class _EpisodeVideoRecorder:
     """Best-effort recorder for one episode's rendered camera observations."""
 
-    def __init__(self, path: Path, cv2_module: Any, np_module: Any, *, fps: float = 60.0):
+    def __init__(self, path: Path, cv2_module: Any, np_module: Any, *, fps: float = 60.0,
+                 sensor_refs: Sequence[str] = (), overlay: bool = True):
         self.path = path
         self._cv2 = cv2_module
         self._np = np_module
         self._fps = fps
+        self._sensor_refs = tuple(sensor_refs)
+        self._overlay = overlay
         self._writer = None
         self._frame_count = 0
         self._error: str | None = None
@@ -248,10 +251,23 @@ class _EpisodeVideoRecorder:
         if not isinstance(camera_display, Mapping):
             return
         try:
+            if self._sensor_refs:
+                missing = [ref for ref in self._sensor_refs if ref not in camera_display or camera_display[ref] is None]
+                if missing:
+                    self._error = "video_sensor_unavailable:" + ",".join(missing)
+                    return
+                camera_display = {ref: camera_display[ref] for ref in self._sensor_refs}
+                for ref, image_data in camera_display.items():
+                    image = self._np.asarray(image_data)
+                    if image.ndim == 3 and image.shape[0] in (1, 3, 4) and image.shape[-1] not in (1, 3, 4):
+                        image = image.transpose(1, 2, 0)
+                    if image.ndim != 3 or not all(image.shape) or image.shape[-1] not in (1, 3, 4):
+                        self._error = "video_sensor_invalid:" + ref
+                        return
             frame = _compose_camera_frame(camera_display, self._cv2, self._np)
             if frame is None:
                 return
-            for index, line in enumerate(overlay):
+            for index, line in enumerate(overlay if self._overlay else ()):
                 self._cv2.putText(
                     frame,
                     str(line),
@@ -1322,7 +1338,9 @@ class LabUtopiaBackend:
                 "video_error": type(exc).__name__,
             }
         else:
-            recorder = _EpisodeVideoRecorder(video_path, cv2, np, fps=60.0)
+            recorder = _EpisodeVideoRecorder(
+                video_path, cv2, np, fps=60.0,
+                sensor_refs=self.profile.video_sensor_refs, overlay=self.profile.video_overlay)
             video_info = recorder.metadata()
 
         cancelled = False
@@ -1548,7 +1566,7 @@ class LabUtopiaBackend:
         success = False
         stir_tip_offset = None
         video_path = video_path or (self.profile.lab_root / "outputs" / "paos-stir-cycle" / "episode.mp4")
-        recorder, video_info, np = _make_recorder(video_path)
+        recorder, video_info, np = _make_recorder(video_path, self.profile)
         try:
             while app.is_running() and step < int(cfg.task.max_steps):
                 if cancel.is_set():
@@ -1720,7 +1738,7 @@ class LabUtopiaBackend:
         done = False
         success = False
         video_path = video_path or (self.profile.lab_root / "outputs" / "paos-rotation-cycle" / "episode.mp4")
-        recorder, video_info, np = _make_recorder(video_path)
+        recorder, video_info, np = _make_recorder(video_path, self.profile)
         try:
             while app.is_running() and step < int(cfg.task.max_steps):
                 if cancel.is_set():
@@ -2119,14 +2137,15 @@ def _stir_trace_metrics(samples: Sequence[Mapping[str, Any]], parameters: Mappin
     }
 
 
-def _make_recorder(video_path: Path):
+def _make_recorder(video_path: Path, profile: LabUtopiaProfile):
     import numpy as np
 
     try:
         import cv2
     except Exception as exc:
         return None, {"video_path": str(video_path), "video_frame_count": 0, "video_available": False, "video_error": type(exc).__name__}, np
-    recorder = _EpisodeVideoRecorder(video_path, cv2, np, fps=60.0)
+    recorder = _EpisodeVideoRecorder(video_path, cv2, np, fps=60.0,
+                                   sensor_refs=profile.video_sensor_refs, overlay=profile.video_overlay)
     return recorder, recorder.metadata(), np
 
 

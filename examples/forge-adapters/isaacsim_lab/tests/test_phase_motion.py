@@ -3267,6 +3267,8 @@ def test_failed_phase_keeps_video_without_extra_physics_steps(monkeypatch, tmp_p
     pytest.importorskip("cv2")
     model, arguments, _, _ = execution_fixture(monkeypatch)
     model.artifact_root = tmp_path
+    model.profile.video_sensor_refs = ()
+    model.profile.video_overlay = True
     model.session.resolve = lambda _key: {"sensor://front": SimpleNamespace(get_rgba=lambda: np.zeros((32, 32, 4), dtype=np.uint8))}
     result = model.execute(arguments, Event())
     assert result["failure_code"] == "grasp_not_confirmed"

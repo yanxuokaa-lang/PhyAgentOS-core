@@ -1209,6 +1209,54 @@ def test_video_recorder_persists_camera_frame(tmp_path):
     assert metadata["video_available"] is True
 
 
+def test_video_recorder_selects_ordered_views_without_overlay(tmp_path, monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    frames = []
+
+    class Writer:
+        def isOpened(self):  # noqa: N802 - OpenCV interface
+            return True
+
+        def write(self, frame):
+            frames.append(frame.copy())
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(cv2, "VideoWriter", lambda *args: Writer())
+    monkeypatch.setattr(cv2, "putText", lambda *args: pytest.fail("overlay disabled"))
+    recorder = _EpisodeVideoRecorder(tmp_path / "two.mp4", cv2, np,
+                                    sensor_refs=("global", "wrist"), overlay=False)
+    recorder.write({"label": np.full((8, 8, 3), 99, dtype=np.uint8),
+                    "wrist": np.full((8, 8, 3), 22, dtype=np.uint8),
+                    "global": np.full((8, 8, 3), 11, dtype=np.uint8)}, ("stage",))
+    assert frames[0].shape == (8, 16, 3)
+    assert np.all(frames[0][:, :8] == 11)
+    assert np.all(frames[0][:, 8:] == 22)
+    assert recorder.metadata()["video_frame_count"] == 1
+
+
+def test_video_recorder_reports_missing_selected_view_without_substitution(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    recorder = _EpisodeVideoRecorder(tmp_path / "missing.mp4", cv2, np,
+                                    sensor_refs=("global", "wrist"), overlay=False)
+    recorder.write({"global": np.zeros((8, 8, 3), dtype=np.uint8),
+                    "label": np.zeros((8, 8, 3), dtype=np.uint8)})
+    assert recorder.metadata()["video_error"] == "video_sensor_unavailable:wrist"
+    assert recorder.metadata()["video_frame_count"] == 0
+    assert recorder.metadata()["video_available"] is False
+
+
+def test_video_recorder_rejects_empty_selected_view_without_single_panel_frame(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    recorder = _EpisodeVideoRecorder(tmp_path / "empty.mp4", cv2, np,
+                                    sensor_refs=("global", "wrist"), overlay=False)
+    recorder.write({"global": np.zeros((8, 8, 4), dtype=np.uint8),
+                    "wrist": np.zeros((0, 0, 4), dtype=np.uint8)})
+    assert recorder.metadata()["video_error"] == "video_sensor_invalid:wrist"
+    assert recorder.metadata()["video_frame_count"] == 0
+
+
 def test_inprocess_exception_preserves_video_metadata(tmp_path, monkeypatch):
     class FakeApp:
         def __init__(self, config):
