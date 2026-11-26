@@ -261,8 +261,9 @@ def test_coordinator_ports_use_shared_paos_workspace_and_semantic_binding_reques
         }
     )
 
-    adapter, resolver = build_coordinator_ports(profile)
+    adapter, resolver, relation_resolver = build_coordinator_ports(profile)
 
+    assert resolver.__self__ is relation_resolver.__self__
     assert adapter.ready is False
     assert adapter.request.source_category == "reagent"
     assert adapter.request.destination_category == "beaker"
@@ -467,7 +468,7 @@ def test_non_qwen_provider_context_does_not_expose_qwen_recovery_commands():
 
 @pytest.mark.parametrize("route_source", ["observed", "oracle"])
 @pytest.mark.parametrize("action_mode", ["disabled", "runtime_monitored"])
-@pytest.mark.parametrize("relation_enabled", [False, True])
+@pytest.mark.parametrize("relation_enabled", [False, True, "profile", "wrong_task"])
 def test_host_composes_tools_around_one_persistent_worker_client(
     tmp_path, monkeypatch, route_source, action_mode, relation_enabled
 ):
@@ -490,6 +491,14 @@ def test_host_composes_tools_around_one_persistent_worker_client(
     environ = {}
     profile["route_geometry_source"] = route_source
     profile["simulation_action_mode"] = action_mode
+    profile_relation = relation_enabled in {"profile", "wrong_task"}
+    if profile_relation:
+        profile.update(stack_relation_preparation_enabled=True, coordinator_workspace=str(tmp_path),
+            binding_request={"sensor_refs": ["camera/head"], "source_category": "block",
+                             "destination_category": "support", "max_age_ms": 1000})
+        if relation_enabled == "profile":
+            runtime_path = tmp_path / "runtime.yaml"
+            runtime_path.write_text(runtime_path.read_text().replace("blocks_ranking_rgb", "stack_blocks_three"))
     source_checks = []
     monkeypatch.setattr(
         host_module,
@@ -588,13 +597,17 @@ def test_host_composes_tools_around_one_persistent_worker_client(
             "relation_execution_provider_factory": relation_provider_factory,
             "resolve_relation_context": resolve_relation_context,
         }
-        if relation_enabled
+        if relation_enabled is True
         else {}
     )
+    if profile_relation and (action_mode != "runtime_monitored" or relation_enabled == "wrong_task"):
+        with pytest.raises(PersistentHostConfigurationError, match="requires (runtime_monitored|stack_blocks_three)"):
+            build_persistent_host(profile, environ=environ)
+        return
     host = build_persistent_host(profile, environ=environ, **relation_ports)
 
     assert captured["client"] is client
-    if relation_enabled:
+    if relation_enabled is True:
         assert relation_factory_calls == [(client, deployment)]
     assert captured["preparation_timeout_s"] == 4.0
     assert captured["route_geometry_source"] == route_source
@@ -619,8 +632,16 @@ def test_host_composes_tools_around_one_persistent_worker_client(
         relation_endpoint = host.bundle.runtime._registration(
             "relation.establish"
         ).endpoint
-        assert relation_endpoint.provider is relation_provider
-        assert relation_endpoint.resolve_context is resolve_relation_context
+        if profile_relation:
+            from robotwin20_adapter.stack_relation_execution import StackRelationExecutionProvider
+            assert isinstance(relation_endpoint.provider, StackRelationExecutionProvider)
+            assert relation_endpoint.provider.motion_supported() is False
+            subtask_endpoint = host.bundle.runtime._registration("manipulation.execute_subtask").endpoint
+            assert relation_endpoint.resolve_context.__self__ is subtask_endpoint.resolve_context.__self__
+            expected_tool_ids.add("manipulation.execute_subtask")
+        else:
+            assert relation_endpoint.provider is relation_provider
+            assert relation_endpoint.resolve_context is resolve_relation_context
     assert tool_ids == expected_tool_ids
     assert all(
         host.bundle.runtime.get_context(item["tool_id"])["motion_authorized"] is False
@@ -855,3 +876,22 @@ def test_profile_loader_rejects_invalid_recovery_eval_fields(tmp_path):
     path.write_text(yaml.safe_dump(profile), encoding="utf-8")
     with pytest.raises(PersistentHostConfigurationError, match="failure_injection"):
         load_persistent_host_profile(path, environ={})
+
+
+@pytest.mark.parametrize("field", ["relation_execution_provider", "relation_execution_provider_factory",
+                                   "resolve_relation_context", "perception_binding_adapter", "resolve_subtask_context"])
+def test_stack_profile_rejects_injected_lifecycle_ports(tmp_path, field):
+    profile, environ = _profile(tmp_path)
+    profile.update(stack_relation_preparation_enabled=True, coordinator_workspace=str(tmp_path), binding_request={})
+    with pytest.raises(PersistentHostConfigurationError, match="conflicts"):
+        build_persistent_host(profile, environ=environ, **{field: object()})
+
+
+def test_stack_profile_requires_explicit_coordinator_and_boolean(tmp_path):
+    profile, environ = _profile(tmp_path)
+    profile["stack_relation_preparation_enabled"] = "true"
+    with pytest.raises(PersistentHostConfigurationError, match="boolean"):
+        build_persistent_host(profile, environ=environ)
+    profile["stack_relation_preparation_enabled"] = True
+    with pytest.raises(PersistentHostConfigurationError, match="Coordinator"):
+        build_persistent_host(profile, environ=environ)

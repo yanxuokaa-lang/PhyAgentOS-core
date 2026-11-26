@@ -491,12 +491,18 @@ class AgentLoop:
         if self._planning_context_provider is None:
             raise RuntimeError("planning activation requires a trusted planning context provider")
         from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
+        from PhyAgentOS.agent.planning_loop import NodeContextProvider
 
         task = self.forge_task_coordinator.get_task(task_id)
         self.set_planning_dispatch(
             AgentComposedDispatch.from_task(
                 task,
                 context_provider=self._planning_context_provider,
+                node_context_provider=NodeContextProvider(
+                    self.forge_task_coordinator.get_task,
+                    settlement_loader=self.forge_task_coordinator.effective_node_settlements,
+                    execution_record_loader=self.forge_task_coordinator.effective_planning_execution_records,
+                ),
             )
         )
 

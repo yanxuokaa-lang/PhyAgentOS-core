@@ -120,6 +120,7 @@ class AgentComposedDispatch:
         context: AdmissionContext,
         context_provider: Callable[[str], AdmissionContext] | None = None,
         input_schemas: Mapping[str, Mapping[str, Any]] | None = None,
+        node_context_provider=None,
     ) -> None:
         if len({policy.tool_id for policy in policies}) != len(policies):
             raise PlanningDispatchError("planning ToolSpec identities must be unique")
@@ -127,6 +128,7 @@ class AgentComposedDispatch:
         self.policies = policies
         self.context = context
         self.context_provider = context_provider
+        self.node_context_provider = node_context_provider
         self._policies = {policy.tool_id: policy for policy in policies}
         self._input_schemas = {
             tool_id: deepcopy(dict(schema))
@@ -139,6 +141,7 @@ class AgentComposedDispatch:
         task: Any,
         *,
         context_provider: Callable[[str], AdmissionContext],
+        node_context_provider=None,
     ) -> "AgentComposedDispatch":
         """Build a dispatch from an existing task aggregate and frozen binding."""
         graph = getattr(getattr(task, "active_revision", None), "plan_graph", None)
@@ -175,6 +178,7 @@ class AgentComposedDispatch:
             context,
             context_provider=context_provider,
             input_schemas=input_schemas,
+            node_context_provider=node_context_provider,
         )
 
     def describe(self) -> dict[str, Any]:
@@ -883,6 +887,26 @@ class AgentComposedDispatch:
                 recommended_action="repair_tool_policy",
             )
 
+        if policy.tool_id == "relation.establish":
+            from PhyAgentOS.forge.manipulation_context import relation_manipulation_intent
+
+            if self.node_context_provider is None:
+                raise PlanningDispatchError("relation intent requires a trusted node context provider")
+            try:
+                context = self.node_context_provider.build(
+                    self.graph.task_id, node.node_id, scene_revision=self.current_scene_revision)
+                intent = relation_manipulation_intent(self.graph, node, context).model_dump(mode="json")
+            except ValueError as exc:
+                raise PlanningDispatchError(str(exc), code="invalid_node_semantics") from exc
+            for key in policy.input_binding_keys:
+                if key in final_arguments and final_arguments[key] != node.input_bindings[key]:
+                    raise PlanningDispatchError("relation arguments differ from frozen node")
+                final_arguments[key] = node.input_bindings[key]
+            if "intent" in final_arguments and final_arguments["intent"] != intent:
+                raise PlanningDispatchError("relation intent differs from trusted node")
+            final_arguments["intent"] = intent
+            return final_arguments
+
         if policy.tool_id == "manipulation.execute_subtask":
             for key in policy.input_binding_keys:
                 if key not in node.input_bindings:
@@ -1145,6 +1169,8 @@ class AgentComposedDispatch:
     def _required_runtime_arguments(policy: ToolSpecPolicy) -> tuple[str, ...]:
         if policy.trusted_argument_builder != "manipulation_intent_v2":
             return ()
+        if policy.tool_id == "relation.establish":
+            return ("relation_query_result", "candidate_ref")
         return (
             "observation_ref",
             "scene_revision",

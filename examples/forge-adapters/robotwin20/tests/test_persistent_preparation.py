@@ -17,8 +17,8 @@ from robotwin20_adapter.prepared_routes import PreparedRoutes
 from robotwin20_adapter.route_evidence import _artifact_path
 
 
-def composition(tmp_path, *, status="pass", node_id="pick-red", task_id="task-1"):
-    intent = _intent().model_copy(update={"node_id": node_id, "task_id": task_id})
+def composition(tmp_path, *, status="pass", node_id="pick-red", task_id="task-1", intent_override=None):
+    intent = intent_override or _intent().model_copy(update={"node_id": node_id, "task_id": task_id})
     route = _request(tmp_path)
     profile = _profile()
     capability = build_capability_snapshot(

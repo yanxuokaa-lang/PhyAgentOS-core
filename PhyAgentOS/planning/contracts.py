@@ -464,7 +464,7 @@ def required_node_binding_keys(policy: ToolSpecPolicy) -> tuple[str, ...]:
     required = list(policy.input_binding_keys)
     if (
         policy.trusted_argument_builder == "manipulation_intent_v2"
-        and policy.tool_id != "manipulation.execute_subtask"
+        and policy.tool_id not in {"manipulation.execute_subtask", "relation.establish"}
     ):
         required.extend(("entity_ref", "destination_ref", "capability_snapshot_ref"))
         if policy.tool_id == "manipulation.prepare":

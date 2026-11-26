@@ -151,6 +151,7 @@ def test_coordinator_resolves_subtask_identity_and_builds_intent_from_plan_node(
         active_revision_id="revision-1",
         active_revision=SimpleNamespace(
             execution_records=[record],
+            planning_selections=(),
             plan_graph=SimpleNamespace(nodes=(node,)),
         ),
     )

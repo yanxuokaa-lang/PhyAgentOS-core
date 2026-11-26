@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from copy import deepcopy
 from typing import Any, Protocol
 
 from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
@@ -148,6 +149,8 @@ class RelationEstablishActionEndpoint:
             )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"relation geometry does not match the current observation: {exc}") from exc
+
+        request["coordinator_context"] = deepcopy(dict(context))
 
         def start(invocation_id: str, attempt_id: str) -> ActionAdmission:
             try:

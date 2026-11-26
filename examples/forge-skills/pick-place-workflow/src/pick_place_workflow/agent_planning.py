@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from copy import deepcopy
 from typing import Any, Literal, Protocol
 
 from PhyAgentOS.planning import (
@@ -419,6 +420,82 @@ def compose_relation_goal_plan(
         graph=graph,
         entity_bindings=((spec.subtask_id, spec.entity_ref),),
     )
+
+
+def compose_executable_relation_plan(
+    task_id: str,
+    revision_id: str,
+    task_goal_facts: dict[str, Any],
+    *,
+    subtask_id: str,
+    scene_revision: str,
+    observation_ref: str,
+    observation_frame_id: str,
+    calibration_ref: str,
+    understanding_evidence_ref: str,
+    semantic_intent: dict[str, Any],
+    freshness_ms: int,
+    max_age_ms: int,
+    available_evidence: tuple[str, ...],
+    planner_decision_digest: str,
+    policy_snapshot_digest: str,
+) -> AgentComposedPlan:
+    """Compile one current-scene relation segment with explicit evidence Queries.
+
+    Understanding already exists as authorized evidence; no completed Query or
+    future grasp candidate set is invented. The caller supplies semantic intent,
+    while dispatch obtains candidate identity from the persisted grasp Query.
+    """
+    from PhyAgentOS.forge.manipulation import MANIPULATION_INTENT_SEMANTIC_KEYS
+
+    if (not isinstance(semantic_intent, dict) or not semantic_intent
+            or set(semantic_intent) - MANIPULATION_INTENT_SEMANTIC_KEYS):
+        raise AgentPlanningError("relation segment requires structured semantic intent")
+    if (not isinstance(understanding_evidence_ref, str)
+            or understanding_evidence_ref not in available_evidence):
+        raise AgentPlanningError("relation segment lacks current understanding evidence")
+    if (type(freshness_ms) is not int or type(max_age_ms) is not int
+            or freshness_ms < 0 or max_age_ms < 1 or freshness_ms > max_age_ms):
+        raise AgentPlanningError("relation segment observation is stale")
+    semantic = compose_relation_goal_plan(
+        task_id, revision_id, task_goal_facts, subtask_id=subtask_id,
+        scene_revision=scene_revision, observation_ref=observation_ref,
+        observation_frame_id=observation_frame_id, calibration_ref=calibration_ref,
+        available_evidence=available_evidence,
+        planner_decision_digest=planner_decision_digest, policy_snapshot_digest=policy_snapshot_digest,
+    )
+    action = semantic.graph.nodes[0]
+    identity = {key: action.input_bindings[key] for key in
+                ("scene_revision", "observation_ref", "calibration_ref")}
+    evidence = tuple(dict.fromkeys((*action.required_evidence, understanding_evidence_ref)))
+    query_inputs = {
+        "bind": {**identity, "entity_refs": [action.input_bindings["entity_ref"]]},
+        "grasp": {**identity, "entity_ref": action.input_bindings["entity_ref"],
+                  "frame_id": observation_frame_id, "freshness_ms": freshness_ms, "max_age_ms": max_age_ms},
+        "capabilities": identity,
+        "relation_target": {**identity, "frame_id": observation_frame_id,
+                            "freshness_ms": freshness_ms, "max_age_ms": max_age_ms,
+                            **{key: action.input_bindings[key] for key in
+                               ("entity_ref", "goal_relation", "relation_target_ref")}},
+    }
+    capabilities = {"bind": "scene.bind", "grasp": "grasp.propose",
+                    "capabilities": "manipulation.capabilities", "relation_target": "relation.target"}
+    nodes = [PlanNode(
+        node_id=f"{subtask_id}.{suffix}", obligation_id=subtask_id, capability=capabilities[suffix],
+        dependencies=(f"{subtask_id}.bind",) if suffix == "grasp" else (),
+        required_evidence=evidence, input_bindings=values,
+    ) for suffix, values in query_inputs.items()]
+    nodes.append(action.model_copy(update={
+        "dependencies": tuple(node.node_id for node in nodes),
+        "input_bindings": {**action.input_bindings, "semantic_intent": deepcopy(semantic_intent)},
+    }))
+    payload = semantic.graph.model_dump(mode="json")
+    payload["nodes"] = [node.model_dump(mode="json") for node in nodes]
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    validate_graph(graph)
+    return AgentComposedPlan(graph=graph, entity_bindings=tuple(
+        (node.node_id, action.input_bindings["entity_ref"]) for node in nodes))
 
 
 _PICK_PLACE_TOOL_ORDER = (

@@ -306,10 +306,13 @@ def load_persistent_host_profile(
             "binding_request",
             "acquire_safe_recovery",
             "failure_injection",
+            "stack_relation_preparation_enabled",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
         raise PersistentHostConfigurationError("persistent host profile fields are invalid")
+    if not isinstance(profile.get("stack_relation_preparation_enabled", False), bool):
+        raise PersistentHostConfigurationError("stack_relation_preparation_enabled must be boolean")
     if not isinstance(profile.get("acquire_safe_recovery", False), bool):
         raise PersistentHostConfigurationError("acquire_safe_recovery must be boolean")
     failure_injection = profile.get("failure_injection")
@@ -323,7 +326,7 @@ def build_coordinator_ports(
     *,
     perception_binding_adapter: Any | None = None,
     resolve_subtask_context=None,
-) -> tuple[Any | None, Any | None]:
+) -> tuple[Any | None, Any | None, Any | None]:
     """Build optional PAOS-owned context ports from semantic host configuration.
 
     The host may share a PAOS workspace with an Agent process, but it never
@@ -373,12 +376,13 @@ def build_coordinator_ports(
             config=ForgeConfig(),
             client=object(),
         )
-        return PerceptionBindingAdapter(None, request), coordinator.resolve_subtask_context
+        return (PerceptionBindingAdapter(None, request), coordinator.resolve_subtask_context,
+                coordinator.resolve_relation_context)
     if (perception_binding_adapter is None) != (resolve_subtask_context is None):
         raise PersistentHostConfigurationError(
             "perception binding and Coordinator context ports must be supplied together"
         )
-    return perception_binding_adapter, resolve_subtask_context
+    return perception_binding_adapter, resolve_subtask_context, None
 
 
 def _path(value: Any, label: str, *, directory: bool = False) -> Path:
@@ -413,6 +417,17 @@ def build_persistent_host(
     route-bound approval emitted after no-motion preparation.
     """
 
+    stack_enabled = profile.get("stack_relation_preparation_enabled", False)
+    if not isinstance(stack_enabled, bool):
+        raise PersistentHostConfigurationError("stack_relation_preparation_enabled must be boolean")
+    if stack_enabled:
+        if not {"coordinator_workspace", "binding_request"} <= set(profile):
+            raise PersistentHostConfigurationError("stack preparation requires configured Coordinator ports")
+        if any(value is not None for value in (
+            relation_execution_provider, relation_execution_provider_factory, resolve_relation_context,
+            perception_binding_adapter, resolve_subtask_context,
+        )):
+            raise PersistentHostConfigurationError("stack preparation profile conflicts with injected ports")
     variables = dict(os.environ if environ is None else environ)
     lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
     owned_runtime_resources: list[Any] = []
@@ -448,7 +463,7 @@ def build_persistent_host(
         raise PersistentHostConfigurationError(
             "resolve_relation_context must be callable"
         )
-    perception_binding_adapter, resolve_subtask_context = build_coordinator_ports(
+    perception_binding_adapter, resolve_subtask_context, coordinator_relation_context = build_coordinator_ports(
         profile,
         perception_binding_adapter=perception_binding_adapter,
         resolve_subtask_context=resolve_subtask_context,
@@ -486,6 +501,8 @@ def build_persistent_host(
     simulation_action_mode = profile.get(
         "simulation_action_mode", DISABLED_ACTION_MODE
     )
+    if stack_enabled and simulation_action_mode != RUNTIME_MONITORED_ACTION_MODE:
+        raise PersistentHostConfigurationError("stack preparation requires runtime_monitored action mode")
     if simulation_action_mode not in {
         DISABLED_ACTION_MODE,
         RUNTIME_MONITORED_ACTION_MODE,
@@ -943,6 +960,16 @@ def build_persistent_host(
             task_name=task_name,
             grasp_provider_id=selected_provider_id,
         )
+        if stack_enabled:
+            if task_name != "stack_blocks_three":
+                raise PersistentHostConfigurationError("stack preparation requires stack_blocks_three Runtime")
+            from .stack_relation_inputs import build_stack_relation_preparation_inputs
+            from .stack_relation_preparation import build_stack_relation_execution_provider_factory
+
+            resolve_relation_context = coordinator_relation_context
+            relation_execution_provider_factory = build_stack_relation_execution_provider_factory(
+                prepare_inputs=build_stack_relation_preparation_inputs(artifact_root, task_name=task_name)
+            )
         if relation_execution_provider_factory is not None:
             relation_execution_provider = relation_execution_provider_factory(
                 client, deployment

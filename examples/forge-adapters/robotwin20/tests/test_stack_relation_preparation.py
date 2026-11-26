@@ -16,8 +16,8 @@ from robotwin20_adapter.stack_relation_preparation import (
 )
 
 
-def composed(tmp_path):
-    inputs, provider, routes = composition(tmp_path)
+def composed(tmp_path, *, intent_override=None):
+    inputs, provider, routes = composition(tmp_path, intent_override=intent_override)
     intent = inputs["intent"]
     identity = {key: inputs[key] for key in ("scene_revision", "observation_ref", "calibration_ref")}
     provider.client.snapshot["scene_validity"] = "action_driven"

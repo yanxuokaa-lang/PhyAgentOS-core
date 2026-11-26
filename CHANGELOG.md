@@ -52,6 +52,88 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.1.0 (2026-11-26 16:03) - codex
+
+### 计划与完成 / Plan and completion
+
+- [policy] [feat] [完成] 接通 relation 公开 schema 的可信 intent 构造、Coordinator 当前 revision 直接前置查询解析、显式可执行关系片段；保留原语义计划和 subtask 行为，不向 Core 加入 RoboTwin 特判。 / Implement trusted relation intent, current-plan direct Query evidence and explicit executable segments while preserving existing semantics and subtask behavior. (local)
+- [env] [feat] [完成] Adapter 私有 resolver 读取真实 evidence JSON 并核对 query/source；host 以默认 false 的 stack_relation_preparation_enabled 显式装配同一 Coordinator 与 preparation factory。 / Resolve actual evidence artifacts and opt in to production composition with the same Coordinator. (local)
+- [eval] [exp] [完成] 真实五 ToolSpec 的编译/选择、持久查询/结算、endpoint、实际 artifact resolver 与真实 Preparation 贯通；覆盖身份/来源失败和 host 配置，无仿真启动且 client.start=0。 / Exercise actual schemas, durable evidence and real preparation with failure/configuration coverage and zero Action starts. (local)
+- [model] [docs] 架构审核：Core 持有可信意图与当前计划记录，Adapter 持有 JSON 来源核验与关系目标投影；Coordinator 仍持有任务/节点结算，Runtime/Gateway/worker 持有动作/取消/执行结算。复用原 caller/record/node/input 验证和现有跨 revision 持久 schema；撤去冗余全局 NodeContext 检查，不新增 hash/gate/状态库。 / Architecture review retains Core, Adapter, Coordinator and Runtime ownership and relies on existing persistence revision validation without new hashes, gates or stores. (local)
+
+### 文件变更详情 / Exact file changes
+
+- [policy] [feat] [新增] `PhyAgentOS/forge/manipulation_context.py` L1-L61：唯一成功直接前置 Query 的 arguments/result 投影与共享关系 intent 构造，校验当前 scene、实体和真实 frame.frame_id。 / Project exact successful direct Queries and construct the shared relation intent from current scene/entity/frame evidence. (local)
+- [policy] [feat] [修改] `PhyAgentOS/agent/planning_dispatch.py` L123、L131、L144、L181、L890-L909、L1172-L1173：只读 node_context_provider 注入，relation 可信参数构造与 schema 兼容 runtime 字段；prepare 数组要求保持。 / Inject the read-only node context and implement relation-specific trusted inputs without weakening preparation requirements. (local)
+- [policy] [fix] [修改] `PhyAgentOS/planning/contracts.py` L467；`PhyAgentOS/forge/capability_runtime/manipulation_capabilities.py` L32：relation 不要求 prepare-only destination/capability 冻结字段，真实 capability ToolSpec 显式声明可选能力。 / Separate relation node bindings and declare the real capability Query for selection. (local)
+- [policy] [feat] [修改] `PhyAgentOS/forge/task.py` L1208-L1288：提取共用 Action caller/record/graph 验证并增加 resolve_relation_context，完整可信 intent 与直接前置查询私有投影。 / Share Action context validation and add relation context using persisted direct predecessors. (local)
+- [policy] [feat] [修改] `PhyAgentOS/agent/tools/planning.py` L788-L792；`PhyAgentOS/agent/loop.py` L494、L501-L505：首次激活与恢复重建均动态读取同一 Coordinator。 / Both activation paths use the live Coordinator context provider. (local)
+- [policy] [feat] [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L14、L425-L500；同目录 `__init__.py` L15、L212：新增并导出 compose_executable_relation_plan；bind→grasp、capability、relation.target 均成为 Action 直接依赖。 / Export the executable relation compiler with explicit evidence dependencies. (local)
+- [policy] [feat] [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_execution.py` L6、L153-L154：endpoint 在解析真实 Coordinator context 后仅向内部 Provider request 注入 coordinator_context，公共 schema 不变。 / Supply resolved context only inside the Provider composition boundary. (local)
+- [env] [feat] [新增] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py` L1-L90：读取已有 JSON artifact 路径机制，比较真实 schema/task/query/motion/source，区分 bind world frame 与 observation frame，校验当前直通 Provider 的 execution identity。 / Resolve existing JSON artifacts and actual identity/frame/provenance representations before preparation. (local)
+- [env] [feat] [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L309、L314-L315、L329、L379-L380、L385、L420-L430、L466、L504-L505、L963-L972：新增默认关闭的显式 profile 字段，同一 Coordinator 三端口，runtime_monitored/stack 配置约束及注入冲突拒绝。 / Add opt-in host composition with one Coordinator and explicit configuration compatibility checks. (local)
+- [eval] [exp] [新增] `examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py` L1-L500：完整公开选择→持久记录→实际 endpoint→artifact→真实准备链，20 个成功/失败用例；仅外部规划与 worker 机制替换。 / Twenty integrated success/failure cases cover production boundaries with external mechanism fixtures. (local)
+- [eval] [exp] [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L264-L266、L471、L494-L501、L600、L603-L606、L610、L635-L644、L881-L897：实际 profile factory/discovery、同 Coordinator、默认关闭/冲突/非 stack/mode/type 测试。 / Verify real host composition, discovery and configuration failures. (local)
+- [eval] [fix] [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py` L20-L21；`examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py` L19-L20：fixture 接受真实 Coordinator intent，未改写 Query candidate set。 / Let existing preparation fixtures consume the actual intent without altering Query results. (local)
+- [eval] [fix] [修改] `tests/test_planning_task_integration.py` L154：原 fixture 补 planning_selections，HEAD 动态载入已复现缺字段 AttributeError。 / Initialize missing fixture state after reproducing its failure against HEAD. (local)
+- [docs] [docs] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L63：当前范围、所有权、编译/host 使用与 observed/身份/实测缺口。`changelog/2026-11_part5.md` L607-L687、`CHANGELOG.md` L55-L135：双语完整记录及最新五条同步。 / Document continuation, ownership and remaining evidence gaps and synchronize the full latest-five entry. (local)
+
+### 关键 Diff / Key diff
+
+```diff
+# Core trusted construction and required arguments
+- all manipulation_intent_v2 consumers except execute_subtask require prepare arrays/destination/capability
++ relation.establish consumes a read-only NodeContextProvider and persisted direct grasp Query
++ relation_manipulation_intent(graph, node, context)
++ relation runtime arguments = ("relation_query_result", "candidate_ref")
+# Shared Coordinator validation
+- resolve_subtask_context owns all caller/record/graph checks inline
++ _resolve_action_context(caller_id, capability)
++ resolve_relation_context -> trusted intent + {tool_id: {arguments, result}}
+```
+
+```diff
+# Skill compiler and endpoint
++ compose_executable_relation_plan(..., understanding_evidence_ref, semantic_intent, freshness_ms, max_age_ms)
++ scene.bind -> grasp.propose; all four Queries -> relation.establish
++ request["coordinator_context"] = deepcopy(dict(context))
+# Adapter source resolution
+- embedding must invent/provide a resolver independently
++ build_stack_relation_preparation_inputs(artifact_root, task_name=...)
++ json.loads(_artifact_path(...).read_text())
++ evidence.query == persisted_relation_arguments
++ target_geometry_source = evidence.geometry_source
+```
+
+```diff
+# Host opt-in and same Coordinator
+- return perception_adapter, coordinator.resolve_subtask_context
++ return perception_adapter, coordinator.resolve_subtask_context, coordinator.resolve_relation_context
++ stack_relation_preparation_enabled: bool = False
++ build_stack_relation_execution_provider_factory(prepare_inputs=actual_artifact_resolver)
+# Motion remains closed; no worker start is introduced.
+```
+
+### 验证与失败分析 / Validation and failure analysis
+
+- [eval] [exp] 主审18套件 **517 passed in12.44s**；新增 context+host 定向组合 **63 passed in5.75s**。真实 Preparation/selector/PreparedRoutes 和 scene_facts/validator 执行，外部规划、碰撞/接触反馈、snapshot 使用 fixture，不能当作完整 GPU route readiness 或真实物理试验。 / Parent review passed517 tests; the focused integration passed63. Production preparation runs with substituted external mechanisms, not live route/physics validation. (local)
+- [eval] [fix] 首轮297 passed/2 failed：冗余全局 revision 检查误拒绝合法 discovery provenance，已撤销并使用既有 store 拒绝跨 revision；关联 subtask fixture 缺字段经 HEAD 重现后补初始化。 / Remove the redundant global check and repair the directly related fixture after reproducing the original failure. (local)
+- [eval] [exp] 额外 planning_selection 扩展集63 passed/5 failed；三个测试名（含三参数）共5项全部通过 git show HEAD:PhyAgentOS/agent/tools/planning.py 动态载入逐一重现相同 planning_selection_internal_error：test_plan_select_is_control_plane_only_and_returns_binding、test_plan_select_resolves_catalogued_predecessor_source_before_persistence（三参数）、test_missing_node_source_context_requires_plan_recovery。本轮未修改这些旧 fixture。 / All five additional selection-fixture failures reproduce against HEAD and remain outside this change. (local)
+- [chore] [fix] Ruff 修复4处 import 顺序与新测试15处单行if；定向 I/E701 和三个新增 Python 文件完整 Ruff 均通过，git diff --check 通过。 / Import/conditional formatting checks, full lint of new Python files and diff whitespace validation pass. (local)
+- [docs] [docs] 完成的是生产组合入口与可信准备链；尚缺 Adapter relation Provider 的 observed→execution identity 映射、observed support Provider、真实 route/contact/stop 和三块连续执行。当前目标 artifact 明确为 simulator_actor_geometry；motion_supported 仍 False，client.start=0。 / The production composition entry and evidence chain are complete; identity conversion, observed support and live execution qualification remain, with motion disabled. (local)
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q tests/test_planning_dispatch.py tests/test_planning_loop.py tests/test_planning_task_integration.py tests/test_planning_projection.py tests/test_planning_source_assembly.py tests/test_planning_dispatch_bootstrap.py tests/test_planning_end_to_end.py examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py examples/forge-skills/pick-place-workflow/tests/test_relation_target.py examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py examples/forge-adapters/robotwin20/tests/test_persistent_host.py examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py examples/forge-adapters/robotwin20/tests/test_grounding.py examples/forge-adapters/robotwin20/tests/test_route_inputs.py --tb=short
+.venv/bin/ruff check --select I,E701 PhyAgentOS/forge/task.py examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py
+.venv/bin/ruff check PhyAgentOS/forge/manipulation_context.py examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py
+git diff --check
+```
+
+### Git
+
+- Commit: 待主审提交 / Pending parent commit; Branch: `feature/planning-loop`.
+- [chore] [docs] 实现与验收完成，按分工未 stage/commit/push；由主审审阅并提交推送后补回执。 / Implementation and validation are complete; the executor leaves staging, commit and push to the parent reviewer. (local)
+
 ## v18.0.5 (2026-11-26 15:35) - codex
 
 ### 计划 / Plan
@@ -452,86 +534,3 @@ PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/ro
 + branch:feature/planning-loop; time:2026-11-26T00:36:10+08:00
 + Latest5 synchronized; separate two-log receipt commit/push authorized
 ```
-
-## v18.0.1 (2026-11-25 23:12) - codex
-
-### 计划与边界 / Plan and ownership
-
-- [sense] [fix] [完成] 223214实跑中R05完成后live scene已为scene:3，R03的旧scene:0缓存仍被process-feature propose作为available返回；内部capture一致不证明当前场景一致。仅在LabVisualPerception.propose现有Provider边界读取live revision，旧capture返回stale、缺revision返回unavailable且不创建candidate set；engine=None离线历史模式和全局_records保持。 / [Completed] The223214 run accepted scene:0 process features after R05 advanced the live scene to scene:3. Internal capture consistency does not establish current-scene validity. Check the live revision only at the process-feature Provider proposal boundary; reject stale/missing revisions without creating candidates while retaining offline and historical record behavior. (local)
-- [policy] [fix] [完成] ProcessFeatureQueryEndpoint保留Provider明确stale/unavailable/invalid及错误，未知status不得转成功；空候选和motionfalse使用现有公共契约，无status legacy Provider继续兼容。 / [Completed] Preserve explicit Provider failure status/error at the generic endpoint, never promote unknown status to success, and retain legacy Providers without a status field under the existing public contract. (local)
-- [eval] [fix] [完成] 覆盖live当前/变化/缺失/异常、新capture恢复、offline/legacy替换和携带候选的失败状态；以真实LabVisualPerception+endpoint的stale经过既有归一/settlement及LabSubtaskContinuation恢复，证明R05历史保留、只续R03，unknown/partial不绕过。 / [Completed] Cover current/stale/missing/error revisions, fresh-capture recovery and offline/legacy substitution; integrate a real stale Provider response through existing normalization, settlement and continuation to preserve completed R05 while resuming R03 without bypassing unknown/partial effects. (local)
-- [docs] [docs] [完成] 通用endpoint拥有状态语义，Isaac Provider拥有live scene机制；Coordinator/既有plugin继续拥有生命周期/重规划，运动/公共schema保持。已完成process_features、visual_perception、subtask_continuation、paos_integration、semantic_task_creation/subtask_executor回归，补精确行号/diff/report/Latest5并交主审；无新hash/gate/retry、无仿真、无自动提交。 / [Completed] Keep generic status semantics separate from Isaac scene mechanisms and retain Coordinator/plugin lifecycle ownership. Complete focused regressions, document exact changes and pause for review without motion, new schemas/gates/retries or automatic commit. (local)
-
-- [sense] [fix] [证据补充] TOOL_SPEC明确current-scene；223214旧capture自报freshness740ms，即使已过约20分钟仍通过请求内age验证，schema与_records只比较缓存/请求，不读取live scene。修复范围限propose，不扩至validate_selection或_records。 / [Evidence] The ToolSpec requires current-scene evidence, but the old capture still self-reported740ms after about20minutes; request age/schema and cached-record checks cannot observe the live revision. Limit this correction to propose. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮 / Previous: `a8b08049b4325d8f234951bf72db4b5d35aa76f7`于2026-11-25T23:10:42+08:00提交并推送feature/planning-loop，HEAD/origin/远端分支一致；本轮实现待主审，不commit/push。 / The previous evidence commit is pushed and all branch identities agree; this implementation awaits review without commit/push.
-
-
-### 实际实现及文件详情 / Implementation and file details
-
-- [sense] [fix] [完成] live revision校验仅位于propose的capture一致性检查之后、生成任何candidate之前；stale/缺revision不改变process_feature_sets，异常不吞入Provider。历史_records读取与离线engine=None保持，当前成功候选路径不变。 / [Completed] Check live revision only after capture consistency and before candidate creation; stale/missing revision leaves the candidate store untouched, backend errors propagate to the existing endpoint handler, and offline/historical reads remain supported. (local)
-- [policy] [fix] [完成] Provider status分支位于原有result identity检查之后，仅新增分支向_failure传request；原参数/age/exception/候选验证失败输出不改，显式失败即使带有效候选也不能转available。 / [Completed] Preserve the original identity-check order and failure receipts; only the new Provider-status branches pass request identity, and explicit failure cannot become available even when candidates are present. (local)
-- [eval] [fix] [完成] 真实stale结果经Coordinator既有_tool_result_from_execution和settle_node，再进入LabSubtaskContinuation.select_recovery/propose_replan与fresh receipt续接：R05原action/settlement保留，仅R03生成新动作片段；unknown/partial仍不提供续接，旧stale Query证据不进入当前context。 / [Completed] A real stale response traverses existing result projection, settlement, recovery and fresh-receipt continuation; retain R05 history, generate only R03 and block continuation for unknown/partial effects while excluding stale Query evidence. (local)
-
-#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L1250-L1265
-
-- 新增Provider-private live scene检查及明确拒绝输出；无新公共schema/重试/生命周期机制。 / Add the Provider-private live-scene check and explicit failure output without a new public schema, retry or lifecycle mechanism.
-
-```diff
-  records = self._records(request)
-+ if self.engine is not None:
-+     live_revision = self.engine.backend.current_scene_revision()
-+     # Missing revision -> unavailable; different revision -> stale.
-+     # Return request identity, unavailable candidate-set ref and [] before candidate creation.
-  expected = set(request["entity_refs"])
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/process_features.py` L97-L104、L134-L141
-
-- 明确失败/未知status使用现有输出语义；_failure可选identity只服务这两个新增分支。 / Use existing failure semantics for explicit or unknown status; optional request identity serves only these two new branches.
-
-```diff
-  # Existing result identity check remains before status handling.
-+ status = result.get("status", "available")
-+ if status in ("stale", "unavailable", "invalid"):
-+     return self._failure(status, provider_error, request)
-+ if status not in ("available", "empty"):
-+     return self._failure("unavailable", unknown_status_error, request)
-  # Existing candidate validation remains unchanged.
-- def _failure(status, message):
-+ def _failure(status, message, request=None):
-+     # Copy request identity only when explicitly supplied.
-```
-
-#### [修改 / Modified] 测试 / Tests
-
-- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py` L346、L373-L459、L2028-L2029：仅propose所需fixture明确offline/live engine；验证当前可用、scene:0→3拒绝且store不增、fresh capture恢复、missing/exception拒绝和历史_records可读。 / Limit fixture changes to proposal calls and cover current/stale/fresh/missing/error/offline behavior without losing historical records.
-- `examples/forge-skills/pick-place-workflow/tests/test_process_features.py` L3-L4、L12、L196-L236：显式失败/未知status不因携带候选转成功，输出保持schema；available/empty继续候选验证，失败status不绕过原identity验证；既有无status Provider替换测试继续通过。 / Cover failure/unknown statuses with candidates, schema-compatible rejection, retained validation and legacy Provider substitution.
-- `examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py` L1-L40、L138-L181、L197-L209、L277-L282：以真实Provider/endpoint结果替代手工failed settlement，串接现有恢复和fresh receipt，核对R05历史与R03续接及unknown/partial边界。 / Replace fabricated failure with the real Provider/endpoint result and exercise existing recovery/receipt continuation and unknown/partial boundaries.
-- `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L672-L686：追加具体故障链、修复归属、验证与无运动证据范围。 / Append the observed failure path, ownership, validation and no-motion evidence limits.
-- `CHANGELOG.md`同步最新五版本18.0.1/18.0.0/17.10.15/17.10.14/17.10.13完整条目；旧版本历史不改。 / Synchronize the five latest complete entries without rewriting historical entries.
-
-```diff
-- failed = NodeSettlement(..., status="failed")  # fixture-only failure
-+ response = ProcessFeatureQueryEndpoint(real_visual).invoke(old_capture)
-+ result = _tool_result_from_execution(task, persisted_record(response))
-+ failed = settle_node(node, result, current_scene_revision="after")
-  recovery = plugin.propose_replan(...)
-  # Existing fresh receipt sequence: observe -> understand -> capabilities -> grasp.
-+ assert original_R05_action_and_settlement_are_retained
-+ assert resumed_action_nodes == ["R03"]
-```
-
-### 验证 / Validation
-
-- [eval] [fix] 六文件集中回归208 passed in20.35s；先前process_features+visual_perception专项105 passed in1.09s、continuation5 passed in0.56s。五个改动Python文件Ruff全通过，git diff --check通过。 / The six-file focused suite passed208 tests in20.35s; initial targeted runs passed105 and5 tests. Ruff passes all five changed Python files and diff whitespace validation passes. (local)
-- [eval] [fix] Ruff初报两个新增import块I001，已仅整理对应测试文件import；主审收窄了endpoint失败回执与fixture修改范围。未新增生产防御框架/运动/仿真/测试范围；208项是契约、Provider和恢复组合证据，不证明新的物理成功。 / Fixed import ordering in two modified test files and narrowed endpoint/fixture scope following review. No new defensive framework, motion, simulation or expanded test scope; the208 tests establish contract, Provider and recovery composition evidence, not physical success. (local)
-
-```bash
-PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-skills/pick-place-workflow/tests/test_process_features.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py --tb=short
-.venv/bin/ruff check examples/forge-skills/pick-place-workflow/src/pick_place_workflow/process_features.py examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py examples/forge-skills/pick-place-workflow/tests/test_process_features.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py
-```
-
-- [docs] [docs] 本轮实现/文档完成，暂停写入供主审；当前HEAD仍a8b08049，本轮没有commit/push或启动Isaac。 / Implementation and documentation are complete and writing pauses for parent review; HEAD remainsa8b08049, with no commit/push or Isaac launch for this change. (local)
