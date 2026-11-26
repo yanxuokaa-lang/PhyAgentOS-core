@@ -782,3 +782,35 @@ Adapter profile新增`video_sensor_refs=()`、`video_overlay=True`保持旧默�
 373项profile/engine/phase_motion测试通过；profile/engine及对应两测试Ruff通过，phase_motion I001与test_phase_motion原3项Ruff问题均HEAD既存，未顺带修改；diff检查通过。无运动测试证明Recorder配置/顺序/失败行为，静态capture只证明当前真实注册和画面，不是六阶段动作结果。下一步由主审提交后更新metadata的真实code commit，再启动一次新完整任务；当前无提交或完整任务启动。
 
 The user replaced offline replay with a new live dual-camera example. The Adapter now supports ordered recording sensor refs and disabling overlays, with compatible defaults and explicit recording errors for missing/empty selected views. The isolated132940 run preserves all successful motion parameters and uses a fixed camera genuinely parented to panda_hand. Its2560×960 static global/wrist preview and one-frame recorder output passed visual review, with identical joints and simulation time across render-only capture.373 tests passed; existing unrelated lint findings remain. The complete task is not started and awaits the reviewed code commit; no offline reconstruction is presented as live capture.
+
+
+### v18.0.3新任务已启动（2026-11-26 13:40，运行中）
+
+主审实现提交0415b62b7cdb385e6a5165fd97295d6b6204a271（13:38:39+08:00）已写入新metadata。13:40:29.924592启动132940唯一新任务task_0c6254c467a44d06，launcher1398300/host1398303/worker1398730，无旧observer；首次创建即成功。启动前preview已退出、无旧task/assignment DB。13:42 R05两项process准备查询完成，grasp_task_affordances准备中。后续只追踪这个任务，阶段视频闭合后检查双窗，终态按真实动作顺序合片，不插卡或叠字。目前没有完整动作结果。
+
+One new task is running on reviewed code0415b62b with a fresh scene/database and no annotation observer. The initial R05 process queries completed; grasp preparation is underway. Subsequent evidence/video will come only from this task's actual execution, including recovery if it occurs; no final outcome is claimed yet.
+
+
+### v18.0.3最终实跑与无字双窗视频（2026-11-26 14:06终态）
+
+**本轮R05完整动作成功；整个R05→R03任务failed，R03未运动。** 新任务task_0c6254c467a44d06于14:06:22.500330+08:00结束，code0415b62b已由主审确认push至feature/planning-loop。launcher1398300、host1398303、worker1398730全部退出，未启动第二任务或修改运行中的运动代码。
+
+最终交付：`out/labutopia-elevated-20261126/v18.0.3-r05-r03-live-dual-132940/R05_全局与腕部_完整实跑.mp4`。这是新实例真实相机录到的全部三个动作段，左全局、右固定panda_hand腕相机，2560×960、60fps、H264/yuv420p。没有文字叠字、片头、插卡、片尾、第三窗或新增空白；保留相机原方向，不旋转腕部画面。场景本身桌面标签属于原始画面。原始录像、回执与失败记录均保留。
+
+| 实际阶段 | feedback尾标识 | 原始video尾标识 | 帧数 / 秒 | 结果 |
+|---|---|---|---:|---|
+| R05 acquire | 44ec7a058f444e3b9fe97d926625e8b4 | dfeb8297c3d24fbb85bc6bfdc87fa419 | 2112 / 35.20 | succeeded，holding |
+| R05 pour | 4f135e556666448ca3066c84b6602f65 | a2998f178dbd44f3a6b4f6da436c379f | 3561 / 59.35 | succeeded，holding |
+| R05 place | 3f1b041757b84617a55face25ceecc98 | 516ce92484624e238ce69c77f862332f | 1455 / 24.25 | succeeded，empty |
+
+唯一实际Action为tool_1767fc567c7b4e82，subtask_result=completed、outcome_known=true、possession_state=empty、requires_replan=false，最终scene:3。lift117/117双侧载荷与grasp有效，首末lift上升60.074618104mm、末attachment0.047140511mm；倾倒最大1.001442185rad、qualified/continuous/aligned hold均2.816666814s、170有效样本；归位误差0.202404870mm、旋转0.001061612rad。末样本stage=retreat，两指实测[0.039999656379,0.039999667555]m、目标[0.04,0.04]m，contact_load_valid/grasp_valid均false，和归位后松夹后撤画面一致。
+
+R03首次scene:0 process查询stale后，已有恢复刷新为scene:3，保留R05完成记录；新process准备与grasp_task_affordances成功。随后prepare_grasp_task_affordance的请求将opaque calibration标识从实际`bfe12131065a44a4937c1528fd463068.json`写成`bfe121310065a44a4937c1528fd463068.json`（多一个0），返回`status=stale`、`error=task-affordance candidate set is stale`、motion_authorized=false。工具传输record status=succeeded不等于领域成功；最终settlement failed、world_change_started=false、outcome_known=true，现有恢复停止。未产生R03 Action/readiness/feedback/video，本轮不能验证R03倾倒机制。`calibration-typo-summary.json`保留精简请求/结果/settlement摘录，`terminal-failure-raw.json`保留相关原始记录；不添加planner修复或重建任务。
+
+终态共6 revisions。修订预算标记[true,true,false,false,false,false]扣除初始为1，但最终controller_outcomes.replans=0、last_failure=failed；两种原始读数分别保留，不混称统一计数。task.evidence_errors保留4条历史恢复/停止信息。`terminal-summary.json`、task/controller/receipts raw、`lineage-action-summary.json`与`phase-evidence.json`记录完整事实；SQLite只读结果与acceptance一致。巨大pour/place仅读取尾部metrics，末释放样本只读尾256KiB。
+
+合片按唯一Action内receipt顺序使用三份原始phase-video，目录3份与合片3份完全匹配，无遗漏、无恢复运动或重复动作。总7128帧/118.800000s，0章节，packet PTS相对n/60最大误差0.000000333333s，完整ffmpeg decode exit0、日志空。首末画面已目视正常、双窗无叠字，主审已验收第一段实际持瓶帧；`R05-dual-first.png`和`R05-dual-last.png`保留复核。`compile_live_video.py`、`live-motion.ffconcat`、`live-video-manifest.json`、`live-video-full-decode.log`保存编码/验证过程；首命令的-r与passthrough冲突修正后，保持源60fps时间戳编码成功，未改变原始动作。
+
+373项既有测试证明配置、顺序、overlay与缺失/空图行为；静态capture证明真实注册；本轮三阶段反馈与真实双窗录像证明R05执行，不能表述为六阶段成功。无液体：process_completed=true、result_meaning=motion_goal_reached，liquid_amount=unmeasured、transfer_verified=false。收尾仅更新日志、报告与Latest5和本地工件，没有新生产变更、重复测试、重跑或提交，交主审。
+
+The new live run completed all three R05 motion phases but the full R05→R03 task failed before any R03 motion. The118.8-second video contains all7128 actual frames from this run, with global and genuinely hand-mounted views, H264/yuv420p at2560×960/60fps, no added text/cards/blank frames and unchanged wrist orientation. Frame counts, complete clip coverage, timestamps and full decoding passed. R05 returned within0.202405mm and released with empty possession. After fresh-scene recovery, R03 preparation received a calibration reference containing an extra zero and returned stale without motion authorization; preserve the exact failure rather than claiming six-stage success. Six revision records account for one budgeted replan after the initial revision, while the final controller reports zero; both original values remain visible. The committed implementation0415b62b is pushed; this closeout remains uncommitted for review. Tests, static capture and live execution remain separate evidence categories, and liquid transfer is unverified.

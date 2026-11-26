@@ -108,6 +108,49 @@
 
 - [chore] [docs] 实现与静态预览完成，完整任务明确待启动。当前HEAD309f3afe（上轮回执），本轮尚未commit/push；主审提交后刷新新metadata为实际commit并另行启动，不复用preview进程或物理状态。 / Implementation/static preview are complete; the full task remains unstarted. Current HEAD is309f3afe and no new commit/push has occurred; refresh metadata after the parent's reviewed commit and start a fresh instance separately. (local)
 
+
+### 实现提交与新任务启动计划 / Implementation receipt and live task launch plan
+
+- [chore] [docs] 主审已提交实现`0415b62b7cdb385e6a5165fd97295d6b6204a271`，branch feature/planning-loop，时间2026-11-26T13:38:39+08:00，message `v18.0.3: [sense] 支持全局腕部双视角无叠字录像并验证真实相机`；主会话已发起push。 / Parent committed the reviewed implementation at the recorded branch/time and initiated push. (commit 0415b62b)
+- [eval] [exp] [完成] 2026-11-26T13:40:29.924592+08:00按用户授权启动132940唯一新完整R05→R03无液体Isaac任务。更新metadata为实际code commit，确认静态preview已退出且本目录无旧task DB；原11配置、指令、motion/physics/oracle/阈值与replan4保持。采用既有launch.py独立持久进程，不启动旧observer或第二任务实例。 / [Completed] Start one authorized fresh complete task using the committed code, unchanged motion/instruction/budget configuration and the existing launcher, after confirming the preview exited and no old task database exists. No annotation observer or duplicate instance is started. (local)
+- [eval] [exp] [完成] 保存launcher/host/worker PID、时间与task ID，持续读取持久状态/回执，第一段闭合后提取真实双窗帧供主审；任何具体阶段失败保留原证据。终态按本任务实际执行顺序拼接所有动作段（含恢复/重试），H264/yuv420p、60fps、2560×960，保留原动作时长，无卡片、文字、空白或旧录像替代；验证frames/PTS/完整decode。 / [Completed] Record process/task identities and monitor persisted outcomes. Review an actual first-stage frame, retain failures, and concatenate this task's real motion clips including recovery/retries in execution order. Produce unlabelled H264/yuv420p60fps2560×960 video with original duration and verify frame/timestamp/decode integrity. (local)
+- [docs] [docs] [完成] 按当前版本追加日志/report/Latest5实际结果，区分原373无运动测试、当前静态capture与新真实执行证据；运行期间不改已载入生产运动代码或全局服务配置，后续文档不commit/push，等待主审。 / [Completed] Append actual results and distinguish test, static-capture and live-execution evidence. Do not modify loaded motion code/global service settings or commit subsequent documents before review. (local)
+
+### 已启动事实 / Actual launch
+
+- [eval] [exp] [运行中] 唯一新任务`task_0c6254c467a44d06`，2026-11-26T13:40:29.924592+08:00启动launcher1398300，host1398303于13:40:29.956958启动，worker1398730；无observer。实际code0415b62b，creation_attempt1；13:42已完成R05 process_features/prepare_process_features并进入grasp_task_affordances。完整任务尚未完成。 / [Running] One fresh task launched with the recorded process identities and committed code, without an observer. Its initial R05 process-feature queries completed and grasp-affordance preparation is underway; the complete task is not finished. (local)
+
+### 新真实任务终态与收尾计划 / Live terminal result and closeout plan
+
+- [eval] [exp] 2026-11-26T14:07:57.912318+08:00：唯一任务于2026-11-26T14:06:22.500330+08:00终态failed；R05 acquire/pour/place均成功，R03 prepare_grasp_task_affordance返回stale、motion_authorized=false，未进入R03 Action，三个运行PID均退出。保留原始错误及历史恢复记录；不重启。 / The single task terminated failed after all three R05 phases succeeded. R03 grasp-affordance preparation returned stale without motion authorization or an R03 Action, and all three processes exited. Preserve raw errors and prior recovery evidence; do not restart. (local)
+- [eval] [exp] [完成] 按已授权收尾范围保存terminal/controller/task/receipts及精简摘要；本次最终视频仅拼接实际发生的三个R05动作段，明确R03未执行、整任务未完成，保持2560×960/60fps、H264/yuv420p、无文字/卡片/空白，核对7128帧与118.8秒、PTS和完整decode。主审独立诊断R03准备失败，本执行不改生产。 / [Completed] Archive terminal/controller/task/receipt evidence and compact summaries. Concatenate only the three actually executed R05 clips, explicitly record that R03 never executed and the full task did not complete, and verify7128frames/118.8seconds, PTS and full decoding. The parent diagnoses the R03 preparation failure; no production change is made. (local)
+- [eval] [fix] 合片首命令被本机FFmpeg拒绝：`-r60`与`-fps_mode passthrough`冲突，尚未产生视频。沿用源60fps时间戳、移除冗余输出`-r`后重试同一离线编码；不改源录像/动作。 / Local FFmpeg rejected the first composition command because output rate and passthrough timing conflict. Remove the redundant output-rate flag, preserve the source60fps timestamps, and retry encoding the same recordings without changing motion or source video. (local)
+
+### 实际终态、交付与验证 / Actual terminal result, delivery and validation
+
+- [chore] [docs] 主审确认实现0415b62b7cdb385e6a5165fd97295d6b6204a271已push至origin/feature/planning-loop；该代码是132940本轮实际运行来源。本次收尾尚未commit/push，交主审，之前“待启动/运行中”段落保留原记录时点。 / Parent confirmed the implementation was pushed and used by this run. Closeout documents remain uncommitted for review; earlier preparation/running statements retain their historical timestamps. (commit 0415b62b)
+- [eval] [exp] R05唯一Action tool_1767fc567c7b4e82完成，三阶段succeeded，empty且requires_replan=false。lift117/117 contact/grasp，rise60.074618104mm、末attachment0.047140511mm；tilt1.001442185rad、连续合格/对准保持2.816666814s；归位误差0.202404870mm。末retreat两指约0.04m，载荷/抓取均false，松夹后撤证据一致。 / R05's sole Action completed all three phases and released with empty possession. Lift validity was117/117, rise60.074618104mm, final attachment error0.047140511mm, tilt1.001442185rad and aligned continuous hold2.816666814s; return error0.202404870mm. Final open fingers and absent grasp/contact confirm release. (local)
+- [eval] [exp] 全任务failed；R03新鲜scene:3准备请求的calibration标识多一个0（bfe12131065…→bfe121310065…），Provider返回stale、error原文`task-affordance candidate set is stale`、motion_authorized=false；settlement失败、world_change_started=false，R03无Action/readiness/feedback/video。6 revisions中预算标记扣初始为1，controller却replans=0；分别保留，4条历史evidence_errors未删除。 / The full task failed before R03 motion after its preparation request altered the calibration reference by one extra zero. Preserve provider stale/error, failed no-motion settlement, both differing replan accounting values and all four historical recovery messages. (local)
+- [eval] [exp] `R05_全局与腕部_完整实跑.mp4`完整收入本轮3段原始双窗动作：2112/3561/1455帧，35.20/59.35/24.25s，共7128帧/118.8s；H264/yuv420p、2560×960、60fps，0章节，无文字/卡片/新增空白、无旧录像或重建替代。原腕相机方向保留。源段与receipt/目录一一对应；PTS最大误差0.333微秒，完整decode exit0且日志空，首末目视正常。 / The delivered video includes all three actual recordings, totalling7128frames/118.8s at2560×960/60fps in H264/yuv420p, with no added text/cards/blank frames and unchanged camera orientation. All source clips match receipts, PTS error is0.333microseconds, full decoding passes and first/last frames look normal. (local)
+- [eval] [docs] 新增本地terminal-summary、calibration-typo-summary、task/controller/receipts raw、phase-evidence、lineage-action-summary、final-release-evidence及视频manifest/编码脚本，原始失败acceptance保留。373无运动测试、静态预览和本轮真实R05执行分别记录；本轮未复跑生产测试，无液体transfer_verified=false，不声称六阶段成功。 / Preserve compact and raw terminal, lineage, release and video evidence. Separate373-test, static-capture and actual R05 evidence; no tests were rerun, no liquid transfer was verified and no six-stage success is claimed. (local)
+
+### 收尾文件与关键 Diff / Closeout files and key diff
+
+- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L786-L816：追加真实启动、三阶段结果、R03准备失败与双窗视频交付 / append actual launch, three-phase result, R03 preparation failure and video delivery。 (local)
+- [修改 / Modified] `changelog/2026-11_part5.md` L433-L473、`CHANGELOG.md` L55-L152：本版本新启动计划标记完成并追加实际终态、提交来源及验证；Latest5完整同步，其他版本历史不改 / complete the current launch plan and append actual terminal, code receipt and validation; synchronize Latest5 without altering prior versions。 (local)
+- [本地 / Local] 132940的`compile_live_video.py` L1-L107、`extract_terminal_evidence.py` L1-L118、metadata.json L1-L37及launch-receipt、terminal/phase/lineage/release JSON、原视频/成片/首末PNG与manifest：仅本次实跑和编码工件，不stage整个out / this run's evidence/encoding artifacts only, without staging output directories。 (local)
+
+```diff
+- current launch/terminal archiving plan: pending
++ code0415b62b pushed; one live task started and settled failed before R03 motion
++ R05: acquire/pour/place succeeded; one Action; final possession empty
++ R03 prepare: calibration reference contains an extra zero; stale; no motion
++ final video: 3/3 actual clips, 7128 frames / 118.8 s, global+wrist
++ H264/yuv420p, 2560x960, 60fps, no added text/cards/blank frames
++ PTS max error 0.333 microseconds; full decode passed; first/last visually checked
++ original failed acceptance, raw receipts and compact calibration mismatch preserved
+```
+
 ## v18.0.2 (2026-11-25 23:22) - codex
 
 ### 准备计划 / Preparation plan
