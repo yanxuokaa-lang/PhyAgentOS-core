@@ -145,6 +145,39 @@ PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/ro
 + no new motion/Coordinator/Provider mechanism; original arguments and task history retained
 ```
 
+
+### 实际提交与启动计划 / Commit receipt and launch plan
+
+- [chore] [docs] 主审已提交并核验push：43e45bd6562d1242bc524456297271c262294753，feature/planning-loop，2026-11-26T14:37:16+08:00；本轮实际使用该代码。 / Parent committed and verified the pushed revision43e45bd6562d1242bc524456297271c262294753 on feature/planning-loop at2026-11-26T14:37:16+08:00; this is the run code. (commit 43e45bd6)
+- [eval] [exp] [完成] 2026-11-26T14:38:51.852600+08:00主审授权启动143036唯一完整R05→R03任务。保持原参数/指令、12次Provider重试/15s间隔、replan4与双窗无字，不启用observer；一次性local calibration故障后由Agent自行刷新。记录PID/时间/实际回执，完整保留所有动作段至终态；不人工修请求、不重启或改生产。 / [Completed] Launch the single approved143036 task with unchanged instruction, motion, retries, budget and unlabelled dual views. Let the Agent recover from the one local calibration fault; preserve process receipts and every action clip through settlement without manual request repair or restart. (local)
+- [eval] [docs] [完成] 按实际receipt时间顺序合成全部动作段为R05_R03_自主恢复_全局与腕部.mp4，验证H264/yuv420p2560×960/60fps、帧数/PTS/完整decode/首末画面；保存fault原改参数、task/events/receipts、恢复时间线与配置/code证据，区分无运动测试和本轮无液体执行。终态后同步报告与Latest5，交主审且不commit/push。 / [Completed] Compile every actual clip in receipt order without cards/text, validate media properties, frame timing and full decoding, and preserve the fault and recovery evidence. Synchronize final documentation for parent review without committing or claiming liquid transfer. (local)
+
+### 143036 实跑收尾 / Live recovery closeout
+
+- [eval] [exp] 2026-11-26T14:38:51.853577+08启动task_3886ebe6c8bf4b68，launcher1527769/host1527770/worker1530951；15:39:59.837558+08终态succeeded，11 revisions、2/4 replans、last_failure=null，三个PID均退出。实际代码43e45bd6已push；本轮无重启/重复任务、无人为修请求或运动参数修改。 / The single task started at14:38:51 and settled succeeded at15:39:59 with11 revisions and2/4 replans; all processes exited. It used pushed43e45bd6 with no restart, duplicate task or manual request/motion changes. (local)
+- [policy] [exp] 受控calibration错字仅注入一次：15:08:06将136a73fa…→0136a73fa…，真实Preparation返回stale、known/no-world-change及refresh_declared_evidence。event2067由现有query_evidence确定replan，新revision_fa9231281d9d4d85首记录scene.observe，继而原continuation重建calibration=e984fbc…/candidate_set=9de984…/selected=c6ab78…并成功准备R03；旧candidate=0aed617…/selected=bbdee6…。 / One controlled endpoint-boundary typo produced a real stale result and the existing Query-only recovery; fresh capture/calibration/candidates then enabled R03 preparation. (local)
+- [sense] [docs] 新capture/calibration/candidates已经更新；observation_ref仍为scene:3/sensor标识，物理scene未变，不声称所有ref字符串变化。持久arguments可能为注入前值，fault-injection.json保留原/改参数和实际响应；故障不是LLM再次随机打错。先前event2027的scene:0→:3恢复与本次同scene故障分开记录，4条历史evidence_errors保留。 / A new capture regenerated calibration/candidates while the scene:3/sensor observation identity remained unchanged. Preserve pre/post-injection requests and distinguish this controlled fault from both model errors and the earlier scene refresh, retaining all four historical recovery messages. (local)
+- [eval] [exp] R05/R03实际Action各1（tool_a1914159202f4c85/tool_634db4643bc14d27），六阶段均succeeded，两瓶completed/outcome_known=true/empty/requires_replan=false。R05 lift117/117、rise60.074618104mm、末attachment0.047140511mm、tilt1.001442185rad、hold2.816666814s、归位0.202404870mm；R03分别118/118、60.093074015mm、0.024408880mm、1.001487669rad、2.866666816s、0.164189428mm，末旋转误差0.000907724rad。末retreat双指约0.04m/contact与grasp=false。 / Both Actions ran once and all six phases succeeded, ending released and empty. Record measured lift, attachment, tilt/hold and return errors for each bottle; final open fingers and absent load/grasp confirm release. (local)
+- [eval] [exp] R03 pour fresh scene:4的132steps（85transport/11process/36exit）全检查通过，使用process_only_lowest_qualified_opening_rim；两瓶motion_goal_reached但transfer_verified=false、液体量未测。251项无运动契约/接线测试与本轮真实Provider/Agent/动作证据分别保留，不重复跑测试。 / R03's fresh-scene132-step derived-rim route passed all checks. Motion goals were reached without liquid-transfer verification; distinguish the existing251 contract tests from live provider/recovery/execution evidence. (local)
+- [eval] [docs] 成片R05_R03_自主恢复_全局与腕部.mp4按receipt顺序包含全部6段2112/3561/1455/3696/3923/1925帧，共16672帧/277.866667s；H264/yuv420p2560×960/60fps、0章节，无卡/叠字/新增空白，未替换旧帧或重建。源视频与receipt集合一致、PTS最大误差0.333微秒、完整decode exit0且日志空；成片首末目视正常，主审已独立核对terminal-summary、恢复链、ffprobe、manifest、Latest5及首末/倾倒三张实际帧，全部通过，无Blocker/Major。 / All six original clips form the unlabelled dual-view video with16672 frames/277.866667seconds. Parent independently verified the terminal summary, recovery chain, ffprobe, manifest, Latest5 and actual first/last/tilt frames; all passed without Blocker/Major findings. (local)
+- [docs] [docs] 保存原始acceptance/task/events/receipts、fault、lineage、recovery-summary/timeline、phase/release evidence与视频manifest；metadata关联实际code/config。主审验收完成，交主会话提交归档；保留并行v18.0.5日志与文件。 / Preserve raw and compact task/fault/recovery/release/video evidence linked to code/config. Parent acceptance is complete; hand off to the main session for archival commit while preserving concurrentv18.0.5 work. (local)
+
+### 收尾行号与 Diff / Closeout ranges and diff
+
+- [修改 / Modified] `docs/forge/LABUTOPIA_AFFORDANCE_STALE_RECOVERY_20261126.md` L47-L76：追加真实受控故障、恢复链、六阶段测量和视频验收 / append controlled-fault recovery, six-phase metrics and video acceptance。 (local)
+- [修改 / Modified] `changelog/2026-11_part5.md` L524-L554、`CHANGELOG.md`当前v18.0.4完整条目：本次启动/收尾计划完成与实测回执；旧准备时点保留，Latest5读取当前月档同步，保留并行版本 / complete this run's plans and receipts while preserving historical preparation and concurrent versions。 (local)
+- [本地 / Local] 143036的`extract_terminal_evidence.py` L1-L108、`compile_live_video.py` L1-L107、metadata/launch/fault/recovery/media工件：只读归档及完整原视频拼接，不进入生产或stage整个out / read-only evidence extraction and complete original-video compilation, without production changes or staging outputs。 (local)
+
+```diff
+- full run: launch/terminal evidence pending
++ code43e45bd6; one controlled calibration typo; real stale -> Query refresh
++ new capture/calibration/candidates; same scene:3 observation identity
++ preserved R05 Action; R05 and R03 each executed once; six phases succeeded
++ task succeeded; replans2/4; last_failure=null; historical recovery errors retained
++ final released/empty; liquid transfer remains unverified
++ complete dual-view video16672frames/277.866667s; no cards/text; decode passed
+```
+
 ## v18.0.3 (2026-11-26 13:10) - codex
 
 ### 计划与边界 / Plan and ownership

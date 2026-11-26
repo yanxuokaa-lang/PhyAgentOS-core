@@ -42,3 +42,35 @@ local host在首次R03 Preparation入口deepcopy后给calibration文件名插入
 ```
 
 English: The previous run already recovered a scene-revision mismatch, but a later same-scene grasp-preparation mismatch lacked existing evidence-refresh diagnostics and stopped. This patch supplies explicit no-motion/known-outcome recovery fields at the provider-neutral endpoint and clarifies Agent guidance; the existing Coordinator and declared scene-refresh Query retain ownership.251 no-motion tests cover endpoint status/schema, identical live/persisted settlement, bounded recovery, completed-action preservation and the actual Lab superclass/continuation path. An isolated unchanged dual-camera run with one endpoint-boundary calibration typo is prepared but unstarted. Its injected arguments and actual response will be recorded separately from pre-injection invocation arguments. No simulation, commit or push was performed for this patch.
+
+
+## 143036 真实恢复实跑结果（2026-11-26）
+
+本轮使用已审阅且已push的43e45bd6562d1242bc524456297271c262294753（feature/planning-loop，提交时间14:37:16+08:00）。14:38:51.853577启动唯一任务task_3886ebe6c8bf4b68；launcher1527769、host1527770、worker1530951。2026-11-26T15:39:59.837558+08:00任务与controller均succeeded，11 revisions、2/4 replans、last_failure=null，三个进程均退出。运行期间未修改生产或运动参数、未重启任务、未人工修复请求。上文“待启动/未提交”保留为准备时点记录。
+
+这是一次**受控标定引用错字注入**。旧任务的自然错误与此次实验故障分别保留；本次不是模型再次随机拼错。
+
+| 时间（UTC+8） | 实际证据与结果 |
+| --- | --- |
+| 15:04:45 | R05唯一Action tool_a1914159202f4c85完成三阶段并empty。 |
+| 15:04:49 | event2027：R03初始scene:0工艺查询stale，既有Lab场景刷新分支replan至scene:3。 |
+| 15:08:06.689507 | local harness首次R03 Preparation仅一次把calibration文件名136a73fa2fab4100a6788966b6084807前插0；真实endpoint tool_a976fec9ee064894返回stale及完整evidence恢复字段。 |
+| 15:08:07.750628 | event2067：Agent选择replan，reason为“A read-only Query reported stale or ambiguous evidence; refresh the current scene before continuing preparation or any Action”。 |
+| 15:08:22 | revision_fa9231281d9d4d85首个且唯一执行记录为scene.observe/tool_8286edc4443d4d81；之后原continuation完成understand、grasp.propose、capabilities和prepare。 |
+| 15:10:26 | tool_3a8b8db854634bab重新准备available；新calibration=e984fbc4297d4607a86b03127dead824，新candidate_set=9de984731ad54519984d06f88692d897，新selected=c6ab78f5181f4643b706e94dd2caeb11。 |
+| 15:10:42→15:39:25 | R03唯一Action tool_634db4643bc14d27接受并完成acquire/pour/place；最终completed、outcome_known=true、empty、requires_replan=false。 |
+
+新capture生成了新的calibration/candidates，observation_ref仍使用同一scene:3/sensor标识；只读故障未改变物理scene，因此不能声称全部opaque引用字符串都变化。故障前candidate_set=0aed617abcc2445caada758e0794c18f、selected=bbdee6da305d4a3aa9942a91e501ce03；注入参数保存在fault-injection.json，普通持久调用参数可能为边界前值。R05/R03 Action各一次，故障触发一次，既有完成历史保留。4条历史evidence_errors保留，最终last_failure=null不表示从未发生失败。
+
+| 瓶体 | 抬升接触/抓取有效 | 抬升量 | 末附着误差 | 最大倾角 / 连续对准保持 | 归位位置误差 |
+| --- | --- | --- | --- | --- | --- |
+| R05 | 117/117 | 60.074618104mm | 0.047140511mm | 1.001442185rad / 2.816666814s | 0.202404870mm |
+| R03 | 118/118 | 60.093074015mm | 0.024408880mm | 1.001487669rad / 2.866666816s | 0.164189428mm |
+
+六阶段实际回执均succeeded。R03倾倒readiness11de96e48c244f0d8043dd3ac371d75b在fresh scene:4通过kinematic/collision/workspace，132steps=85transport/11process/36exit，使用process_only_lowest_qualified_opening_rim。R03最终旋转归位误差0.000907724rad，末retreat双指约0.04m、contact/grasp均false；两瓶subtask_result均completed/outcome_known=true/empty/requires_replan=false。本轮无液体，result_meaning=motion_goal_reached、transfer_verified=false，未测转移量。
+
+完整视频：`out/labutopia-elevated-20261126/v18.0.4-r05-r03-evidence-recovery-143036/R05_R03_自主恢复_全局与腕部.mp4`。按receipt时间顺序包含全部6段原始动作：2112/3561/1455/3696/3923/1925帧，共16672帧、277.866667s（4分37.867秒），H264/yuv420p、2560×960、60fps、0章节。无文字卡/叠字/新增空白或丢弃动作；原全局+固定腕部方向保持，未用旧录像/离线重建。恢复Query不产生物理动作段，本轮无额外物理恢复/重试视频。原目录视频与receipt集合完全一致，输出PTS最大误差0.333微秒，完整decode exit0且日志空；最终首末画面目视正常，主审已独立核对terminal-summary、恢复链、ffprobe、manifest、Latest5及首末/倾倒三张实际帧，全部通过，无Blocker/Major。
+
+主要工件均在上述目录：acceptance.json、task-record-raw.json、task-events-raw.json、subtask-receipts-raw.json、fault-injection.json、fault-refresh-lineage.json、recovery-summary.json、recovery-timeline.json、phase-evidence.json、final-release-evidence.json、live-video-manifest.json及首末/倾倒PNG。metadata、configuration.diff和preparation-review关联实际代码与原配置；不新增hash/gate。251项既有无运动测试是契约/接线证据，本轮真实Provider stale、Agent恢复和六阶段反馈是执行证据；收尾未重复跑生产测试。本次收尾主审验收完成，交主会话提交归档。
+
+English: The single controlled calibration-reference fault was injected once at the endpoint boundary. The real stale result triggered the existing Query-evidence recovery, a new scene capture/calibration/candidate chain and successful R03 preparation, while preserving R05's completed Action. The observation reference stayed the same scene:3/sensor identity. Both Actions ran once and all six physical phases succeeded; the task settled succeeded with two replans out of four, empty possession and retained historical recovery messages. The complete unlabelled global/wrist video contains16672 frames over277.866667seconds and passes timestamp/full-decode checks. No liquid transfer was measured. Parent independently verified terminal/recovery/media/index evidence and all three actual frames, with no Blocker/Major findings; acceptance is complete and the main session will commit the archive.
