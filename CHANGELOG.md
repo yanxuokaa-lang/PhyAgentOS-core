@@ -178,6 +178,10 @@ PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/ro
 + complete dual-view video16672frames/277.866667s; no cards/text; decode passed
 ```
 
+### Git 提交与推送回执 / Commit and push receipt
+
+- [chore] [docs] 主审已提交收尾结果：`441e9d86b03084d0b0e6f3c820c065279e9a5dce`；branch `feature/planning-loop`；实际提交时间 `2026-11-26T15:57:19+08:00`（git show）；提交说明 `v18.0.4: [eval] 归档标定引用故障自主恢复与双视角实跑结果`。主审确认已成功push至`origin/feature/planning-loop`。 / Parent committed the accepted closeout as `441e9d86b03084d0b0e6f3c820c065279e9a5dce` on `feature/planning-loop` at `2026-11-26T15:57:19+08:00` (git show), and confirmed a successful push to `origin/feature/planning-loop`. (commit 441e9d86)
+
 ## v18.0.3 (2026-11-26 13:10) - codex
 
 ### 计划与边界 / Plan and ownership
