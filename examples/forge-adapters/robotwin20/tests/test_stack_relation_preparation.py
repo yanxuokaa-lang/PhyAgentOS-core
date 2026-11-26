@@ -1,189 +1,185 @@
-from __future__ import annotations
-
 from copy import deepcopy
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
+from test_persistent_preparation import composition
+from test_route_inputs import _facts
 
-from robotwin20_adapter.stack_relation_execution import StackRelationExecutionProvider
+from robotwin20_adapter.grounding import Grounding
+from robotwin20_adapter.persistent_action_approval import PersistentSimulationActionApprover
+from robotwin20_adapter.route_inputs import CURRENT_SCENE_FACTS_SCHEMA_VERSION, validate_scene_facts
 from robotwin20_adapter.stack_relation_preparation import (
     StackRelationPreparationError,
     build_stack_relation_execution_provider_factory,
     build_stack_relation_route_preparation,
 )
 
-ENTITY_REF = "entity://stack-block-2"
-DESTINATION_REF = "destination://stack-block-1"
-SCENE_REVISION = "stack-0-2"
 
-
-def _request():
-    return {
-        "entity_ref": ENTITY_REF,
-        "goal_relation": "on",
-        "relation_target_ref": "entity://stack-block-1",
-        "scene_revision": SCENE_REVISION,
-        "observation_ref": "observation://stack/2",
-        "observation_frame_id": "camera-head",
-        "calibration_ref": "artifact://calibration",
-        "intent": {"task_id": "task-1", "motion_authorized": False},
-        "relation_binding": {
-            "entity_ref": ENTITY_REF,
-            "relation_target_ref": "entity://stack-block-1",
-            "destination_ref": DESTINATION_REF,
-            "world_T_object_target": [0.0] * 16,
-            "evidence_refs": ["artifact://relation/target"],
-        },
+def composed(tmp_path):
+    inputs, provider, routes = composition(tmp_path)
+    intent = inputs["intent"]
+    identity = {key: inputs[key] for key in ("scene_revision", "observation_ref", "calibration_ref")}
+    provider.client.snapshot["scene_validity"] = "action_driven"
+    # Grounding and preparation use the same current-scene client; no Action API exists.
+    grounding = Grounding(provider.client, tmp_path, None)
+    source = np.eye(4)
+    source[:3, 3] = [0.1, 0.2, 0.3]
+    functional = source.copy()
+    functional[2, 3] += 0.02
+    obj = _facts()["objects"][0]
+    obj.update(entity_ref=intent["entity_ref"], world_T_object=source.reshape(-1).tolist(),
+               world_T_functional_point=functional.reshape(-1).tolist())
+    for key in ("world_T_object_target", "world_T_functional_target", "target_ref"):
+        obj.pop(key)
+    scene = _facts()
+    scene.update(identity, schema_version=CURRENT_SCENE_FACTS_SCHEMA_VERSION, objects=[obj])
+    grounding.bindings[inputs["binding_ref"]] = {
+        **identity, "frame_id": inputs["frame_id"], "objects": {intent["entity_ref"]: obj},
+        "scene_facts": scene,
     }
-
-
-def _prepared_result():
-    """Mirror the persistent prepare result produced by PersistentPreparationProvider."""
-    assignment = {
-        "task_id": "task-1",
-        "entity_ref": ENTITY_REF,
-        "candidate_ref": "candidate://stack-block-2/g1",
-        "assignment_ref": "artifact://assignments/1",
+    target = np.eye(4)
+    target[:3, :3] = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+    target[:3, 3] = [0.3, 0.4, 0.5]
+    relation = {
+        "entity_ref": intent["entity_ref"], "destination_ref": inputs["destination_ref"],
+        "world_T_object_target": target.reshape(-1).tolist(),
+        "evidence_refs": ["artifact://relation/support"],
     }
-    route_request = {
-        "request_id": "route-1",
-        "scene_revision": SCENE_REVISION,
-        "destination_ref": DESTINATION_REF,
-        "candidates": [{
-            "candidate_ref": assignment["candidate_ref"],
-            "entity_ref": assignment["entity_ref"],
-        }],
-    }
-    route_arguments = {
-        "observation_ref": "observation://stack/2",
-        "scene_revision": SCENE_REVISION,
-        "frame_id": "camera-head",
-        "calibration_ref": "artifact://calibration",
-        "candidate_set_ref": "candidate-set://stack",
-        "capability_snapshot_ref": "artifact://capability",
-        "preparation_ref": f"preparation://{SCENE_REVISION}/task-1/rev-1/node-1/camera-head",
-        "candidate_ref": assignment["candidate_ref"],
-        "entity_ref": assignment["entity_ref"],
-        "assignment_ref": assignment["assignment_ref"],
-        "route_request": route_request,
-        "approval_ref": "artifact://approvals/1",
-        "destination_ref": DESTINATION_REF,
-        "assignment": assignment,
-    }
-    return {
-        "prepared_candidates": [{
-            "candidate_ref": assignment["candidate_ref"],
-            "entity_ref": assignment["entity_ref"],
-            "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
-            "evidence": ["artifact://evidence/1"],
-            "qualification": "prepared",
-        }],
-        "provider_available": True,
-        "assignments": [assignment],
-        "destination_ref": DESTINATION_REF,
-        "route_arguments": route_arguments,
-    }
+    request = {**identity, "entity_ref": intent["entity_ref"], "intent": deepcopy(intent),
+               "observation_frame_id": inputs["frame_id"], "relation_binding": relation,
+               "candidate_ref": "relation-target://support/1"}
+    inputs["target_geometry_source"] = "simulator_actor_geometry"
+    provider.approval_issuer = PersistentSimulationActionApprover(
+        tmp_path, task_name="stack_blocks_three", mode="runtime_monitored")
+    builder = provider.route_builder
+    seen = []
+    # Only external planning is substituted: production Grounding.scene_facts,
+    # PersistentPreparationProvider, CompleteRouteSelector and PreparedRoutes run.
+    query = provider.client.query
+    provider.client.query = lambda operation, arguments, **kw: (
+        {} if operation == "bind_observed_entities" else query(operation, arguments, **kw))
+    grounding._observed_support = lambda binding: None
+    def build(arguments, **kwargs):
+        facts = validate_scene_facts(grounding.scene_facts(arguments))
+        seen.append(facts)
+        bundle = builder.build(arguments, **kwargs)
+        for candidate in bundle["base_request"]["candidates"]:
+            candidate["placement_target"]["target_ref"] = arguments["destination_ref"]
+        for option in bundle["options"]:
+            option["candidate"]["placement_target"]["target_ref"] = arguments["destination_ref"]
+        return bundle
+    provider.route_builder = SimpleNamespace(build=build)
+    deployment = SimpleNamespace(preparation_provider=provider, grounding=grounding)
+    return request, inputs, deployment, seen
 
 
-class FakePreparation:
-    """Record the manipulation.prepare request; never start any Action."""
-
-    def __init__(self, result=None, error=None):
-        self.result = result
-        self.error = error
-        self.requests = []
-        self.started = []
-
-    def prepare(self, request, *, metrics=None):
-        self.requests.append(deepcopy(dict(request)))
-        if self.error is not None:
-            raise self.error
-        return deepcopy(self.result if self.result is not None else _prepared_result())
-
-    def start(self, *arguments):
-        self.started.append(arguments)
-
-
-def _deployment(fake):
-    return SimpleNamespace(preparation_provider=fake)
-
-
-def test_prepare_route_returns_validated_relation_route():
-    fake = FakePreparation()
-    request = _request()
-    route = build_stack_relation_route_preparation(_deployment(fake))(request, "task-1")
-
-    StackRelationExecutionProvider._validate_route(route, request, "task-1")
-    assert route["route_request"]["destination_ref"] == DESTINATION_REF
-    assert route["route_request"]["destination_ref"] == request["relation_binding"]["destination_ref"]
-    assert route["entity_ref"] == request["relation_binding"]["entity_ref"]
+def test_real_preparation_preserves_intent_and_projects_relation_geometry(tmp_path):
+    request, inputs, deployment, seen = composed(tmp_path)
+    original = deepcopy((request, inputs))
+    route = build_stack_relation_route_preparation(
+        deployment, prepare_inputs=lambda req, task: inputs)(request, "task-1")
+    assert (request, inputs) == original
+    assert route["assignment"]["task_id"] == "task-1"
+    assert route["task_id"] == "task-1"
+    assert route["candidate_ref"].startswith("candidate://")
+    assert route["candidate_ref"] != request["candidate_ref"]
     assert route["approval_ref"].startswith("artifact://")
-    assert set((
-        "scene_revision", "entity_ref", "candidate_ref", "assignment_ref",
-        "assignment", "route_request", "approval_ref",
-    )) <= set(route)
-    prepare_request = fake.requests[0]
-    assert "relation_binding" not in prepare_request
-    assert "intent" not in prepare_request
-    assert prepare_request["destination_ref"] == DESTINATION_REF
-    assert prepare_request["entity_ref"] == ENTITY_REF
-    assert prepare_request["scene_revision"] == SCENE_REVISION
-    assert prepare_request["observation_ref"] == request["observation_ref"]
-    assert prepare_request["calibration_ref"] == request["calibration_ref"]
+    for key in ("observation_ref", "frame_id", "calibration_ref", "candidate_set_ref", "capability_snapshot_ref"):
+        assert route[key] == inputs[key]
+    assert route["preparation_ref"].startswith("preparation://")
+    facts = seen[0]
+    assert facts["geometry_source"] == "observation"
+    assert facts["target_geometry_source"] == "simulator_actor_geometry"
+    assert facts["target_evidence_refs"] == ["artifact://relation/support"]
+    target = np.asarray(request["relation_binding"]["world_T_object_target"]).reshape(4, 4)
+    obj = facts["objects"][0]
+    assert obj["world_T_object_target"] == target.reshape(-1).tolist()
+    expected = target.copy()
+    expected[2, 3] += 0.02
+    np.testing.assert_allclose(np.asarray(obj["world_T_functional_target"]).reshape(4, 4), expected)
 
 
-@pytest.mark.parametrize("mutate", [
-    lambda request: request.pop("relation_binding"),
-    lambda request: request["relation_binding"].pop("destination_ref"),
-    lambda request: request["relation_binding"].pop("entity_ref"),
-    lambda request: request.pop("entity_ref"),
-    lambda request: request.pop("scene_revision"),
-])
-def test_prepare_route_requires_relation_binding_fields_before_preparing(mutate):
-    fake = FakePreparation()
-    request = _request()
-    mutate(request)
-
-    with pytest.raises(StackRelationPreparationError, match="relation binding fields are missing"):
-        build_stack_relation_route_preparation(_deployment(fake))(request, "task-1")
-
-    assert fake.requests == []
+@pytest.mark.parametrize("key", ["intent", "binding_ref", "capability_snapshot_ref", "candidates", "target_geometry_source"])
+def test_missing_inputs_rejected_without_target_publication(tmp_path, key):
+    request, inputs, deployment, seen = composed(tmp_path)
+    inputs.pop(key)
+    with pytest.raises(ValueError):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")
+    assert not seen
+    assert not deployment.grounding.targets
+    assert not (tmp_path / "relation-targets").exists()
 
 
-def test_prepare_route_rejects_destination_diverged_from_relation_binding():
-    result = _prepared_result()
-    result["route_arguments"]["route_request"]["destination_ref"] = "destination://elsewhere"
-    fake = FakePreparation(result=result)
-
-    with pytest.raises(
-        StackRelationPreparationError, match="differs from current relation target"
-    ):
-        build_stack_relation_route_preparation(_deployment(fake))(_request(), "task-1")
-
-
-def test_prepare_route_propagates_preparation_failure_without_starting_motion():
-    failure = RuntimeError("materializer offline")
-    fake = FakePreparation(error=failure)
-
-    with pytest.raises(RuntimeError) as excinfo:
-        build_stack_relation_route_preparation(_deployment(fake))(_request(), "task-1")
-
-    assert excinfo.value is failure
-    assert len(fake.requests) == 1
-    assert fake.started == []
+@pytest.mark.parametrize("key", ["scene_revision", "observation_ref", "calibration_ref", "candidate_set_ref", "frame_id"])
+def test_input_identity_drift_rejected_before_binding(tmp_path, key):
+    request, inputs, deployment, seen = composed(tmp_path)
+    inputs[key] += "-wrong"
+    with pytest.raises(StackRelationPreparationError):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")
+    assert not seen
+    assert not deployment.grounding.targets
 
 
-def test_factory_composes_provider_with_closed_motion_gate():
-    fake = FakePreparation()
-    client = SimpleNamespace(start=lambda *_arguments: (_ for _ in ()).throw(AssertionError("no motion")))
+def test_stale_world_rejected_without_target_publication(tmp_path):
+    request, inputs, deployment, seen = composed(tmp_path)
+    deployment.preparation_provider.client.snapshot["scene_revision"] = "next-scene"
+    with pytest.raises(ValueError, match="stale"):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")
+    assert not seen
+    assert not deployment.grounding.targets
 
-    provider = build_stack_relation_execution_provider_factory()(client, _deployment(fake))
 
-    assert isinstance(provider, StackRelationExecutionProvider)
-    assert provider.client is client
-    assert provider.motion_supported() is False
-    admission = provider.admit(_request(), invocation_id="gateway-1", attempt_id="attempt-1")
-    assert admission.driver is None
-    assert admission.terminal_result["status"] == "failed"
+@pytest.mark.parametrize("change", ["entity", "pose", "evidence"])
+def test_bad_relation_rejected_before_writing(tmp_path, change):
+    request, inputs, deployment, seen = composed(tmp_path)
+    binding = request["relation_binding"]
+    if change == "entity":
+        binding["entity_ref"] = "entity://other"
+    elif change == "pose":
+        binding["world_T_object_target"] = [0.0] * 16
+    else:
+        binding["evidence_refs"] = []
+    with pytest.raises(ValueError):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")
+    assert not seen
+    assert not deployment.grounding.targets
+    assert not (tmp_path / "relation-targets").exists()
+
+
+def test_real_preparation_failure_propagates_without_action(tmp_path):
+    request, inputs, deployment, seen = composed(tmp_path)
+    def fail(*args, **kwargs):
+        raise RuntimeError("planner offline")
+    deployment.preparation_provider.route_builder = SimpleNamespace(build=fail)
+    with pytest.raises(RuntimeError, match="planner offline"):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")
+    assert not deployment.preparation_provider.prepared_routes._routes
+
+
+def test_unconfigured_resolver_and_closed_motion_factory(tmp_path):
+    request, inputs, deployment, seen = composed(tmp_path)
+    with pytest.raises(StackRelationPreparationError, match="not configured"):
+        build_stack_relation_route_preparation(deployment)(request, "task-1")
+    provider = build_stack_relation_execution_provider_factory()(object(), deployment)
+    admission = provider.admit(request, invocation_id="invocation-1", attempt_id="attempt-1")
     assert admission.terminal_result["error"]["code"] == "stack_relation_motion_unqualified"
-    assert fake.requests == []
+    assert admission.driver is None
+    assert not seen
+
+
+@pytest.mark.parametrize("field", ["destination", "candidate_target"])
+def test_prepared_destination_drift_is_rejected(tmp_path, field):
+    request, inputs, deployment, seen = composed(tmp_path)
+    original = deployment.preparation_provider.prepare
+    def prepare(arguments):
+        result = original(arguments)
+        route = result["route_arguments"]
+        if field == "destination":
+            route["destination_ref"] = "destination://other"
+        else:
+            route["route_request"]["candidates"][0]["placement_target"]["target_ref"] = "destination://other"
+        return result
+    deployment.preparation_provider.prepare = prepare
+    with pytest.raises(StackRelationPreparationError):
+        build_stack_relation_route_preparation(deployment, prepare_inputs=lambda *args: inputs)(request, "task-1")

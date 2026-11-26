@@ -704,6 +704,45 @@ class Grounding:
                 "world_T_object_target": target["world_T_object_target"],
                 "evidence_refs": [request["binding_ref"], evidence_ref], "motion_authorized": False}
 
+    def bind_relation_target(self, binding_ref, relation, *, identity, geometry_source):
+        """Register an Adapter-selected relation target with explicit provenance."""
+        self._require_observation_owned_goal()
+        binding = self.bindings[binding_ref]
+        self._current(binding)
+        if any(binding[key] != identity.get(key) for key in IDENTITY_KEYS):
+            raise ValueError("relation target observation identity mismatch")
+        entity_ref = relation.get("entity_ref")
+        if entity_ref not in binding["objects"]:
+            raise ValueError("relation target entity is not in the current binding")
+        destination = relation.get("destination_ref")
+        evidence = relation.get("evidence_refs")
+        if (not isinstance(destination, str) or not destination.startswith("destination://")
+                or not isinstance(geometry_source, str) or not geometry_source.strip()
+                or not isinstance(evidence, (list, tuple)) or not evidence
+                or any(not isinstance(ref, str) or not ref.startswith("artifact://") for ref in evidence)):
+            raise ValueError("relation target requires destination and explicit geometry evidence")
+        pose = rigid_transform(relation["world_T_object_target"])
+        obj = binding["objects"][entity_ref]
+        target = deepcopy(obj)
+        target.update(
+            entity_ref=entity_ref, world_T_object_target=pose.reshape(-1).tolist(),
+            world_T_functional_target=(pose @ np.linalg.inv(rigid_transform(obj["world_T_object"]))
+                                       @ rigid_transform(obj["world_T_functional_point"])).reshape(-1).tolist(),
+        )
+        value = {**{key: binding[key] for key in IDENTITY_KEYS},
+                 "binding_ref": binding_ref, "object": target, "motion_authorized": False,
+                 "relation_binding": deepcopy(dict(relation)),
+                 "target_geometry_source": geometry_source,
+                 "target_evidence_refs": list(evidence)}
+        previous = self.targets.get(destination)
+        if previous is not None:
+            if previous != value:
+                raise ValueError("relation destination already binds different geometry")
+            return destination
+        self._write("relation-targets", value)
+        self.targets[destination] = value
+        return destination
+
     def activate_observed_entities(self, request: Mapping[str, Any]) -> str:
         """Synchronize one persisted semantic binding to the Runtime worker."""
 
@@ -764,6 +803,9 @@ class Grounding:
             item["entity_ref"] = ref
             facts["objects"].append(obj if ref == obj["entity_ref"] else item)
         facts["geometry_source"] = "observation"
+        if "target_geometry_source" in value:
+            facts["target_geometry_source"] = value["target_geometry_source"]
+            facts["target_evidence_refs"] = deepcopy(value["target_evidence_refs"])
         if self.collision_policy is not None:
             identity = tuple(binding[k] for k in IDENTITY_KEYS)
             observed, understanding = self.observations[identity], self.understandings[identity]

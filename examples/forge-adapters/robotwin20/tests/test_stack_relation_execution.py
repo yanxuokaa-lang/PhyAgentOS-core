@@ -37,12 +37,14 @@ def _route():
         "assignment_ref": assignment["assignment_ref"],
         "assignment": assignment,
         "approval_ref": "artifact://approvals/1",
+        "destination_ref": "destination://stack-block-1",
         "route_request": {
             "scene_revision": "stack-0-2",
             "destination_ref": "destination://stack-block-1",
             "candidates": [{
                 "candidate_ref": assignment["candidate_ref"],
                 "entity_ref": assignment["entity_ref"],
+                "placement_target": {"target_ref": "destination://stack-block-1"},
             }],
         },
     }

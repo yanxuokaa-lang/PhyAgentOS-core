@@ -52,6 +52,51 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.0.5 (2026-11-26 15:35) - codex
+
+### 计划 / Plan
+
+- [policy] [fix] [完成] 修复 RoboTwin stack 关系路线准备的真实输入链，保留可信 ManipulationIntent、当前抓取/能力证据与关系目标；Adapter 私有组合，不改公共工具或开启运动。 / Repair the real stack preparation input chain with trusted intent, current grasp/capability evidence and the selected relation target through Adapter-private composition; retain public tools and disabled motion. (local)
+- [eval] [exp] [完成] 用真实 PersistentPreparationProvider 做无运动集成验证，覆盖成功、缺失/过期/身份漂移、失败不触发动作和输入不变；补接续说明。 / Exercise the real preparation provider without motion, covering success, missing/stale/mismatched evidence, no-action failures and immutable input; document continuation boundaries. (local)
+- [model] [docs] 归属：Coordinator 持有任务/修订/结算，AgentLoop 驱动流程，Adapter 组合当前观测准备输入，Provider 负责路线/执行机制；fresh 边界为 scene/observation/calibration，替换外部机制不改调用方，最小泄漏测试直接经过真实 Preparation。不新增 hash/gate。 / Coordinator owns task/revision/settlement, AgentLoop drives workflow, Adapter composes observation-bound inputs and Providers own route/execution mechanisms. Freshness spans scene/observation/calibration; test the real preparation boundary with substituted mechanisms, without new hashes or gates. (local)
+
+- [eval] [fix] [完成] 主审对照HEAD复现12个旧Grounding fixture失败；补object.__new__测试实例的真实reserved entity/actor映射初始化，不改生产默认或放宽身份检查。 / Parent reproduced 12 existing fixture failures against HEAD; initialize test-only reserved entity mappings consistently with production without relaxing checks. (local)
+
+### 结果、精确范围与验证 / Results, exact ranges and validation
+
+- [policy] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_preparation.py` L8-L9、L22、L34-L35、L39-L41、L57-L102、L109-L120、L132-L134：显式可信输入resolver、保留intent与完整route lineage、补task_id；缺resolver明确失败。 / Explicit trusted input resolver, preserved intent/full route lineage and task_id; missing resolver fails explicitly. (local)
+- [env] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L707-L745、L806-L808：当前绑定投影relation目标与功能点，独立保留目标来源/evidence。 / Project relation targets and functional points from the current binding and retain separate target provenance. (local)
+- [env] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py` L146-L147、L155-L160：已有Adapter-private facts允许成对目标来源/证据字段，普通类型检查；真实生产validator验证。 / Existing private facts accept paired target provenance fields with ordinary validation. (local)
+- [env] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_execution.py` L109、L116-L117：核对生产route_arguments目的地及选中候选placement目标，修复原假fixture隐藏的接口错误。 / Validate actual registered destination and selected placement target, fixing the interface mismatch hidden by the old fixture. (local)
+- [eval] [exp] `examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py` L1-L185：真实Grounding/scene validator/Preparation/selector/PreparedRoutes组合；外部规划/控制反馈替换，不是GPU完整路线实测；`tests/test_stack_relation_execution.py` L40、L47更新实际route形态；`tests/test_route_inputs.py` L203-L215覆盖来源缺失/坏证据（两个短路径均相对examples/forge-adapters/robotwin20）。 / Real composition with substituted external mechanisms, actual route fixture and invalid provenance coverage. (local)
+- [eval] [fix] `examples/forge-adapters/robotwin20/tests/test_grounding.py` L569-L572、L606-L609、L654-L657、L698-L701、L731-L734、L1054-L1057：补六处Engine fixture的reserved mapping，保留reserved-identity拒绝语义。 / Initialize six Engine fixtures with reserved mappings while preserving identity rejection semantics. (local)
+- [docs] [docs] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L44：接续范围、所有权、来源与显式注入示例、准确验证边界。 / Continuation scope, ownership, provenance, injection example and validation boundaries. (local)
+- [eval] [exp] 准备/执行/Preparation/route_inputs四套件69 passed；Grounding/host/deployment三套件128 passed，合计197。最初无runtime PYTHONPATH导致14导入失败；补路径后12失败经主审HEAD复现为旧fixture缺初始化，本版修fixture后128通过。 / Four focused suites pass69 and three broader suites pass128 (197 total). Initial import/path and pre-existing fixture failures were diagnosed; fixtures are corrected without production relaxation. (local)
+- [docs] [docs] 仍待具体Coordinator evidence resolver、observed支撑Provider、生产成对接线和真实route/contact/stop及三块执行；motion保持关闭。目标来源由私有resolver显式提供，尚未自动读取核验artifact内容。 / Concrete evidence resolution, observed support, production wiring and actual route/contact/stop/stack execution remain; motion stays disabled and artifact provenance content is not yet automatically verified. (local)
+
+### 关键 Diff / Key diff
+
+```diff
+- remove intent; forward relation request to preparation
++ resolve trusted current preparation inputs; preserve and validate ManipulationIntent
++ bind selected world target through Grounding; preserve independent target provenance
+- return seven route fields; check route_request.destination_ref
++ preserve complete registered route and task_id; check destination and selected placement target
+- FakePreparation mirrors invented response
++ real Grounding/validator/Preparation/selector/PreparedRoutes with external mechanism fixtures
+```
+
+### 验证命令 / Validation commands
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py examples/forge-adapters/robotwin20/tests/test_route_inputs.py --tb=short
+PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/robotwin20/tests/test_grounding.py examples/forge-adapters/robotwin20/tests/test_persistent_host.py examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py --tb=short
+```
+
+### Git
+
+- Branch: feature/planning-loop; commit/push由主审完成后补回执 / parent will append commit/push receipt.
+
 ## v18.0.4 (2026-11-26 14:18) - codex
 
 ### 计划与归属 / Plan and ownership
@@ -453,117 +498,3 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-p
 
 - [docs] [docs] 本轮实现/文档完成，暂停写入供主审；当前HEAD仍a8b08049，本轮没有commit/push或启动Isaac。 / Implementation and documentation are complete and writing pauses for parent review; HEAD remainsa8b08049, with no commit/push or Isaac launch for this change. (local)
 
-## v18.0.0 (2026-11-25 22:31) - codex
-
-- [eval] [exp] [准备完成] 本次为patch复测，按minor10/patch15上限由v17.10.15进位v18.0.0；仅从v17.10.11的204420目录复制13个启动脚本/配置至独立时间目录，路径归一后完全一致，实际代码为已推送2b27db35。保持同一R05→R03任务、60/60N、0.02/0.2m/s、retain4mm、motion/oracle/全部阈值与maxreplans4，不复制旧DB/artifacts。 / [Prepared] Roll the patch version to v18.0.0 per project limits and prepare an isolated run from exactly13 launch/config files in204420. Keep the same full task and all physical/motion/observation/budget settings, with pushed code2b27db35; do not copy previous databases or artifacts. (local)
-- [env] [exp] [准备完成] 使用experiment-reproducibility保留实际code/config/input、seed/checkpoint不适用说明与环境差异。仅检查路径替换、10文件字节不变/3文件仅路径变更、Python语法及本次运行所需GPU/RAM/disk、无旧Isaac进程；准备后交启动命令主审，暂不启动、不改生产、不提交。 / [Prepared] Record code/config/input and non-applicable seed/checkpoint fields, then check path-only changes,10 byte-identical files,3 path-updated files, Python syntax and available resources/process state. Present the launch command for parent review without launching Isaac, changing production or committing. (local)
-- [docs] [docs] [准备完成] part4已1460行，本轮从part5记录避免终态超限；更新Archive、Latest5及续跑报告，不修改历史。 / [Prepared] Start part5 before the previous1460-line volume reaches its limit and update Archive, Latest5 and the continuation report without rewriting history. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮 / Previous: `2b27db35af78445800509b69e5f33a1a3335ae97`，2026-11-25 22:30:13+08:00，主会话已commit/push；branch feature/planning-loop。本轮准备待审，无commit/push。 / Parent committed and pushed the previous fix; this preparation remains uncommitted pending review.
-
-
-### 准备结果与文件详情 / Preparation results and file details
-
-- [env] [exp] 新目录 / New run: `out/labutopia-elevated-20261125/v18.0.0-r05-r03-derived-rim-223214`，prepared_at2026-11-25T22:32:14.855809+08:00；实际code2b27db35，当前状态not_started，无PID。 / Prepared with actual code2b27db35 and no running process. (local)
-- [新增 / Added] 新目录 `command.json` L1-L14：仅2处运行路径替换 / 2 run-path substitutions only；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `host_with_replay_timeout.py` L1-L15：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-oracle-perception.json` L1-L19：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-elevated-motion.json` L1-L112：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-elevated.usda` L1-L96：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-physics.json` L1-L56：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-scene.usda` L1-L14：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-station.yaml` L1-L93：仅1处运行路径替换 / 1 run-path substitutions only；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-simulator-truth.json` L1-L16：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `launch.py` L1-L57：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `profile.json` L1-L29：仅7处运行路径替换 / 7 run-path substitutions only；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `save_finished_phase.py` L1-L103：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `watch_progress.py` L1-L80：逐字节保持 / byte-identical；归一路径后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `metadata.json` L1-L30：保存本轮来源、配置差异及准备证据 / preserve current provenance, configuration differences and preparation evidence. (local)
-- [新增 / Added] 新目录 `preparation-review.json` L1-L277：保存本轮来源、配置差异及准备证据 / preserve current provenance, configuration differences and preparation evidence. (local)
-- [新增 / Added] 新目录 `configuration-paths.diff` L1-L53：保存本轮来源、配置差异及准备证据 / preserve current provenance, configuration differences and preparation evidence. (local)
-- [新增 / Added] 新目录 `preparation-resources.txt` L1-L12：保存本轮来源、配置差异及准备证据 / preserve current provenance, configuration differences and preparation evidence. (local)
-- [docs] [docs] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L609-L631追加准备状态/命令/资源；CHANGELOG新增part5 Archive并同步最新五条18.0.0/17.10.15/14/13/12完整记录。 / Append preparation, command and resources; add part5 Archive and synchronize the five latest complete entries. (local)
-
-### 关键 Diff / Key diff
-
-```diff
-- source/code: 204420 / 61a52a2a (cumulative drift guard)
-+ run/code: 223214 / 2b27db35 (fresh opening + process-only derived tip; drift guard retained)
-- 3 configuration files point to v17.10.11-r05-r03-cumulative-guard-204420
-+ same 3 files point to v18.0.0-r05-r03-derived-rim-223214 (10 path occurrences)
-  10 other files: byte-identical; all13: equal after path normalization
-  instruction, forces60/60N, velocities0.02/0.2, retain4mm, thresholds, budgets unchanged
-+ metadata: new version/time/commit/source; oldPID/started_at removed
-```
-
-- [eval] [exp] 13文件逐项比较通过：10字节一致、3仅路径变更（command2/profile7/station1处）；同一指令、maxreplans4、worker2700s、每subtask reconciliation3600s完全保持。4脚本在Python3.13.5/3.11.17语法通过，所需路径全部存在，没有复制旧任务产物。 / All13 comparisons pass, with ten byte-identical files and three path-only changes; instruction/budgets remain identical, both interpreters accept four scripts, all paths exist and no old task artifacts were copied. (local)
-- [env] [exp] GPU剩9512MiB、RAM可用22GiB、swap剩8.1GiB、工作盘52GiB、/tmp11GiB；无旧Isaac/host/诊断进程，VLLM3061及CrossDesk3739保留。 / Preparation resources are recorded and no old simulation process remains; existing service processes stay running. (local)
-- [docs] [docs] 本轮准备完成，完整仿真尚未启动；无新生产修改/测试/运动，metadata保存输入、seed/checkpoint不适用说明及初始化/外部模型环境漂移。待主会话审阅后才启动，当前暂停写入，无commit/push。 / Preparation is complete but the full simulation has not started. No production change, new test or motion occurred; provenance and environment limits are recorded. Pause for review without commit/push. (local)
-
-```bash
-/home/yanxu/PhyAgentOS-forge/.venv/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v18.0.0-r05-r03-derived-rim-223214/launch.py
-```
-
-### 启动授权 / Launch authorization
-
-- [env] [exp] [进行中] 2026-11-25T22:35:26.103096+08:00主会话审阅13文件、路径diff、metadata及日志后批准启动223214这一个完整Isaac无液体R05→R03 AgentLoop任务；使用准备版本launch.py及代码2b27db35，所有参数保持。接下来独立进程启动并记录PID/time/task_id和首个实际阶段，随后交主会话监控。本次不新开实验、不改生产、不commit。 / [In progress] Parent review approved launching this single prepared complete task with code2b27db35 and unchanged parameters. Start an independent process, record process/task identities and initial phase evidence, then hand monitoring to the parent without another experiment, production change or commit. (local)
-
-
-### 启动回执及首阶段 / Launch receipt and first phase
-
-- [env] [exp] [启动完成，任务进行中] 2026-11-25T22:35:26.481383+08:00启动launcher767976；host767978在22:35:26.499779+08:00启动，observer767979、worker768359，code2b27db35；task_id=`task_3e10f3ea283f4407`。同一任务R05→R03，未改参数/代码、无额外实验。 / [Started; task running] Launch and host timestamps, four process IDs and the new task identity are recorded with unchanged code/parameters and no additional experiment. (local)
-- [eval] [exp] R05在22:38:38.658选定执行节点；22:41:20.974579+08:00的readiness a59ea91c78eb4af38387892597ca766e确认acquire156steps及kinematic/collision/workspace pass。video ea4630eed7ea4893a5711c1a8fc9c8fd在22:42:20为11010092bytes、交接时28049452bytes持续增长，证明实际acquire运动，尚未声明阶段完成。 / The selected R05 node produced passing156-step acquire readiness and a growing phase video, proving initial motion without claiming completion. (local)
-- [新增 / Added] 新目录 `launch-receipt.json` L1-L50、`launcher.pid` L1：命令/code/time/PID/task及首次运动证据；`metadata.json`由原launch按既有机制加入host/observer/time/attempt。 / Save startup identity and initial-motion evidence; the unchanged launcher updates its existing runtime metadata. (local)
-- [docs] [docs] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L632-L642补启动证据；Latest5同步。四PID交接时存活，主会话只读监控session49993继续；本代理暂停写入，不commit/push，总任务保持进行中。 / Append startup evidence and synchronize Latest5; four processes remain alive and the parent monitors the continuing task. Pause writing without commit/push. (local)
-
-```diff
-- launch_status: not_started (preparation snapshot)
-+ actual launch: 2026-11-25T22:35:26.481383+08:00; code2b27db35
-+ launcher/host/observer/worker: 767976/767978/767979/768359
-+ task_id: task_3e10f3ea283f4407; first motion: R05 acquire, growing phase video
-+ current status: running; monitoring owner: parent
-  configuration/physics/instruction unchanged; no terminal result yet
-```
-
-### 终态收尾计划 / Terminal evidence plan
-
-- [eval] [exp] [收尾完成] 2026-11-25T23:00:45.839135+08:00主会话报告223214于22:59:18附近结束、四PID退出：R05三阶段成功，R03抓取前规划blocked，任务awaiting_replan。已只读acceptance/controller_outcomes/DB/实际回执并保存原始task与last_failure、R05紧凑指标和缺失R03动作证据；不整读巨大pour JSON，tail提取末metrics。 / [Evidence completed] Parent reports the run ended with successful R05 phases but blocked pre-grasp planning for R03 and task awaiting_replan. Read the existing receipts/database, preserve raw failure/task evidence and compact R05 metrics without loading the large pour JSON in full. (local)
-- [eval] [exp] [收尾完成] 已沿用章节工具合成R05三阶段视频，明确R03未执行/全任务未完成，验证逐段时长连续性及完整decode。已补日志/报告/Latest5并暂停；无生产修改、重启或commit，本轮无法评价derived-rim物理行为。 / [Evidence completed] Produce the three-phase R05 video with explicit unexecuted R03/incomplete-task labeling, check segment continuity and complete decoding, then update documentation and pause without code changes, restart or commit. This run cannot evaluate derived-rim execution. (local)
-
-
-### 运行结束与证据 / Ended run and evidence
-
-- [eval] [exp] [收尾完成，全任务未完成] 223214于22:59:18附近结束，task updated_at22:59:18.826179+08:00；controller blocked/revisions1/replans0，task awaiting_replan且terminal_at=null。四PID全退出，acceptance与只读tasks DB record完全一致。 / [Evidence completed; task incomplete] The run stopped around22:59:18; controller is blocked with one revision and zero replans, while the task remains awaiting_replan with no terminal timestamp. All four processes exited and acceptance exactly matches the read-only task database. (local)
-- [eval] [exp] R05六receipt/三物理阶段全部成功：lift117/117 contact/grasp，首末lift rise60.074618104mm，attachment峰值0.047767900mm/末0.047140511mm；tilt1.0014421846rad、hold2.8166668136s、return0.202404870mm。pour420MB/place127MB仅尾64KiB提取metrics，未重读巨大完整JSON。 / R05 completed all three physical phases with the recorded lift, grip, tilt/hold and return metrics; terminal metrics were parsed from bounded tails of the large pour/place files. (local)
-- [eval] [exp] R03仅完成两只读process-feature节点，在grasp_task_affordances规划轮无进展，action/assignment/readiness/feedback/video均0；R05无derived-tip selection，本轮不能评价派生瓶口物理效果，不能记作R03物理失败。 / R03 stopped during pre-grasp planning with no action evidence, while R05 used no derived-tip fallback; this run cannot evaluate the new rim execution and is not an R03 physical failure. (local)
-- [data] [docs] 保存task/controller/receipt/lastfailure原文与DB只读对照；失败原文为`node_turn_incomplete:pour_r03.grasp_task_affordances:node_selection_no_progress: Coordinator facts did not change after a corrective planning turn`。 / Preserve the raw task/controller/receipts/failure and database comparison; the unchanged last-failure text identifies planning selection without progress. (local)
-- [eval] [exp] 合片R05动作35.2+59.35+24.25=118.8s，加4s结果说明，共122.8s/7368frames/17chapters；阶段边界、总帧数/时长、逐packet PTS连续，全decode exit0，结果卡明确R03未执行/全任务未完成且预览无裁切。 / The122.8s/7368-frame/17-chapter compilation preserves all118.8s of R05 motion and adds a4s result card. Boundaries, timestamps and complete decoding pass, and the card explicitly labels R03 unexecuted and the task incomplete. (local)
-
-### 新增工件与文档 / Added evidence and documentation
-
-- [新增 / Added] 223214目录 `terminal-summary.json` L1-L150：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `database-terminal-summary.json` L1-L54：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `task-record-raw.json` L1-L9813：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `controller-outcomes-raw.json` L1-L19：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `r05-receipts-raw.json` L1-L409：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `last-failure-raw.txt` L1-L1：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `compile_r05_review.py` L1-L75：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] 223214目录 `final-video-compilation.json` L1-L185：保留实际状态/原始证据/复现与验证结果 / preserve actual state, raw evidence and reproducible validation. (local)
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L643-L669：补充R05结果、R03无动作、task/Controller状态区别及合片验收；同步Latest5完整条目。 / Add R05 results, absent R03 execution, distinct task/controller state and video validation; synchronize Latest5. (local)
-- [data] [docs] `out/labutopia-elevated-20261125/review-videos/223214_R05全阶段成功_R03未执行_全任务未完成.mp4`及同前缀ffconcat/ffmetadata/result-card保存；review-videos/README追加本任务索引，原阶段视频保留。 / Preserve the compilation, concat/metadata and result card and append the task index while retaining original stage videos. (local)
-
-### 关键 Diff / Key diff
-
-```diff
-- latest observed run state: R05 acquire running
-+ run stopped; all four PIDs exited
-+ controller=blocked; task=awaiting_replan; terminal_at=null; replans=0
-+ R05 acquire/pour/place succeeded; final possession=empty
-+ R03 pre-grasp planning blocked; no R03 action/readiness/feedback/video
-+ derived-rim physical evaluation: unavailable in this run
-+ review video:118.8s R05 motion +4s labeled result card; full decode passed
-```
-
-- [docs] [docs] 仅收尾证据与视频，未改生产/数据库、未重启或新增仿真、无commit/push；主会话继续原因诊断，本代理暂停写入。 / Evidence/video closure only; no production/database mutation, restart, additional simulation or commit/push. Parent owns diagnosis and this agent pauses writing. (local)

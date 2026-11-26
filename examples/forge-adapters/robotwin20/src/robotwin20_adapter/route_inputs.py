@@ -143,7 +143,8 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
         "observation_frame_id", "route_frame_id", "calibration_ref", "task_definition",
         "captured_at", "robot_control_steps", "motion_authorized", "coverage", "objects",
     }
-    optional = {"geometry_source", "support_surface", "observed_collision"}
+    optional = {"geometry_source", "support_surface", "observed_collision",
+                "target_geometry_source", "target_evidence_refs"}
     if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - optional:
         raise RouteInputError("route scene facts fields are invalid")
     if "geometry_source" in value and value["geometry_source"] not in {
@@ -151,6 +152,12 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
         "oracle_actor",
     }:
         raise RouteInputError("route scene geometry source is invalid")
+    if "target_geometry_source" in value or "target_evidence_refs" in value:
+        source, refs = value.get("target_geometry_source"), value.get("target_evidence_refs")
+        if (not isinstance(source, str) or not source.strip()
+                or not isinstance(refs, (list, tuple)) or not refs
+                or any(not isinstance(ref, str) or not ref.startswith("artifact://") for ref in refs)):
+            raise RouteInputError("relation target geometry provenance is invalid")
     if "support_surface" in value:
         support = value["support_surface"]
         if value.get("geometry_source") != "observation" or not isinstance(support, Mapping):

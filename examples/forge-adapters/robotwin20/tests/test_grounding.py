@@ -566,6 +566,10 @@ def test_grounding_binding_checks_captured_actor_pose_not_visual_frame(tmp_path,
     old_mapping = {"previous": object()}
     runtime_task = SimpleNamespace(block1=actor, _paos_observed_entities=old_mapping)
     engine = object.__new__(engine_module.RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
     monkeypatch.setattr(engine_module.probe, "_actor_for_entity", lambda task, ref: actor)
@@ -599,6 +603,10 @@ def test_binding_rejection_does_not_publish_partial_entity_aliases(tmp_path, mon
     old = {"previous": first}
     runtime_task = SimpleNamespace(block1=first, block2=second, _paos_observed_entities=old)
     engine = object.__new__(module.RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
     actors = {"entity://execution": first, "entity://execution-second": second}
@@ -643,6 +651,10 @@ def test_same_reserved_observed_and_execution_identity_is_accepted(tmp_path):
     old = {"previous": object()}
     runtime_task = SimpleNamespace(block2=actor, _paos_observed_entities=old)
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
 
@@ -683,6 +695,10 @@ def test_reserved_observed_identity_rejects_execution_or_actor_mismatch(
         _paos_observed_entities=old,
     )
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
 
@@ -712,6 +728,10 @@ def test_duplicate_binding_correspondence_does_not_publish_partial_aliases(tmp_p
     old = {"previous": actor}
     runtime_task = SimpleNamespace(block1=actor, _paos_observed_entities=old)
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
 
@@ -1031,6 +1051,10 @@ def test_worker_rechecks_actor_geometry_before_alias_binding(tmp_path):
     )
     task = SimpleNamespace(block1=actor)
     engine = object.__new__(RoboTwinPersistentEngine)
+    engine._reserved_execution_actors = {
+        "entity://block-red-1": "block1", "entity://block-green-1": "block2",
+        "entity://block-blue-1": "block3",
+    }
     engine.root = tmp_path
     engine.backend = SimpleNamespace(_task=task, snapshot=lambda: {"scene_revision": "s1"})
     engine.query("bind_observed_entities", {"binding_ref": b["binding_ref"]})

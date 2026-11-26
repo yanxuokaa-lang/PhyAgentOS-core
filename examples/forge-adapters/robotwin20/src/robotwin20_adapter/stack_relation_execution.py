@@ -106,13 +106,15 @@ class StackRelationExecutionProvider:
             raise StackRelationExecutionError("prepared candidate differs from assignment")
         if not isinstance(route.get("approval_ref"), str) or not route["approval_ref"].startswith("artifact://"):
             raise StackRelationExecutionError("prepared route has no execution approval")
-        if route_request.get("destination_ref") != relation.get("destination_ref"):
+        if route.get("destination_ref") != relation.get("destination_ref"):
             raise StackRelationExecutionError("prepared destination differs from current relation target")
         candidates = route_request.get("candidates")
         if not isinstance(candidates, (list, tuple)) or not any(
             isinstance(candidate, Mapping)
             and candidate.get("candidate_ref") == route["candidate_ref"]
             and candidate.get("entity_ref") == route["entity_ref"]
+            and isinstance(candidate.get("placement_target"), Mapping)
+            and candidate["placement_target"].get("target_ref") == relation.get("destination_ref")
             for candidate in candidates
         ):
             raise StackRelationExecutionError("prepared route does not contain the assigned candidate")

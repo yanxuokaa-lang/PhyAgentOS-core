@@ -200,3 +200,16 @@ def test_generic_route_profile_is_graspnet_owned():
 def test_contact_qualification_policy_is_explicit_and_unambiguous(profile, message):
     with pytest.raises(ValueError, match=message):
         contact_qualification_mode(profile)
+
+
+@pytest.mark.parametrize("provenance", [
+    {"target_geometry_source": "simulator_actor_geometry"},
+    {"target_evidence_refs": ["artifact://relation/1"]},
+    {"target_geometry_source": "", "target_evidence_refs": ["artifact://relation/1"]},
+    {"target_geometry_source": "simulator_actor_geometry", "target_evidence_refs": ["invalid"]},
+])
+def test_relation_target_provenance_requires_explicit_source_and_evidence(provenance):
+    facts = _facts()
+    facts.update(provenance)
+    with pytest.raises(RouteInputError, match="provenance"):
+        validate_scene_facts(facts)
