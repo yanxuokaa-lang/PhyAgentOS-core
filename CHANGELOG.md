@@ -52,6 +52,53 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.0.4 (2026-11-26 14:18) - codex
+
+### 计划与归属 / Plan and ownership
+
+- [policy] [fix] [完成] 132940任务首次R03 process_features stale已由既有机制刷新scene:3；随后grasp-affordance Preparation因请求calibration多一个0返回stale但缺少既有evidence恢复字段，Agent未接入query_evidence确定刷新分支并stop，预算未耗尽。补齐通用Preparation端确凿stale的failure_owner/code、known/no-world-change、requires_replan与refresh_declared_evidence语义；保留原identity/error及motion_authorized=false，不静默修复opaque引用，invalid/unavailable/exception不伪装stale。 / [Completed] The first stale process query already recovered through the existing scene refresh, but the later stale grasp-affordance preparation lacked evidence-recovery fields and stopped before the budget was exhausted. Add existing evidence-refresh diagnostics only to definite stale outcomes, preserving identity/errors and no-motion semantics without repairing opaque references or relabelling other failures. (local)
+- [policy] [fix] [完成] 调整AgentRecoveryDecisions提示，区分只读证据刷新、已知Action失败与未知物理后果；沿用_evidence_refresh_kind、声明scene-refresh Query及Coordinator预算/生命周期，保持unknown Action不能重试/下游运动。 / [Completed] Clarify recovery guidance for read-only evidence failures, known Action failures and unknown physical effects. Reuse declared refresh Queries and Coordinator-owned budget/lifecycle, retaining unknown-action restrictions. (local)
+- [eval] [exp] [完成] Provider-neutral替代fixture覆盖输入身份/过期/provider身份与status stale、schema、invalid/unavailable不刷新；真实Preparation回执→execution record/settlement→Agent恢复replan→仅声明refresh Query，验证已完成动作保留、预算/unknown回归。按相关风险跑集中无运动测试，不启动仿真。 / [Completed] Test provider-neutral stale branches/schema and non-stale failures, then the real endpoint-to-settlement-to-Agent refresh path with completed-action preservation and budget/unknown regressions. Run focused no-motion tests only. (local)
+- [model] [docs] 架构：通用endpoint拥有stale领域诊断；Provider拥有capture/候选匹配；替换Provider不影响调用者；fresh边界为新capture/scene/calibration整链；Coordinator独有修订/预算/settlement/恢复；最小泄漏测试为替代Provider同stale导向同声明Query、无R03或Isaac特判。沿用anti-minimal、robotics-safety、experiment-reproducibility；不新增hash/gate/schema机制。 / Ownership: the generic endpoint supplies stale diagnostics, Providers match captures/candidates, fresh evidence spans the new capture/scene/calibration chain, and the Coordinator retains sole lifecycle ownership. A replacement provider must yield the same declared refresh without environment/object special cases. Apply the three repository skills without new defensive mechanisms. (local)
+- [docs] [docs] [完成] 保存旧task/events stop理由、修复诊断、精确行号/diff与测试结果。后续仅在实验harness一次性注入R03 calibration错字验证真实恢复，并保持双窗无字配置；本轮不实现/启动新sim、不改旧终态、不commit/push，待主审。 / [Completed] Document original stop evidence, the fix and exact validation. A later authorized experiment may inject one preparation-reference typo through the harness and retain the dual views; this patch does not start simulation, alter prior outcomes or commit/push. (local)
+
+### Git 来源 / Git source
+
+- [chore] [docs] v18.0.3收尾提交2e27eb23已由主审确认push，branch feature/planning-loop；本次以其为代码/文档来源。 / Parent confirmed the preceding closeout commit2e27eb23 was pushed on feature/planning-loop; use it as this patch's source. (commit 2e27eb23)
+
+### 单次故障恢复实跑准备计划 / One-shot recovery-run preparation plan
+
+- [eval] [exp] [完成] 2026-11-26T14:30:36.608227+08:00主审授权仅准备`out/labutopia-elevated-20261126/v18.0.4-r05-r03-evidence-recovery-143036`，从132940复制11必要配置/脚本、不带DB/工件；保持原双窗无字、运动阈值/原指令、replan4、provider retry12/delay15、execute2700/3600。local host在首次R03 Preparation入口仅修改deepcopy请求的calibration_ref一次，再调用原生产endpoint/Provider，保存原/改参数及实际响应；后续透传，Agent/Coordinator自己恢复，不伪造成功。 / [Completed] Prepare one isolated run from132940 without old databases/artifacts. Preserve all recording/motion/instruction/budget/timeouts; inject one calibration-reference typo into a copied first R03 preparation request at the local host endpoint boundary, call the real endpoint/provider and record both requests plus the actual result. Subsequent calls pass through and recovery remains Agent/Coordinator-owned. (local)
+- [eval] [docs] 普通持久record.arguments可能为注入前参数，fault-injection.json单独说明边界后的实际参数；不称本次故障为LLM随机拼错。只做无运动harness检查/配置差异与语法检查，主审提交后再更新实际code metadata；当前未启动。 / Persisted invocation arguments may precede injection; the separate fault receipt identifies actual endpoint-boundary arguments. Do not attribute the injected fault to the model. Validate only the harness/configuration/syntax and refresh code metadata after review; do not launch. (local)
+
+### 结果与验证 / Result and validation
+
+- [policy] [fix] Preparation确凿stale统一输出既有evidence刷新诊断；invalid/unavailable/异常保持原状态，即使省略identity也不误转stale。实时与持久投影显式false/true一致。Agent提示区分只读刷新、已知Action失败及unknown；生产不含R03特判、引用修复或新的恢复owner。 / Definite stale preparations now carry existing refresh diagnostics, while other failures retain their status. Explicit no-motion/known-outcome fields align live and persisted projections; guidance separates Query refresh and known/unknown Action outcomes without object-specific production behavior. (local)
+- [eval] [exp] 集中5文件234passed/10.28s，PlanningLoop预算与unknown子集17passed/2.50s（148 deselected），共251；五个改动生产/测试文件Ruff通过，diff检查通过。真实端点→live/persisted settlement→Agent replan→仅scene.observe→Coordinator预算/历史Action保留；Lab同scene-super接线及fresh continuation只续R03亦通过，unknown/partial保持原拒绝。 / Focused suites pass251 tests, lint and diff checks. The real endpoint reaches identical settlements and an existing Query-only recovery with Coordinator budget/history preservation; actual Lab superclass continuation retains completed work and unknown/partial restrictions. (local)
+- [eval] [exp] 143036目录准备完成：11源文件中7字节相同、3仅路径改变，唯一其余差异为local host一次性注入。真实endpoint的无运动harness检查通过（R05正常→一次R03 stale→下一次正常、原参数不变）；正式目录无fault receipt/DB/artifacts。资源RAM21Gi/GPU8573MiB空闲、/home48Gi、/tmp11Gi，无旧Isaac进程。当前仅准备，未启动；metadata待主审实际新commit。 / The isolated run is prepared with seven byte-identical files, three path-only changes and one local injection harness. Its no-motion endpoint check passed without creating run evidence; resources are recorded and the full simulation remains unstarted pending the reviewed commit. (local)
+- [docs] [docs] 新诊断文档保存event2063既有scene恢复与event2103实际stop理由，明确旧live三字段null与persisted推断差别；本轮不改旧task终态。原始恢复事件、测试输出、配置diff和harness检查保留于新目录。来源2e27eb23已push，本patch暂不提交/推送。 / Document both old recovery decisions and distinguish live null diagnostics from later replay inference. Preserve previous outcomes and local validation artifacts; source2e27eb23 is pushed, while this patch remains uncommitted. (local)
+
+### 精确变更范围 / Exact changed ranges
+
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/grasp_task_affordance.py` L141-L147、L227-L247、L279-L289：恢复字段schema、stale分支与统一诊断 / existing recovery fields, stale branches and helper。 (local)
+- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py` L500-L507：只读证据刷新与未知物理后果提示 / Query-refresh versus unknown-effect guidance。 (local)
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_grasp_task_affordance.py` L3-L7、L177-L249：stale/非stale替代Provider和schema / replacement-provider status/schema cases；`tests/test_agent_foundation.py` L3583-L3704：live/persisted到有界恢复与完成历史 / projection-to-bounded-recovery history；`examples/forge-adapters/isaacsim_lab/tests/test_subtask_continuation.py` L29、L185-L220、L230-L254：实际Lab同scene-super与原fresh continuation / actual Lab same-scene superclass path。 (local)
+- [新增 / Added] `docs/forge/LABUTOPIA_AFFORDANCE_STALE_RECOVERY_20261126.md` L1-L44：旧失败、归属、测试命令和待启动实验 / failure, ownership, tests and unstarted experiment。 (local)
+- [本地 / Local] `out/labutopia-elevated-20261126/v18.0.4-r05-r03-evidence-recovery-143036/host_with_replay_timeout.py` L1-L53：保留2700s transport、仅local边界一次注入；11源文件configuration.diff、metadata、harness-check和测试日志不作为生产提交 / retain timeout and add one local fault, with config and validation artifacts kept local。 (local)
+
+### 关键 Diff / Key diff
+
+```diff
+- stale preparation -> status/error/motion_authorized only
++ stale preparation -> original identity/error + failure_owner=evidence
++ world_change_started=false; outcome_known=true; retryable_in_revision=false
++ requires_replan=true; recommended_action=refresh_declared_evidence
+- recovery prompt: without world_change_started=true, reconciliation or stop
++ read-only evidence failure -> declared refresh Query; unknown effects remain unresolved
++ local experiment only: copy first R03 request -> one calibration typo -> real endpoint
++ no new motion/Coordinator/Provider mechanism; original arguments and task history retained
+```
+
 ## v18.0.3 (2026-11-26 13:10) - codex
 
 ### 计划与边界 / Plan and ownership
@@ -520,63 +567,3 @@ PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-p
 ```
 
 - [docs] [docs] 仅收尾证据与视频，未改生产/数据库、未重启或新增仿真、无commit/push；主会话继续原因诊断，本代理暂停写入。 / Evidence/video closure only; no production/database mutation, restart, additional simulation or commit/push. Parent owns diagnosis and this agent pauses writing. (local)
-
-## v17.10.15 (2026-11-25 22:12) - codex
-
-- [policy] [fix] [完成] 仅Isaac Provider私有几何与路径机制：保留原选中lip证据及qualified opening来源，原centered+offset搜索全失败后复用同24 centered参数点，仅替换process pose；实际derived tip进入route.target，selection显式记录换点与来源。 / [Completed] Preserve selected-lip evidence and qualified source circle, then reuse the same centered grid only after original routes fail; replace only the process pose and record the actual derived execution tip and lineage. (local)
-- [sense] [fix] [完成] held preparation仅更新新鲜pour_opening，保留acquire points/captured pose/geometry；place及缺可选能力/metadata时兼容。当前candidate_set capture必须与binding一致；旧lookup只检查成员，无法阻止旧几何被重新标为fresh，新增比较限于这个实际来源边界，不新增gate/hash/schema。 / [Completed] Refresh only the held pour-opening context while retaining acquisition geometry/frame and optional-provider/place compatibility. Existing membership lookup cannot prevent relabeling stale geometry, so compare existing capture identifiers at the new metadata boundary without a gate/hash/schema. (local)
-- [eval] [fix] [完成] missing/stale/inconsistent/explicit-spout上下文不能启用回退，完整碰撞/IK/连续性/退出验证保留；真实prepare、视觉/客户端集成与execute alignment/末端校正证明实际derived tip贯穿。domain/Tool/AgentLoop与Runtime取消、结算、恢复所有权不变，Provider替换不改caller。 / [Completed] Invalid or ineligible circle context cannot enable fallback; full qualification and exit checks remain. Real preparation, visual/client integration and execution measurements/correction prove the derived tip flows through without changing public semantics or lifecycle ownership. (local)
-
-### 文件变更详情 / File changes
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L70-L71、L1409-L1434：保存opening中心/资格；仅qualified task-conditioned圆环输出带capture/feature lineage的私有metadata。 / Preserve opening center/qualification and emit private current-capture metadata only for qualified derived lips.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py` L231-L246：clear历史pour_opening；仅pour操作从可选execution_context深拷贝新metadata，acquire frame保持。 / Clear old opening metadata and copy only fresh optional pour context while retaining acquisition frame.
-- [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L793-L855：current_pour_opening校验当前arguments lineage及有限圆环，按新capture×已有body_from_observed转换；lowest_pour_rim_tip在原圆环上选择最低点。 / Validate current lineage and circular geometry, transform into the acquired observed frame, and derive its lowest rim point.
-- [新增 / Added] 同文件 / Same file L1846-L1883：原搜索全部失败后的有界process-only回退，原四点不变、完整qualify、首成功停止，route保存新target及selection。 / Bounded process-only fallback after original failures, preserving all other poses and full qualification, stopping on the first success and retaining target/selection.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L3909-L3915、L3939-L3940、L3985-L3986、L4043-L4044、L4065-L4071、L4112-L4113、L4120-L4121、L4147、L4156-L4165、L4275-L4412：真实prepare拒绝/通过、四点不变、退出碰撞/连续性、无效context，真实execute按derived tip计算alignment/校正并区分旧tip。 / Exercise real preparation and execution across valid/invalid geometry, unchanged transport/exit, failure checks and distinct old/new tip measurements.
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py` L318-L319、L1912-L1993：真实current feature Query/refresh/binding/context→held client request、历史acquire保持、stale candidate_set拒绝与explicit lip无回退metadata。 / Integrate current visual selection, binding and context with the held client while preserving history and rejecting stale circle lineage.
-- [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py` L1073-L1108：无可选方法、缺metadata及place兼容，所有操作移除历史圆环，原assignment不变。 / Cover optional capability/metadata and place compatibility without mutating the source assignment.
-- [新增 / Added] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L584-L608：记录架构、坐标/来源边界、回退行为及测试范围；同步CHANGELOG最近五条完整记录。 / Record architecture, frames/lineage, fallback behavior and test evidence, and synchronize the five latest complete entries.
-
-### 关键 Diff / Key diff
-
-```diff
-  result.update(qualification="task_conditioned_opening_projection", ...)
-+ result.update(opening_center_world=source_tip.tolist(), opening_source_role="opening")
-+ compare candidate_set capture identifiers against current binding before emitting pour_opening
-+ request["observation_model"].pop("pour_opening", None)
-+ if operation == "pour" and optional execution_context has current pour_opening:
-+     copy only that field, retaining historical acquisition context
-```
-
-```diff
-  original centered + bounded-offset search / ranking
-- if not candidates: raise pour_route_unavailable
-+ if not candidates and fresh qualified opening exists:
-+     local = inv(current_capture @ body_from_observed)
-+     for same centered clearance/yaw/azimuth:
-+         derived_tip = center + radius * normalized(project(-R.T @ destination_axis))
-+         points = fixed transport/exit + derived process pose only
-+         candidate = self.qualify(points, ...)  # complete original checks
-+         if candidate:
-+             candidate["pour_lip_selection"] = original_tip + derived_tip + source_lineage
-+             target = derived_target
-+             break
-+ if not candidates: raise pour_route_unavailable
-  route.update(target=target, ...)
-```
-
-### 验证 / Validation
-
-- [eval] [fix] 五组集中测试439 passed in26.24s；覆盖phase_motion/contact_timing/visual_perception/paos_integration/phase_pipeline。原24 centered优先及无圆环兼容保持；新几何fixture原60失败、第2回退成功，exit collision/continuity仍拒绝。 / All439 tests passed across the five focused suites; original priority/compatibility remain, the new fixture rejects60 originals then accepts the second fallback, and exit failures still reject. (local)
-- [eval] [fix] real visual Query→refresh→private binding→context→client request测试保留历史acquire frame但采用当前circle；real execute逐样本alignment及terminal correction前误差数值等于derived-tip几何并区别旧tip。 / Actual visual/client composition preserves acquisition frame and current circle lineage; real execution samples and terminal correction errors match the distinct derived tip. (local)
-- [chore] [chore] git diff --check通过；visual/client两源及两测试Ruff通过。phase_motion源I001当前L1124（HEAD L1061）；test_phase_motion E731 L3328/L3414、I001当前L4114（HEAD L4100）均HEAD已有，保留无新lint。 / Diff check and four visual/client files pass Ruff; motion source/test findings are unchanged from HEAD and were not broadened into unrelated cleanup. (local)
-- [eval] [fix] 初次visual/client收集缺既有pick-place-workflow PYTHONPATH，补齐后完整运行；两条新增execute fixture缺tip_axis_local先报unknown，补齐fixture后通过，生产检查不变。本轮无Isaac/硬件运动；439测试属Provider/组合证据，v14静态结果不替代后续完整物理复测。 / Corrected the test environment path and missing test-fixture axis before the complete passing run, without relaxing production checks. This is no-Isaac Provider/composition evidence, not a new physical run. (local)
-
-```bash
-PYTHONPATH=examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/robotwin20/src:examples/forge-adapters/scene-understanding-http/src .venv/bin/python -m pytest -q examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py examples/forge-adapters/isaacsim_lab/tests/test_phase_pipeline.py --tb=short
-```
-
-### Git 提交 / Git Commit
-
-- 上轮证据 / Previous evidence: `7705de1de9acf27163fc73ed2648b5d1d1622357`，commit时间2026-11-25 22:09:48+08:00；主会话已确认push成功。分支 / Branch: feature/planning-loop。本轮待主审，无commit/push；文档完成后暂停写入。 / Parent confirmed the previous commit was pushed; this change remains uncommitted and paused for review.

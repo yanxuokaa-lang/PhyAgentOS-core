@@ -26,6 +26,7 @@ from pick_place_workflow.agent_planning import compose_subtask_plan
 from pick_place_workflow.grasp_task_affordance import (
     GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
     GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+    GraspTaskAffordancePreparationEndpoint,
 )
 from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
 from pick_place_workflow.persistent_runtime import _spec
@@ -181,6 +182,42 @@ def stale_process_feature_settlement(task):
     return failed
 
 
+
+def same_scene_affordance_settlement(task):
+    graph = task.active_revision.plan_graph
+    node = next(item for item in graph.nodes if item.node_id == "R03.prepare_grasp_task_affordance")
+    request = {
+        "operation": "pour", "entity_refs": ["entity://after-R03", "entity://after-BEAKER"],
+        "candidate_set_ref": "grasp-affordance-set://current",
+        "selected_combination_ref": "grasp-affordance://current/one",
+        "process_feature_candidate_set_ref": "process-feature-set://current",
+        "scene_revision": "after", "observation_ref": "observation://after/front", "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front-typo", "freshness_ms": 10, "max_age_ms": 1000,
+    }
+    node = node.model_copy(update={"input_bindings": request})
+    task.active_revision.plan_graph = graph.model_copy(update={
+        "nodes": tuple(node if item.node_id == node.node_id else item for item in graph.nodes)})
+
+    class CaptureProvider:
+        def validate_selection(self, arguments):
+            return {**arguments, "status": "stale", "error": "task-affordance candidate set is stale"}
+
+    response = GraspTaskAffordancePreparationEndpoint(CaptureProvider()).invoke(request)
+    assert response["status"] == "stale" and response["requires_replan"] is True
+    record = ToolExecutionRecord(
+        record_id="stale-r03-affordance", revision_id=graph.revision_id, node_id=node.node_id,
+        node_digest=plan_node_digest(node), obligation_id=node.obligation_id,
+        input_binding_digest=tool_input_binding_digest(request), decision_trace_ref="artifact://decision/stale-affordance",
+        tool_id=node.capability, semantics="query", caller_id="paos:test",
+        status="succeeded", arguments=request, response={"ok": True, "data": response},
+        evidence_refs=["tool:stale-r03-affordance"],
+    )
+    failed = settle_node(node, _tool_result_from_execution(task, record), current_scene_revision="after")
+    task.execution_records.append(record)
+    task.active_revision.execution_records.append(record)
+    task.active_revision.node_settlements.append(failed)
+    return failed
+
 def method(plugin, task):
     ctx = context_from_task(task, allow_refresh=True)
     return plugin.propose_method_options(request=PlanningRequest(
@@ -190,14 +227,18 @@ def method(plugin, task):
     )), ctx
 
 
+@pytest.mark.parametrize("failure_kind", ["scene_stale", "same_scene_affordance"])
 @pytest.mark.parametrize("outcome,label", [("completed", "R03"), ("recovered", "R05"),
                                           ("unknown", None), ("partial", None)])
-def test_continuation_consumes_current_receipts_through_published_query_policies(outcome, label):
+def test_continuation_consumes_current_receipts_through_published_query_policies(outcome, label, failure_kind):
     task, action, action_settlement, plugin = lab_task(outcome)
     original_action = deepcopy(action)
     original_revision = task.active_revision
     graph = original_revision.plan_graph
-    failed = action_settlement if outcome == "recovered" else stale_process_feature_settlement(task)
+    failed = (action_settlement if outcome == "recovered"
+              else same_scene_affordance_settlement(task) if failure_kind == "same_scene_affordance"
+              else stale_process_feature_settlement(task))
+    graph = original_revision.plan_graph
     options, context = method(plugin, task)
     if label is None:
         assert not options
@@ -207,6 +248,9 @@ def test_continuation_consumes_current_receipts_through_published_query_policies
 
     assert context.scene_revision == "after"
     assert "tool:stale-r03-features" not in context.evidence_refs
+    if outcome == "completed" and failure_kind == "same_scene_affordance":
+        # Same-scene identity failure must use the superclass evidence-refresh path.
+        assert plugin._refresh_spec(task, graph, failed, context) is None
     delta = build_replan_delta(graph, failed)
     inputs = dict(graph=graph, settlement=failed, delta=delta, context=context)
     assert asyncio.run(plugin.select_recovery(**inputs)) == "replan"

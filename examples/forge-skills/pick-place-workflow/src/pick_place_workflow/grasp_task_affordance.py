@@ -138,6 +138,13 @@ GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC = {
             },
             "motion_authorized": {"const": False},
             "error": {"type": "string"},
+            "failure_owner": {"type": "string"},
+            "failure_code": {"type": "string"},
+            "world_change_started": {"type": "boolean"},
+            "outcome_known": {"type": "boolean"},
+            "retryable_in_revision": {"type": "boolean"},
+            "requires_replan": {"type": "boolean"},
+            "recommended_action": {"type": "string"},
         },
     },
 }
@@ -217,9 +224,9 @@ class GraspTaskAffordancePreparationEndpoint:
         request = deepcopy(dict(arguments))
         identity = {key: request.get(key, "unknown") for key in ("candidate_set_ref", "selected_combination_ref", "process_feature_candidate_set_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref")}
         if request["observation_ref"] != f"observation://{request['scene_revision']}/{request['frame_id']}":
-            return {"status": "stale", **identity, "motion_authorized": False, "error": "observation identity differs from scene/frame"}
+            return self._stale(identity, "observation identity differs from scene/frame")
         if request["freshness_ms"] > request["max_age_ms"]:
-            return {"status": "stale", **identity, "motion_authorized": False, "error": "grasp affordance evidence is stale"}
+            return self._stale(identity, "grasp affordance evidence is stale")
         validate = getattr(self.provider, "validate_selection", None)
         if not callable(validate):
             return {"status": "unavailable", **identity, "motion_authorized": False, "error": "provider cannot revalidate selected grasp affordance"}
@@ -229,11 +236,15 @@ class GraspTaskAffordancePreparationEndpoint:
             result = None
         if not isinstance(result, Mapping):
             return {"status": "unavailable", **identity, "motion_authorized": False, "error": "grasp affordance Preparation provider failed"}
-        if any(result.get(key) != request.get(key) for key in identity):
-            return {"status": "stale", **identity, "motion_authorized": False, "error": "selected combination differs from current Query"}
         status = result.get("status")
         if status not in {"available", "ambiguous", "stale", "invalid", "unavailable"}:
             status = "unavailable"
+        if status == "stale":
+            return self._stale(identity, str(result.get("error") or "grasp affordance evidence is stale"))
+        if status in {"available", "ambiguous"} and any(
+            result.get(key) != request.get(key) for key in identity
+        ):
+            return self._stale(identity, "selected combination differs from current Query")
         selected = result.get("selected")
         qualified_grasp_refs = result.get("qualified_grasp_candidate_refs")
         if status == "available":
@@ -263,6 +274,17 @@ class GraspTaskAffordancePreparationEndpoint:
                    if status == "available" else {}),
                 "motion_authorized": False,
                 **({"error": str(result["error"])} if result.get("error") else {})}
+
+
+    @staticmethod
+    def _stale(identity: Mapping[str, Any], message: str) -> dict[str, Any]:
+        return {
+            "status": "stale", **identity, "error": message,
+            "failure_owner": "evidence", "failure_code": "grasp_affordance_evidence_stale",
+            "world_change_started": False, "outcome_known": True,
+            "retryable_in_revision": False, "requires_replan": True,
+            "recommended_action": "refresh_declared_evidence", "motion_authorized": False,
+        }
 
 
 __all__ = ["GRASP_TASK_AFFORDANCE_TOOL_SPEC", "GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC",

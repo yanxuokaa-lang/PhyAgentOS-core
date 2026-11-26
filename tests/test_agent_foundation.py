@@ -3580,6 +3580,128 @@ def test_query_evidence_failure_bootstraps_scene_refresh_without_model_or_action
     asyncio.run(exercise())
 
 
+
+@pytest.mark.parametrize("provider_name,max_replans", [("capture-a", 2), ("capture-b", 2), ("capture-a", 0)])
+def test_affordance_stale_live_and_persisted_settlement_use_bounded_query_recovery(
+    tmp_path, provider_name, max_replans,
+):
+    from pick_place_workflow.grasp_task_affordance import (
+        GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+        GraspTaskAffordancePreparationEndpoint,
+    )
+
+    from PhyAgentOS.agent.planning_loop import AgentLoopNodeExecutor, NodeExecutionContext
+    from PhyAgentOS.forge.task import _tool_result_from_execution
+    from PhyAgentOS.planning import project_tool_spec, settle_node, tool_input_binding_digest
+
+    class CaptureProvider:
+        def validate_selection(self, request):
+            if provider_name == "capture-b":
+                return {**request, "status": "available", "calibration_ref": "artifact://calibration/current"}
+            return {**request, "status": "stale", "error": f"{provider_name}: capture changed"}
+
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Finish two objects without repeating completed work")
+        c.max_replans = max_replans
+        observe = task.primary_skill_binding.required_tools[0]
+        prepare_spec = GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC
+        binding = task.primary_skill_binding.model_copy(update={"required_tools": (
+            observe.model_copy(update={"planning_policy": observe.planning_policy.model_copy(
+                update={"capabilities": ("scene.observe",), "refreshes_scene": True})}),
+            BoundToolSpec(tool_id=prepare_spec["tool_id"], semantics="query", spec_sha256="d" * 64,
+                          ready_at_binding=True, input_schema=prepare_spec["input_schema"],
+                          planning_policy=project_tool_spec(prepare_spec)),
+            BoundToolSpec(tool_id="object.relocate", semantics="action", spec_sha256="e" * 64,
+                          ready_at_binding=True, planning_policy=ToolSpecPolicy(
+                              tool_id="object.relocate", semantics="action", spec_digest="e" * 64,
+                              capabilities=("object.relocate",))),
+        )})
+        c.store.update(task.task_id, lambda item: setattr(item, "primary_skill_binding", binding),
+                       event_type="fixture_affordance_binding")
+        task = c.get_task(task.task_id)
+        arguments = {
+            "operation": "pour", "entity_refs": ["entity://second", "entity://vessel"],
+            "candidate_set_ref": f"grasp-affordance-set://{provider_name}",
+            "selected_combination_ref": f"grasp-affordance://{provider_name}/selected",
+            "process_feature_candidate_set_ref": "process-feature-set://capture",
+            "observation_ref": "observation://scene-current/front", "scene_revision": "scene-current",
+            "frame_id": "front", "calibration_ref": "artifact://calibration/mismatch",
+            "freshness_ms": 10, "max_age_ms": 1000,
+        }
+        graph = compile_task_plan(task, [
+            {"node_id": "completed-first", "obligation_id": "first", "capability": "object.relocate"},
+            {"node_id": "prepare-next", "obligation_id": "next", "capability": prepare_spec["tool_id"],
+             "dependencies": ["completed-first"], "input_bindings": arguments},
+        ], reason="prepare the next object")
+        c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/affordance")
+        completed_node, prepare_node = graph.nodes
+        completed = ToolExecutionRecord(
+            record_id="completed-action", revision_id=graph.revision_id, node_id=completed_node.node_id,
+            node_digest=plan_node_digest(completed_node), obligation_id=completed_node.obligation_id,
+            input_binding_digest=tool_input_binding_digest({}), decision_trace_ref="artifact://decision/completed",
+            tool_id="object.relocate", semantics="action", caller_id="paos:test", status="succeeded",
+            response={"data": {"status": "succeeded", "world_change_started": True,
+                               "outcome_known": True, "possession_state": "empty"}},
+        )
+        response = GraspTaskAffordancePreparationEndpoint(CaptureProvider()).invoke(arguments)
+        execution = ToolExecutionRecord(
+            record_id="stale-preparation", revision_id=graph.revision_id, node_id=prepare_node.node_id,
+            node_digest=plan_node_digest(prepare_node), obligation_id=prepare_node.obligation_id,
+            input_binding_digest=tool_input_binding_digest(arguments), decision_trace_ref="artifact://decision/stale",
+            tool_id=prepare_spec["tool_id"], semantics="query", caller_id="paos:test", status="succeeded",
+            arguments=arguments, response={"ok": True, "data": response}, evidence_refs=["tool:stale-preparation"],
+        )
+        c.store.update(task.task_id, lambda item: item.active_revision.execution_records.extend([completed, execution]),
+                       event_type="fixture_actual_endpoint_receipts")
+        task = c.get_task(task.task_id)
+        completed_settlement = settle_node(completed_node, _tool_result_from_execution(task, completed),
+                                           current_scene_revision="scene-current")
+        c.record_node_settlement(completed_settlement)
+        context = NodeExecutionContext(
+            task_id=task.task_id, revision_id=graph.revision_id, node_id=prepare_node.node_id,
+            capability=prepare_node.capability, dependencies=prepare_node.dependencies,
+            required_evidence=(), input_bindings=arguments, scene_revision="scene-current",
+        )
+        live = AgentLoopNodeExecutor(SimpleNamespace(run_node_turn=lambda **_: None), c)._result_from_records(
+            context, [execution])
+        persisted = _tool_result_from_execution(task, execution)
+        fields = ("status", "failure_owner", "failure_code", "world_change_started", "outcome_known",
+                  "retryable_in_revision", "requires_replan", "recommended_action")
+        assert {key: getattr(live, key) for key in fields} == {key: getattr(persisted, key) for key in fields}
+        assert live.status == "failed" and live.failure_owner == "evidence"
+        assert live.world_change_started is False and live.outcome_known is True
+        failed = settle_node(prepare_node, live, current_scene_revision="scene-current")
+        assert failed == settle_node(prepare_node, persisted, current_scene_revision="scene-current")
+        c.record_node_settlement(failed)
+        provider = ScriptedProvider([])
+        decisions = AgentRecoveryDecisions(provider, "fixture-model", c)
+        inputs = dict(graph=graph, settlement=failed,
+                      delta=build_replan_delta(graph, failed),
+                      context=context)
+        assert await decisions.select_recovery(**inputs) == "replan"
+        proposal = await decisions.propose_replan(**inputs)
+        assert provider.requests == []
+        assert len(proposal.plan_graph.nodes) == 1
+        refresh = proposal.plan_graph.nodes[0]
+        assert refresh.capability == "scene.observe" and refresh.input_bindings == {}
+        assert refresh.dependencies == () and refresh.required_evidence == ()
+        before_count = len(c.get_task(task.task_id).revisions)
+        if max_replans == 0:
+            with pytest.raises(AgentTaskError, match="budget exhausted"):
+                c.request_replan(task.task_id, reason=proposal.reason)
+            assert len(c.get_task(task.task_id).revisions) == before_count
+        else:
+            c.request_replan(task.task_id, reason=proposal.reason)
+            c.begin_revision_from_delta(task.task_id, proposal.delta, plan_graph=proposal.plan_graph,
+                                        plan_graph_ref=proposal.plan_graph_ref, reason=proposal.reason)
+        saved = c.get_task(task.task_id)
+        assert [record for record in saved.execution_records if record.semantics == "action"] == [completed]
+        original = next(revision for revision in saved.revisions if revision.revision_id == graph.revision_id)
+        assert next(item for item in original.node_settlements if item.node_id == completed_node.node_id) == completed_settlement
+        assert saved.active_revision.execution_records == ([] if max_replans else [completed, execution])
+
+    asyncio.run(exercise())
+
 def test_known_action_postcondition_failure_refreshes_scene_without_replaying_action(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path)

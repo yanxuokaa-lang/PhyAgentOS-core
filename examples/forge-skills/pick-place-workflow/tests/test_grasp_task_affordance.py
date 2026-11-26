@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
+import pytest
+from jsonschema import Draft202012Validator
+
 from pick_place_workflow.grasp_task_affordance import (
     GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
     GRASP_TASK_AFFORDANCE_TOOL_SPEC,
@@ -169,3 +174,76 @@ def test_tool_specs_keep_provider_details_private_and_require_receipt_sources():
                for item in requirements)
     assert all(item["keys"] == ["candidate_set_ref", "selected_combination_ref", "process_feature_candidate_set_ref"]
                for item in requirements)
+
+
+def preparation_request(**changes):
+    value = {key: item for key, item in request().items()
+             if key not in {"grasp_candidate_set_ref", "selected_process_feature_refs"}}
+    value.update(candidate_set_ref="grasp-affordance-set://a/capture",
+                 selected_combination_ref="grasp-affordance://a/combo-1")
+    value.update(changes)
+    return value
+
+
+@pytest.mark.parametrize("cause", ["scene", "frame", "age", "provider_identity", "provider_stale"])
+def test_preparation_stale_requests_declared_evidence_refresh(cause):
+    class CurrentCaptureProvider(Provider):
+        def validate_selection(self, value):
+            result = super().validate_selection(value)
+            if cause == "provider_identity":
+                result["calibration_ref"] = "artifact://calibration/current"
+            elif cause == "provider_stale":
+                result.update(status="stale", error="selected capture is no longer current")
+            return result
+
+    arguments = preparation_request()
+    if cause in {"scene", "frame"}:
+        arguments["scene_revision" if cause == "scene" else "frame_id"] = "different"
+    elif cause == "age":
+        arguments["freshness_ms"] = 1001
+    original = deepcopy(arguments)
+    provider = CurrentCaptureProvider()
+    result = GraspTaskAffordancePreparationEndpoint(provider).invoke(arguments)
+
+    Draft202012Validator(GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC["output_schema"]).validate(result)
+    assert result["status"] == "stale"
+    assert result["failure_owner"] == "evidence"
+    assert result["failure_code"] == "grasp_affordance_evidence_stale"
+    assert result["world_change_started"] is False and result["outcome_known"] is True
+    assert result["retryable_in_revision"] is False and result["requires_replan"] is True
+    assert result["recommended_action"] == "refresh_declared_evidence"
+    assert result["motion_authorized"] is False and "selected" not in result
+    assert all(result[key] == original[key] for key in (
+        "candidate_set_ref", "selected_combination_ref", "process_feature_candidate_set_ref",
+        "observation_ref", "scene_revision", "frame_id", "calibration_ref"))
+    assert arguments == original
+    if cause in {"scene", "frame", "age"}:
+        assert provider.seen == []
+    elif cause == "provider_stale":
+        assert result["error"] == "selected capture is no longer current"
+
+
+@pytest.mark.parametrize("status", ["invalid", "unavailable", "ambiguous", "unexpected", "exception", "missing"])
+def test_preparation_non_stale_provider_failure_does_not_request_refresh(status):
+    class OtherProvider:
+        def validate_selection(self, value):
+            if status == "exception":
+                raise RuntimeError("provider failed")
+            if status == "missing":
+                return None
+            # Invalid/unavailable providers may return no identity at all.
+            return {**(value if status == "ambiguous" else {}), "status": status, "error": "provider diagnostic"}
+
+    result = GraspTaskAffordancePreparationEndpoint(OtherProvider()).invoke(preparation_request())
+    assert result["status"] == (status if status in {"invalid", "unavailable", "ambiguous"} else "unavailable")
+    assert result["motion_authorized"] is False
+    assert "requires_replan" not in result and "recommended_action" not in result
+    Draft202012Validator(GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC["output_schema"]).validate(result)
+
+
+def test_preparation_invalid_input_does_not_request_refresh():
+    provider = Provider()
+    result = GraspTaskAffordancePreparationEndpoint(provider).invoke({})
+    assert result["status"] == "invalid" and provider.seen == []
+    assert "requires_replan" not in result
+    Draft202012Validator(GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC["output_schema"]).validate(result)
