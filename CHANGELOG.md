@@ -70,7 +70,7 @@
 - [docs] [fix] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L3、L48-L89、L93：纠正camera-corner误归因，记录真实生产包络/掩码边缘证据、诊断限制与独立复跑命令；旧验证标明v18.2.0。 / Correct attribution and document measured production geometry, limitations and reproduction, labeling prior validation. (local)
 - [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/diagnose.py` L1-L183：单一CLI真实调用Grounding投影与support拟合；显式source/output、原像素顺序核验、原采集只读。 / Standalone production-method replay with explicit paths and verified pixel association. (local)
 - [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/production-diagnostic.json` L1-L1057：CLI输出，包含采集身份、分析HEAD、来源与离线范围。 / CLI measurements with capture lineage and offline scope. (local)
-- [docs] [docs] [追加/同步] `changelog/2026-11_part5.md` L819-L898、`CHANGELOG.md` L55-L134：本版完整双语日志和最近五版本同步，历史归档不改。 / Append this version and synchronize the latest five complete records without altering historical archives. (local)
+- [docs] [docs] [追加/同步] `changelog/2026-11_part5.md` L819-L899、`CHANGELOG.md` L55-L135：本版完整双语日志和最近五版本同步，历史归档不改。 / Append this version and synchronize the latest five complete records without altering historical archives. (local)
 
 - [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-run.json` L1-L10：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
 - [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-capture-result.json` L1-L1：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
@@ -131,7 +131,8 @@ PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotw
 
 ### Git 提交 / Git receipt
 
-- Base: `6479a053`; Branch: `feature/planning-loop`；本轮发布待主审完成。 / Publication pending parent review. (local)
+- Commit: `1da81fbb`; Branch: `feature/planning-loop`; 时间 / Time: 2026-11-27 15:10:56 +0800.
+- [chore] [docs] 主审确认 `git push origin feature/planning-loop` 成功，exit 0，范围 `6479a053..1da81fbb`。 / Parent confirmed successful push to `origin/feature/planning-loop`, exit 0, range `6479a053..1da81fbb`. (commit 1da81fbb)
 
 ## v18.2.0 (2026-11-26 17:44) - codex
 
