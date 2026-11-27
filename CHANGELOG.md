@@ -80,7 +80,7 @@
 - [eval] [exp] [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L199-L245；`examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L11、L44-L45、L53、L128：验证无运动 Query/执行拒绝和显式来源装配。 / Verify planning-only entry, motion rejection and deployment source selection. (local)
 - [eval] [exp] [修改] `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L3-L4、L25、L372-L418；`examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L17、L64-L78：projection 合法/非法值，发布完整一致性和 binding 规范输出。 / Test projected domain values and published bound-query behavior. (local)
 - [eval] [exp] [新增] `out/robotwin-stack-20261127/114119/observed-cloud-diagnostic.json` L1-L264：源采集时间/scene/calibration、源提交/分析 HEAD、seed、原全云失败、最高点带拟合、足迹与保守世界包络；offline_saved_capture / current_scene_claim=false / motion_started=false。 / Persist traceable offline geometry measurements and execution scope. (local)
-- [docs] [docs] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L110：当前实现、所有权、依赖、配置、真实负结果和下步路线；`changelog/2026-11_part5.md` L689-L816、`CHANGELOG.md` L55-L182：完整双语条目和最近五版本同步。 / Update continuation and synchronized detailed latest-five records. (local)
+- [docs] [docs] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L110：当前实现、所有权、依赖、配置、真实负结果和下步路线；`changelog/2026-11_part5.md` L689-L817、`CHANGELOG.md` L55-L183：完整双语条目和最近五版本同步。 / Update continuation and synchronized detailed latest-five records. (local)
 
 ### 关键 Diff / Key before-and-after diff
 
@@ -179,7 +179,8 @@ git diff --check
 
 ### Git 提交 / Git receipt
 
-- [chore] [docs] 当前分支 `feature/planning-loop`，来源 HEAD `6be7fb35`；代码、日志和精确离线诊断文件由主会话审核后提交/推送，真实 commit 与回执在提交后追加。 / The parent owns reviewed commit/push closeout on the current branch and records the actual receipt afterward. (local)
+- Commit: `23730d4c319604ec66fed588a2d82b48d5302d65`; Branch: `feature/planning-loop`; 时间 / Time: 2026-11-27 12:34:46 +0800.
+- [chore] [docs] 主审于 2026-11-27 12:35:50 +0800 确认 `git push origin feature/planning-loop` 成功（exit 0），推送范围 `6be7fb35..23730d4c`，远端分支 `feature/planning-loop`。 / At 2026-11-27 12:35:50 +0800, the parent confirmed successful push (exit 0) of `6be7fb35..23730d4c` to `origin/feature/planning-loop`. (commit 23730d4c)
 
 ## v18.1.0 (2026-11-26 16:03) - codex
 
