@@ -1,0 +1,34 @@
+{
+  "source_profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml",
+  "candidate_profile": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/stack-candidate.yaml",
+  "change": {
+    "position": {
+      "before": [
+        0,
+        -0.45,
+        0.85
+      ],
+      "after": [
+        0,
+        -0.7,
+        1.1
+      ]
+    },
+    "forward": {
+      "before": [
+        0,
+        1,
+        -0.1
+      ],
+      "after": [
+        0,
+        1,
+        -0.5
+      ]
+    }
+  },
+  "reason": "Measured scene bounds x[-.30,.23], y[-.09,.10], table z .74",
+  "seed": 0,
+  "motion_started": false,
+  "commit": "6479a0535eec9799ac0a8096fc9b06c228131607"
+}

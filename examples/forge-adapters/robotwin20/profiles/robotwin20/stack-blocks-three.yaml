@@ -5,8 +5,8 @@ embodiment: [franka-panda, franka-panda, 0.8]
 additional_static_cameras:
   - name: front_camera
     type: D435
-    position: [0.0, -0.45, 0.85]
-    forward: [0.0, 1.0, -0.1]
+    position: [0.0, -0.7, 1.1]
+    forward: [0.0, 1.0, -0.5]
     left: [-1.0, 0.0, 0.0]
 sensor_refs: [camera/head, camera/front]
 max_observation_age_ms: 1000

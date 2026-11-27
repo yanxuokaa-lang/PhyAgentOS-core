@@ -1,0 +1,6 @@
+{
+  "exit_code": 0,
+  "status": "available",
+  "motion_started": false,
+  "coverage": "Qwen identifies green/blue and background only; red absent, front image clips cubes at boundaries. No complete three-cube coverage or fusion claim."
+}

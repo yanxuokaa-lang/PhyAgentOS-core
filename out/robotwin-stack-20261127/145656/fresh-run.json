@@ -1,0 +1,10 @@
+{
+  "commit": "6479a0535eec9799ac0a8096fc9b06c228131607",
+  "profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml",
+  "seed": 0,
+  "mode": "fresh_synchronized_no_motion_capture",
+  "motion_started": false,
+  "argv": [
+    "/home/yanxu/robotwin20-runtime/stack-blocks-three/dual-observation-20261127-145639/capture_dual.py"
+  ]
+}

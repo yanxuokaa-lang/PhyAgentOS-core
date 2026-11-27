@@ -1,0 +1,52 @@
+[
+  {
+    "captured_at": "2026-11-27 06:57:15.379471+00:00",
+    "scene_revision": "stack_blocks_three-0-1",
+    "frame_id": "head_camera",
+    "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+    "artifacts": [
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+        "kind": "rgb",
+        "media_type": "image/png"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth",
+        "kind": "depth",
+        "media_type": "application/numpy"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/state",
+        "kind": "state",
+        "media_type": "application/json"
+      }
+    ],
+    "sensor_available": true,
+    "observation_ref": "observation://stack_blocks_three-0-1/head_camera"
+  },
+  {
+    "captured_at": "2026-11-27 06:57:15.379471+00:00",
+    "scene_revision": "stack_blocks_three-0-1",
+    "frame_id": "front_camera",
+    "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/calibration",
+    "artifacts": [
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/rgb",
+        "kind": "rgb",
+        "media_type": "image/png"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/depth",
+        "kind": "depth",
+        "media_type": "application/numpy"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/state",
+        "kind": "state",
+        "media_type": "application/json"
+      }
+    ],
+    "sensor_available": true,
+    "observation_ref": "observation://stack_blocks_three-0-1/front_camera"
+  }
+]

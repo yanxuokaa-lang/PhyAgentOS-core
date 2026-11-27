@@ -1,0 +1,1057 @@
+{
+  "analysis_head": "6479a0535eec9799ac0a8096fc9b06c228131607",
+  "source": "/home/yanxu/robotwin20-runtime/stack-blocks-three/continuation-20261126-174549",
+  "captured_at": "2026-11-26T09:48:52.061150Z",
+  "observation_ref": "observation://stack_blocks_three-0-1/head_camera",
+  "scene_revision": "stack_blocks_three-0-1",
+  "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+  "depth_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth",
+  "support_cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-89a00c87232f0407",
+  "mode": "offline_saved_capture",
+  "current_scene_claim": false,
+  "motion_started": false,
+  "new_perception_run": false,
+  "calibration_world_T_camera": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      -0.03200000524520874
+    ],
+    [
+      -0.0,
+      -0.7999999737739569,
+      0.5999999952316282,
+      -0.45000002920627497
+    ],
+    [
+      -0.0,
+      -0.5999999952316282,
+      -0.799999973773957,
+      1.349999974370003
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "observed_support_fit": {
+    "position_m": [
+      -0.03343383967876434,
+      0.07757849840203597,
+      0.7222457882218982
+    ],
+    "orientation_wxyz": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "half_extents_m": [
+      0.45737485587596893,
+      0.32346945252320114,
+      0.019492208658509536
+    ],
+    "evidence_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-89a00c87232f0407",
+    "residual_boxes": [
+      {
+        "position_m": [
+          -0.48552165925502777,
+          0.40103682853694417,
+          0.716329955677711
+        ],
+        "half_extents_m": [
+          0.006287036299705506,
+          0.0010111223882929288,
+          0.014576376114322276
+        ]
+      },
+      {
+        "position_m": [
+          -0.47010840475559235,
+          0.4010234351806499,
+          0.7325143061398842
+        ],
+        "half_extents_m": [
+          0.01082014834880829,
+          0.0010243011678694458,
+          0.03076058948581839
+        ]
+      },
+      {
+        "position_m": [
+          -0.4499548226594925,
+          0.4010235424690088,
+          0.7325142375945457
+        ],
+        "half_extents_m": [
+          0.010869053959846497,
+          0.0010244084562283096,
+          0.030760658031156962
+        ]
+      },
+      {
+        "position_m": [
+          -0.43000034987926483,
+          0.4010234351806499,
+          0.7325143061398842
+        ],
+        "half_extents_m": [
+          0.010885147213935853,
+          0.0010243011678694458,
+          0.03076058948581839
+        ]
+      },
+      {
+        "position_m": [
+          -0.410119965672493,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010773656725883485,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.38997071981430054,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010957760572433473,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.3700638860464096,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010899511933326722,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.35001567006111145,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010982556104660035,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.33000944554805756,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.01094144380092621,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.3099551647901535,
+          0.4010222192253156,
+          0.7342431954447726
+        ],
+        "half_extents_m": [
+          0.010929612278938294,
+          0.0010228706358172968,
+          0.0290315630902529
+        ]
+      },
+      {
+        "position_m": [
+          -0.2897118479013443,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010673342108726502,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.2699103280901909,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010755514562129975,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.25008638203144073,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010878769516944886,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.22995150834321976,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010885914623737336,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.21000460535287857,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010889625012874604,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.19001410901546478,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010959086775779725,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          -0.16999495774507523,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010991444647312165,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          -0.1499066725373268,
+          0.4010235722713307,
+          0.7325142226933852
+        ],
+        "half_extents_m": [
+          0.010862817823886872,
+          0.0010243786539064215,
+          0.03076064312999649
+        ]
+      },
+      {
+        "position_m": [
+          -0.12999173998832703,
+          0.40102208213463486,
+          0.7342432788912716
+        ],
+        "half_extents_m": [
+          0.010811535477638246,
+          0.0010230077264980486,
+          0.029031646536751943
+        ]
+      },
+      {
+        "position_m": [
+          -0.11002478748559952,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010938508272171021,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          -0.0900021567940712,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.01090281254053116,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.07002054899930954,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010951051324605943,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          -0.05009982455521822,
+          0.4010221894229937,
+          0.7342432103459331
+        ],
+        "half_extents_m": [
+          0.010895711205899716,
+          0.0010229004381391849,
+          0.02903157799141337
+        ]
+      },
+      {
+        "position_m": [
+          -0.029124733759090304,
+          0.40102351266668695,
+          0.7325142524957061
+        ],
+        "half_extents_m": [
+          0.009594942977651955,
+          0.0010242236818324146,
+          0.03076053584164029
+        ]
+      },
+      {
+        "position_m": [
+          -0.00943415379151702,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.009892336394637824,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.010387888178229332,
+          0.4010221894229937,
+          0.7342432103459331
+        ],
+        "half_extents_m": [
+          0.010571461006999017,
+          0.0010229004381391849,
+          0.02903157799141337
+        ]
+      },
+      {
+        "position_m": [
+          0.0299676600843668,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.01087423025071621,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.04984496533870697,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010815745055675507,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.070062305778265,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010919825941324235,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.09003385901451111,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.01091104543209076,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.11012641340494156,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010850345551967622,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.13006576895713806,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010696245193481446,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.1500282809138298,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010894885122776032,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.17002952843904495,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.01063214784860611,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.18997766077518463,
+          0.40102208213463486,
+          0.7342432788912716
+        ],
+        "half_extents_m": [
+          0.010774640202522279,
+          0.0010230077264980486,
+          0.029031646536751943
+        ]
+      },
+      {
+        "position_m": [
+          0.2099841684103012,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.01097556746006012,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.22989334166049957,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010791031479835511,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.2500295788049698,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010893134236335755,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.2699451446533203,
+          0.40102208213463486,
+          0.7342432788912716
+        ],
+        "half_extents_m": [
+          0.010810984134674073,
+          0.0010230077264980486,
+          0.029031646536751943
+        ]
+      },
+      {
+        "position_m": [
+          0.2899913340806961,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010929254651069642,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.30997520685195923,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010877920150756837,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.33032020926475525,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010599387645721436,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.34999753534793854,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010939864277839662,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.37003152072429657,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010959891438484193,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.390081524848938,
+          0.4010221417392786,
+          0.7342432490889507
+        ],
+        "half_extents_m": [
+          0.010753674268722535,
+          0.001022948121854328,
+          0.029031616734431
+        ]
+      },
+      {
+        "position_m": [
+          0.40996846556663513,
+          0.4010221119369567,
+          0.7342432639901111
+        ],
+        "half_extents_m": [
+          0.010885519742965699,
+          0.001022977924176216,
+          0.02903163163559147
+        ]
+      },
+      {
+        "position_m": [
+          0.42211005091667175,
+          0.4010435401201237,
+          0.7079130021955673
+        ],
+        "half_extents_m": [
+          0.002830965280532838,
+          0.0010041962283956485,
+          0.006159285541501469
+        ]
+      }
+    ],
+    "estimation": {
+      "method": "horizontal_consensus",
+      "policy": {
+        "inlier_distance_m": 0.002,
+        "minimum_inlier_fraction": 0.7,
+        "minimum_points": 30,
+        "residual_cell_m": 0.02,
+        "uncertainty_m": 0.001,
+        "maximum_slope": 0.02
+      },
+      "height_m": 0.7405738729027427,
+      "point_count": 70795,
+      "inlier_count": 65379,
+      "residual_count": 5416,
+      "fitted_slope": [
+        3.829034450403135e-07,
+        0.0003969466070610217
+      ]
+    }
+  },
+  "entities": [
+    {
+      "entity_ref": "entity://e1",
+      "cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-9e22e4ff233046d6",
+      "mask_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/mask-9e22e4ff233046d6",
+      "geometry_records": [
+        {
+          "artifact_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/geometry-9e22e4ff233046d6",
+          "kind": "object_geometry",
+          "media_type": "application/json",
+          "observation_ref": "observation://stack_blocks_three-0-1/head_camera",
+          "scene_revision": "stack_blocks_three-0-1",
+          "entity_ref": "entity://e1",
+          "frame_id": "head_camera",
+          "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+          "source_refs": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-9e22e4ff233046d6",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/localization-9e22e4ff233046d6"
+          ],
+          "provenance": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth"
+          ],
+          "descriptor": {
+            "shape_class": "box_envelope",
+            "dimensions_m": [
+              0.06312069296836853,
+              0.08407211769372225,
+              0.10423940420150757
+            ],
+            "orientation_reliable": false,
+            "confidence": 0.95
+          }
+        }
+      ],
+      "point_count": 860,
+      "mask_valid_count": 860,
+      "transformed_camera_AABB_dimensions_m": [
+        0.06312068401709428,
+        0.12980135408421406,
+        0.13383481877622294
+      ],
+      "direct_world_cloud_dimensions_m": [
+        0.06312069296836853,
+        0.10824132055172558,
+        0.04999841831927421
+      ],
+      "world_padding_m": [
+        1.782597874866454e-09,
+        1.7825545660181748e-08,
+        2.3716524935332827e-08
+      ],
+      "actual_production_world_dimensions_m": [
+        0.06312069653356425,
+        0.10824135620281691,
+        0.04999846575232414
+      ],
+      "actual_model_frame": "observed-envelope/world/e1",
+      "actual_rotation": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "top_band_point_count": 458,
+      "top_band_xy_dimensions_m": [
+        0.061531394720077515,
+        0.0617443978963052
+      ],
+      "max_y_pixel": {
+        "index": 4,
+        "pixel_xy": [
+          53,
+          86
+        ],
+        "depth_mm": 820.0213012695312,
+        "world_point": [
+          -0.2766513079404831,
+          0.1042044645662818,
+          0.7406267806643355
+        ],
+        "distance_to_table_m": 5.290776159283528e-05
+      },
+      "depth_3x3_mm": [
+        [
+          754.5011596679688,
+          821.86962890625,
+          821.86962890625
+        ],
+        [
+          752.8043212890625,
+          820.0213012695312,
+          820.0213623046875
+        ],
+        [
+          751.1151733398438,
+          751.1151733398438,
+          818.1812133789062
+        ]
+      ],
+      "mask_3x3": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ]
+      ],
+      "diagnostic_not_production": {
+        "table_band_count": 38,
+        "outside_table_band_dimensions_m": [
+          0.06312069296836853,
+          0.06281347413079036,
+          0.04800247508397126
+        ],
+        "warning": "Classification also removes real object bottom edges; no source cloud is edited."
+      }
+    },
+    {
+      "entity_ref": "entity://e2",
+      "cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-2c05f311a0680090",
+      "mask_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/mask-2c05f311a0680090",
+      "geometry_records": [
+        {
+          "artifact_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/geometry-2c05f311a0680090",
+          "kind": "object_geometry",
+          "media_type": "application/json",
+          "observation_ref": "observation://stack_blocks_three-0-1/head_camera",
+          "scene_revision": "stack_blocks_three-0-1",
+          "entity_ref": "entity://e2",
+          "frame_id": "head_camera",
+          "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+          "source_refs": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-2c05f311a0680090",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/localization-2c05f311a0680090"
+          ],
+          "provenance": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth"
+          ],
+          "descriptor": {
+            "shape_class": "box_envelope",
+            "dimensions_m": [
+              0.06435596197843552,
+              0.07872517686337233,
+              0.0998656153678894
+            ],
+            "orientation_reliable": false,
+            "confidence": 0.95
+          }
+        }
+      ],
+      "point_count": 1095,
+      "mask_valid_count": 1095,
+      "transformed_camera_AABB_dimensions_m": [
+        0.06435596856940021,
+        0.12289949718629596,
+        0.12712758200596422
+      ],
+      "direct_world_cloud_dimensions_m": [
+        0.06435596197843552,
+        0.10056024181871503,
+        0.04999721841598792
+      ],
+      "world_padding_m": [
+        7.437284565980917e-09,
+        6.267428298718513e-09,
+        7.704645134385408e-09
+      ],
+      "actual_production_world_dimensions_m": [
+        0.06435597685300465,
+        0.10056025435357163,
+        0.04999723382527821
+      ],
+      "actual_model_frame": "observed-envelope/world/e2",
+      "actual_rotation": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "top_band_point_count": 580,
+      "top_band_xy_dimensions_m": [
+        0.06163956969976425,
+        0.06242077443702404
+      ],
+      "max_y_pixel": {
+        "index": 2,
+        "pixel_xy": [
+          88,
+          119
+        ],
+        "depth_mm": 763.3670654296875,
+        "world_point": [
+          -0.18525144457817078,
+          0.009722994893438364,
+          0.7405834441683424
+        ],
+        "distance_to_table_m": 9.571265599750411e-06
+      },
+      "depth_3x3_mm": [
+        [
+          764.968505859375,
+          764.968505859375,
+          764.9686889648438
+        ],
+        [
+          700.7960205078125,
+          763.3670654296875,
+          763.3671264648438
+        ],
+        [
+          699.3318481445312,
+          699.3317260742188,
+          699.3317260742188
+        ]
+      ],
+      "mask_3x3": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "diagnostic_not_production": {
+        "table_band_count": 44,
+        "outside_table_band_dimensions_m": [
+          0.06394245475530624,
+          0.06287807561232206,
+          0.04789320112342543
+        ],
+        "warning": "Classification also removes real object bottom edges; no source cloud is edited."
+      }
+    },
+    {
+      "entity_ref": "entity://e3",
+      "cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-cc5daf07e2a6178d",
+      "mask_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/mask-cc5daf07e2a6178d",
+      "geometry_records": [
+        {
+          "artifact_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/geometry-cc5daf07e2a6178d",
+          "kind": "object_geometry",
+          "media_type": "application/json",
+          "observation_ref": "observation://stack_blocks_three-0-1/head_camera",
+          "scene_revision": "stack_blocks_three-0-1",
+          "entity_ref": "entity://e3",
+          "frame_id": "head_camera",
+          "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+          "source_refs": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-cc5daf07e2a6178d",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/localization-cc5daf07e2a6178d"
+          ],
+          "provenance": [
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+            "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth"
+          ],
+          "descriptor": {
+            "shape_class": "box_envelope",
+            "dimensions_m": [
+              0.07372292876243591,
+              0.0687603298574686,
+              0.08880388736724854
+            ],
+            "orientation_reliable": false,
+            "confidence": 0.95
+          }
+        }
+      ],
+      "point_count": 1108,
+      "mask_valid_count": 1108,
+      "transformed_camera_AABB_dimensions_m": [
+        0.07372292447226156,
+        0.10829059518501324,
+        0.1122993083170204
+      ],
+      "direct_world_cloud_dimensions_m": [
+        0.07372292876243591,
+        0.08158456767887728,
+        0.04999276002908137
+      ],
+      "world_padding_m": [
+        5.910424066835063e-09,
+        1.8483400156004132e-08,
+        2.4209915780595305e-08
+      ],
+      "actual_production_world_dimensions_m": [
+        0.07372294058328405,
+        0.0815846046456776,
+        0.04999280844891285
+      ],
+      "actual_model_frame": "observed-envelope/world/e3",
+      "actual_rotation": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "top_band_point_count": 600,
+      "top_band_xy_dimensions_m": [
+        0.051459312438964844,
+        0.05021886184263796
+      ],
+      "max_y_pixel": {
+        "index": 72,
+        "pixel_xy": [
+          283,
+          127
+        ],
+        "depth_mm": 750.7921752929688,
+        "world_point": [
+          0.22549185156822205,
+          -0.011247951156830527,
+          0.7405738729027427
+        ],
+        "distance_to_table_m": 0.0
+      },
+      "depth_3x3_mm": [
+        [
+          690.6721801757812,
+          752.34130859375,
+          752.34130859375
+        ],
+        [
+          689.2500610351562,
+          750.7921752929688,
+          750.7921752929688
+        ],
+        [
+          687.833740234375,
+          749.2493896484375,
+          749.2493286132812
+        ]
+      ],
+      "mask_3x3": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ]
+      ],
+      "diagnostic_not_production": {
+        "table_band_count": 29,
+        "outside_table_band_dimensions_m": [
+          0.05164690315723419,
+          0.050374629599339193,
+          0.047808769915998806
+        ],
+        "warning": "Classification also removes real object bottom edges; no source cloud is edited."
+      }
+    }
+  ]
+}

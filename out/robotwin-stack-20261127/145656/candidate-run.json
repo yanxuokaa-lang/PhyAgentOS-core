@@ -1,0 +1,10 @@
+{
+  "commit": "6479a0535eec9799ac0a8096fc9b06c228131607",
+  "profile": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/stack-candidate.yaml",
+  "seed": 0,
+  "mode": "fresh_synchronized_no_motion_capture",
+  "motion_started": false,
+  "argv": [
+    "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/capture_dual.py"
+  ]
+}

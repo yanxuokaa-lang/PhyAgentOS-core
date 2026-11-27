@@ -52,6 +52,87 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.2.1 (2026-11-27 14:55) - codex
+
+### 计划与完成 / Plan and completion
+
+- [eval] [exp] [完成] 保存 Runtime 代理对原始采集的可复跑生产 Grounding 诊断CLI与 production-diagnostic.json 到新 out/robotwin-stack-20261127 目录，保留原始 artifact 来源和离线/无运动范围。 / Preserve a reproducible production-Grounding diagnostic and measurements from the original capture in a new output directory with explicit provenance and offline/no-motion scope. (local)
+- [docs] [fix] [完成] 纠正接续文档将 camera AABB 世界变换误称生产包络的归因；生产已使用完整世界点云，依据新测量区分掩码污染与包络机制。原历史日志及原始测量不修改。 / Correct the camera-AABB attribution using measured production geometry and distinguish mask contamination from envelope construction; retain historical logs and original measurements. (local)
+- [docs] [docs] [完成] 补本版本精确行号、关键 Diff、复跑命令与结果，完整同步最近五版本；不修改运动、生产几何或阈值，不提交/推送，由主审处理。 / Record exact lines, diffs and reproduction results, synchronize the latest five versions, and leave production geometry/motion unchanged; parent owns commit/push. (local)
+- [eval] [fix] [完成] 按主审要求合并临时诊断为单一 --source/--output CLI，消除硬编码源目录、exec耦合与支撑拟合失败后median回退；原脚本/测量保留external，CLI新增完整采集身份与HEAD并对原artifact实跑验证。 / Consolidate the diagnostic into a standalone CLI with explicit paths, fail on support-fit errors, retain external sources and verify against the original capture. (local)
+
+- [eval] [exp] [范围补充] 保存本轮新同步head/front采集小型metadata和front真实视觉链结果摘要，原大图/完整产物保留external；按主审去除冗余旧脚本/JSON副本。 / Preserve fresh synchronized capture metadata and front perception summary, retaining full artifacts externally and removing redundant diagnostic copies. (local)
+
+- [sense] [fix] [完成] 主审通过候选front图确认三块完整入镜，批准正式stack-blocks-three.yaml仅position [0,-.45,.85]→[0,-.7,1.1]、forward [0,1,-.1]→[0,1,-.5]两行；保存候选采集metadata并用既有profile loader验证，不宣称几何污染或stack成功。 / Apply the reviewed two-line front-camera pose correction and validate the existing profile loader; coverage is not a geometry or stacking success claim. (local)
+
+### 文件变更详情 / Exact file changes
+
+- [docs] [fix] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L3、L48-L89、L93：纠正camera-corner误归因，记录真实生产包络/掩码边缘证据、诊断限制与独立复跑命令；旧验证标明v18.2.0。 / Correct attribution and document measured production geometry, limitations and reproduction, labeling prior validation. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/diagnose.py` L1-L183：单一CLI真实调用Grounding投影与support拟合；显式source/output、原像素顺序核验、原采集只读。 / Standalone production-method replay with explicit paths and verified pixel association. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/production-diagnostic.json` L1-L1057：CLI输出，包含采集身份、分析HEAD、来源与离线范围。 / CLI measurements with capture lineage and offline scope. (local)
+- [docs] [docs] [追加/同步] `changelog/2026-11_part5.md` L819-L898、`CHANGELOG.md` L55-L134：本版完整双语日志和最近五版本同步，历史归档不改。 / Append this version and synchronize the latest five complete records without altering historical archives. (local)
+
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-run.json` L1-L10：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-capture-result.json` L1-L1：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-capture.json` L1-L52：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/fresh-visual-result.json` L1-L6：复制新采集来源metadata/结果，完整产物保留external。 / Preserve fresh-capture metadata/results with full artifacts retained externally. (local)
+
+- [sense] [fix] [修改] `examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml` L8-L9：相机位置/朝向改为[0,-.7,1.1]/[0,1,-.5]，修复三块视域覆盖。 / Correct front-camera field-of-view coverage. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/candidate-run.json` L1-L10：候选相机实验配置与新采集身份。 / Candidate-camera experiment configuration and capture lineage. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/candidate-experiment.json` L1-L34：候选相机实验配置与新采集身份。 / Candidate-camera experiment configuration and capture lineage. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/candidate-capture.json` L1-L52：候选相机实验配置与新采集身份。 / Candidate-camera experiment configuration and capture lineage. (local)
+
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/candidate-front-measurement.json` L1-L1173：候选front真实生产包络、mask边界与桌面污染负结果。 / Candidate front bounds, mask coverage and remaining contamination. (local)
+
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/145656/candidate-summary.json` L1-L279：Runtime最终命令/exit0/同步身份/视觉上下文与污染负结果统一摘要。 / Final Runtime summary of commands, synchronized lineage, perception scope and remaining contamination. (local)
+
+### 关键 Diff / Key diff
+
+```diff
+- camera-corner world Y 0.12980/0.12290/0.10829 m described as production envelope
++ real Grounding world-cloud Y 0.10824136/0.10056025/0.08158460 m
++ max-Y mask-edge points lie 52.91/9.57/0 µm above observed table
+- temporary hard-coded source, exec-linked scripts and median fallback
++ standalone diagnose.py --source --output, actual production projection and support fit
++ propagate fitting errors; diagnostic_not_production labels band-removal measurements
+- front position [0,-.45,.85], forward [0,1,-.1]
++ front position [0,-.7,1.1], forward [0,1,-.5]
+```
+
+### 实测与验证 / Measurement and validation
+
+- [eval] [exp] 新采集2026-11-27T06:57:15.379471Z（北京时间14:57:15），同backend head/front同步、seed0、exit0；front Qwen→LA/SAM2 exit0/available但红缺失、绿蓝切边，无三块覆盖/融合证据。旧诊断原采集为2026-11-26，不可混用。 / Fresh synchronized views and successful front inference have incomplete coverage and are distinct from the older capture. (local)
+- [eval] [exp] 主审独立CLI复跑成功，输出 `/tmp/robotwin-production-diagnostic-review-20261127.json`。 / Parent independent replay passed. (local)
+- [eval] [docs] External source: `/home/yanxu/robotwin20-runtime/stack-blocks-three/dual-observation-20261127-145639/`；原诊断：`/home/yanxu/robotwin20-runtime/stack-blocks-three/envelope-diagnosis-20261127/`。 / Full original artifacts remain in these source directories. (local)
+
+- [eval] [exp] 采集为 2026-11-26T09:48:52.061150Z，scene=stack_blocks_three-0-1；分析HEAD=6479a0535eec9799ac0a8096fc9b06c228131607。Runtime原目录为 `/home/yanxu/robotwin20-runtime/stack-blocks-three/envelope-diagnosis-20261127`；原capture/mask/cloud/标定未修改。 / Measurements replay the original timestamped capture and preserve its source artifacts. (local)
+- [eval] [exp] 对原capture运行CLI，exit0；生产尺寸、camera-corner、像素、支撑拟合及诊断删带尺寸与原测量JSON逐值一致。原三个临时脚本亦在独立临时目录依次复跑，exit0，三个JSON与源副本相等。CLI完整Ruff和git diff --check通过。 / The CLI and isolated original-script replay pass; compared values match exactly, and lint/whitespace checks pass. (local)
+- [eval] [docs] 桌面70795点/65379 inlier，height=0.7405738729m；掩码边缘深度跳变约67/63/62mm。诊断删桌面2mm带38/44/29点后Y变为0.06281347/0.06287808/0.05037463m，同时会删真实底边，不是生产修复或堆叠通过证据。 / Edge-depth evidence identifies contamination; band exclusion is diagnostic and cannot certify a corrected object or successful stack. (local)
+- [env] [docs] 本版生产Python不变，仅修正正式front相机profile两行；离线诊断之外有独立新同步采集和front视觉链，无运动，不改生产几何/足迹阈值。当前路线/接触/停止资格及三块执行仍待后续；本版不复跑旧564项功能回归。 / This version adds diagnostics and separate fresh observation metadata; live qualification remains open and prior functional tests were not rerun. (local)
+
+```bash
+export PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src
+stack_replay_dir=$(mktemp -d)
+.venv/bin/python out/robotwin-stack-20261127/145656/diagnose.py \
+  --source /home/yanxu/robotwin20-runtime/stack-blocks-three/continuation-20261126-174549 \
+  --output "$stack_replay_dir/production-diagnostic.json"
+.venv/bin/ruff check out/robotwin-stack-20261127/145656/diagnose.py
+git diff --check
+```
+
+- [eval] [exp] 候选采集2026-11-27T07:03:41.024775Z，同backend同步；front真实Qwen→LA/SAM2 exit0/available，red/green/blue cube与white surface四实体，ambiguities=[]，三块mask/cloud/geometry齐全。主审看图确认三块不切边；既有load_runtime_profile返回修正配置和head/front两路。不能称几何污染已修或stack成功。 / Candidate front perception covers all three cubes and profile loading passes; contamination and stack execution remain unproven. (local)
+
+- [eval] [exp] 候选mask bbox红[25,93,53,124]绿[60,109,96,144]蓝[235,112,266,145]均不触边；生产Y却为0.174711/0.156621/0.142315m，桌面2mm带31/51/30点，污染未修。后续视觉metric前景深度分层，保留原点/残差。 / FOV is corrected but slanted-view table contamination enlarges production bounds; depth foreground separation remains necessary. (local)
+- [eval] [exp] 主审独立backend/task-adapter两套件42 passed in0.29s。 / Parent regression passed all42 checks. (local)
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-adapters/robotwin20/tests/test_robotwin_backend_contract.py examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py --tb=short
+```
+
+### Git 提交 / Git receipt
+
+- Base: `6479a053`; Branch: `feature/planning-loop`；本轮发布待主审完成。 / Publication pending parent review. (local)
+
 ## v18.2.0 (2026-11-26 17:44) - codex
 
 ### 计划与完成 / Plan and completion
@@ -393,102 +474,3 @@ PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/ro
 ### Git 提交与推送回执 / Commit and push receipt
 
 - [chore] [docs] 主审已提交收尾结果：`441e9d86b03084d0b0e6f3c820c065279e9a5dce`；branch `feature/planning-loop`；实际提交时间 `2026-11-26T15:57:19+08:00`（git show）；提交说明 `v18.0.4: [eval] 归档标定引用故障自主恢复与双视角实跑结果`。主审确认已成功push至`origin/feature/planning-loop`。 / Parent committed the accepted closeout as `441e9d86b03084d0b0e6f3c820c065279e9a5dce` on `feature/planning-loop` at `2026-11-26T15:57:19+08:00` (git show), and confirmed a successful push to `origin/feature/planning-loop`. (commit 441e9d86)
-
-## v18.0.3 (2026-11-26 13:10) - codex
-
-### 计划与边界 / Plan and ownership
-
-- [eval] [fix] [已停止/未交付] 用户要求完整动作视频仅含全局与真正腕部两窗口，无任何文字卡、字幕或第三窗。232254原station wrist_camera错误引用/World/PreviewCameras/ThirdPerson，前两窗重复、第三窗固定R01，旧帧不含真实腕部图像。新增Isaac Adapter所属离线render_recorded_task_views.py，读取成功任务六阶段逐帧joints/finger_positions/object_pose/tcp_pose与route.body_from_observed/source_path，构造固定panda_hand相机，仅渲染原记录；不新建AgentLoop、不执行物理动作、不重跑成功任务、不改原证据。 / [Stopped/not delivered] Produce the requested uninterrupted global-plus-real-wrist video without cards, subtitles or a third panel. The original wrist configuration points to the global camera, so a real wrist view must be rerendered from recorded state. Add an Adapter-owned offline renderer using the six recorded phases and rigid transforms, with a fixed hand-mounted camera and no task/physics re-execution or source-evidence changes. (local)
-- [env] [exp] [已停止/未交付] 沿用anti-minimal-implementation、robotics-safety-implementation和experiment-reproducibility：Adapter私有USD/FK/相机机制保持在脚本，通用domain/Tool/AgentLoop/Runtime生命周期不改。独立带时间目录保存code/config/input、轻量轨迹缓存、TCP姿态验证、timeline不推进证据；从左原全局第二窗口裁取，右为同记录时间的腕部渲染。先最多12张抓取/倾倒/回正/释放预览供主审；姿态不可靠则报告，不冒充实测相机。 / [Stopped/not delivered] Keep private USD/FK/camera mechanisms inside the Adapter and leave public semantics/lifecycle unchanged. Save reproducibility data, a compact trajectory cache, TCP checks and paused-timeline evidence in an isolated output. Preview at most12 frames before full rendering; report unreliable reconstruction instead of claiming recorded wrist imagery. (local)
-- [eval] [exp] [已停止/未交付] 验收目标原16568帧/276.133333s/60fps，双窗且无叠字；相关小型坐标/帧映射测试、语法/Ruff与预览先行，主审后才全片并做ffprobe/PTS/完整decode。此重渲染只为视频展示，不产生新的运动成功证据。当前不commit/push。 / [Stopped/not delivered] Preserve16568 frames at60fps and276.133333s, with two unlabelled views. Validate transforms/frame mapping and previews first; full rendering and media checks follow review. Rerendering is presentation evidence, not a new motion success. No commit/push yet. (local)
-
-### Git 来源 / Git source
-
-- 上轮实验 / Previous experiment: ffa11b0537392e8fa7771d2c22fa9cbe842e0173；日志回执 / Receipt:309f3afe057e2b7ae07b2890d5796eaa56af3208，2026-11-26T00:38:10+08:00，feature/planning-loop，已push并核对远端一致 / pushed and remote-matched。
-
-### 用户转向与新实跑计划 / User-directed replacement plan
-
-- [eval] [docs] [已停止/未交付] 用户明确改为“重新再跑一个例子，按照我们说的这种两个视角”。离线方案停止，两个preview进程均已退出，未生成预览或全片；16568帧缓存与两次失败报告保留于131023。第一次stage默认厘米造成FK误差，设为原运行1m后残差23.16µm；不再继续离线诊断。新增renderer与5项测试移入该输出目录归档，不纳入生产提交。 / [Stopped/not delivered] User now requests a new live example. Stop offline rendering; both preview processes exited and produced no images/video. Preserve cache and reports; archive the renderer/tests locally. The unit correction reduced FK residual to23.16µm, with no further replay work. (local)
-- [sense] [fix] [准备完成] Adapter profile新增可选video_sensor_refs（默认空=全部）与video_overlay（默认true），Recorder按指定顺序录像，缺失指定ref只记video_error、不替代、不阻断运动。接入所有现有recorder创建路径；新实例只录全局和腕部且overlay=false。 / [Prepared] Add Adapter-private camera selection/overlay options with compatible defaults, wire every recorder path, and report missing selected sensors as recording errors without substitution or motion gating. (local)
-- [env] [exp] [准备完成] 独立新目录复制成功232254必要13配置/脚本，不带DB/工件；保留60/60N、.02/.2、retain4mm、原六阶段指令与replan4。真实arm_camera位于panda_hand，固定手部外参[-.10,0,0]朝hand-local[0,0,.18]，12mm/24×18mm aperture；仅静态初始化抓图供主审，不启动完整任务。 / [Prepared] Prepare an isolated live run from the successful configuration, retaining all motion/task parameters. Author a fixed hand-mounted camera, then capture only a static two-view preview for review before the complete task. (local)
-- [model] [docs] 架构六项：通用domain/Tool语义不变；相机注册/选择/录像属于Isaac Adapter；替换Provider不影响调用者；证据新鲜边界为新实例当前真实capture；生命周期/取消/settlement仍原Runtime/Coordinator；最小泄漏测试为默认兼容、两窗顺序、无叠字、指定ref缺失不替代。 / Architecture: public semantics unchanged; Isaac owns camera/recording mechanisms; providers remain replaceable; evidence comes from the new instance's live capture; existing owners retain lifecycle/cancellation/settlement; focused tests cover defaults, view order, overlays and missing sensors. (local)
-- [eval] [exp] [准备完成] 相关profile/recorder无运动测试与lint，真实Adapter注册路径静态capture验证相机父节点、尺寸、颜色与不同视角。预览后暂停供主审；不commit/push、不执行抓取。 / [Prepared] Run focused no-motion tests/lint and actual Adapter camera capture; verify parenting, dimensions, colors and distinct views, then pause without commit/push or manipulation. (local)
-
-### 实现与静态预览完成 / Implementation and static preview completed
-
-- [sense] [fix] 显式ref存在但图像为空时，旧compose会跳过该图而生成单窗，不能满足本次双窗录制；仅显式选择分支检查基本图像shape，记录video_sensor_invalid并跳帧。缺失ref同样记录错误；不新增运动门禁、公共schema或重试。 / Explicitly selected empty images would otherwise silently yield a single panel. Check only selected images' basic shape, record a video error and skip that frame; no motion gate, public schema or retry is added. (local)
-- [eval] [exp] 新独立目录132940仅复制232254的11必要文件，省略watch_progress/save_finished_phase；launch去掉旧observer，保留服务创建失败有限重试且tasks一旦存在不重建。原指令、60/60N、.02/.2、retain4mm、motion/oracle/阈值/replan4相同；新profile两refs/overlayfalse及真实arm_camera是本轮展示变化。 / Copy eleven required files, omit annotation observers, and preserve bounded creation retries without recreating an existing task. Motion/instruction/budget parameters remain identical; only recording selection and the real wrist camera change. (local)
-- [eval] [exp] 静态真实Adapter初始化后使用既有play→World.render32→pause；PID1387258于13:33:27启动并正常退出。preview为2560×960，左全局右腕部，父节点panda_hand、RGBA尺寸1200×1600/960×1280，左右不同，无叠字。一帧recorder视频available且无error；q完全相同、simtime前后均0.0020833334419876337s。主审与执行代理目视通过。 / The real Adapter static preview passed at2560×960 with distinct global/wrist views, correct parenting, no overlay and successful one-frame recording. Joints and simulation time were unchanged during render-only capture; parent and executor visually accepted it. (local)
-- [eval] [exp] 首静态preview因暂停timeline导致Annotator无图，已保留失败报告并复用现有observe_in_session语义修正；没有执行抓取、创建任务或修改运动机制。 / Preserve the initial paused-timeline capture failure and correct the preview using existing observation render semantics, without task creation, manipulation or motion changes. (local)
-- [eval] [exp] `PYTHONPATH=<metadata.pythonpath> .venv/bin/python -m pytest examples/forge-adapters/isaacsim_lab/tests/{test_profile,test_engine,test_phase_motion}.py -q`：373passed/25.43s。profile/engine及两对应test Ruff通过；phase_motion既有I001与其测试既有2×E731/1×I001经HEAD核对未新增；git diff --check通过。 / Focused tests passed373/25.43s; four files are lint-clean, with pre-existing findings unchanged in the phase-motion files. Diff checks pass. (local)
-
-### 精确文件范围 / Exact changed ranges
-
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py` L66-L67、L142-L143、L450-L455：可选录像refs/overlay及配置解析 / optional recording configuration。 (local)
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L237-L270、L1341-L1343、L1569、L1741、L2140-L2148：Recorder选择/叠字与全部episode接线 / recorder selection/overlay and episode wiring。 (local)
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L2380-L2382：阶段录像接入profile / phase recorder wiring。 (local)
-- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_profile.py` L31-L44、`tests/test_engine.py` L1212-L1259、`tests/test_phase_motion.py` L3270-L3271（后两相对同Adapter目录）：默认/显式配置、顺序、无叠字、缺失/空图和原fixture / focused recording tests and existing fixture。 (local)
-- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L772-L784：准备与静态证据 / preparation and static evidence。 (local)
-- [本地 / Local] 132940中`labutopia-ridgebase-elevated.usda` L56-L65、station.yaml L23-L30与profile.json末段定义固定真腕相机和两窗录制；configuration.diff、production-test.diff、validation.json、static-preview-report.json保留具体对照与测量。原131023代码/测试仅归档，不作为生产提交。 / Local configuration and evidence preserve the exact camera setup, diffs and measurements; offline files remain archive-only. (local)
-
-### 关键 Diff / Key diff
-
-```diff
-+ video_sensor_refs: tuple[str, ...] = ()
-+ video_overlay: bool = True
-- frame = compose(all_camera_display); always_overlay(lines)
-+ selected = camera_display ordered by configured refs (default: all)
-+ missing/invalid selected image -> video_error; skip frame
-+ frame = compose(selected); overlay only when configured
-+ every recorder creation receives profile.video_sensor_refs/video_overlay
-- wrist_camera.prim_path = /World/PreviewCameras/ThirdPerson
-+ wrist_camera.prim_path = /World/Ridgebase/panda_hand/arm_camera
-+ live profile: [global, wrist], overlay=false; no annotation observer
-```
-
-### 当前交接 / Current handoff
-
-- [chore] [docs] 实现与静态预览完成，完整任务明确待启动。当前HEAD309f3afe（上轮回执），本轮尚未commit/push；主审提交后刷新新metadata为实际commit并另行启动，不复用preview进程或物理状态。 / Implementation/static preview are complete; the full task remains unstarted. Current HEAD is309f3afe and no new commit/push has occurred; refresh metadata after the parent's reviewed commit and start a fresh instance separately. (local)
-
-
-### 实现提交与新任务启动计划 / Implementation receipt and live task launch plan
-
-- [chore] [docs] 主审已提交实现`0415b62b7cdb385e6a5165fd97295d6b6204a271`，branch feature/planning-loop，时间2026-11-26T13:38:39+08:00，message `v18.0.3: [sense] 支持全局腕部双视角无叠字录像并验证真实相机`；主会话已发起push。 / Parent committed the reviewed implementation at the recorded branch/time and initiated push. (commit 0415b62b)
-- [eval] [exp] [完成] 2026-11-26T13:40:29.924592+08:00按用户授权启动132940唯一新完整R05→R03无液体Isaac任务。更新metadata为实际code commit，确认静态preview已退出且本目录无旧task DB；原11配置、指令、motion/physics/oracle/阈值与replan4保持。采用既有launch.py独立持久进程，不启动旧observer或第二任务实例。 / [Completed] Start one authorized fresh complete task using the committed code, unchanged motion/instruction/budget configuration and the existing launcher, after confirming the preview exited and no old task database exists. No annotation observer or duplicate instance is started. (local)
-- [eval] [exp] [完成] 保存launcher/host/worker PID、时间与task ID，持续读取持久状态/回执，第一段闭合后提取真实双窗帧供主审；任何具体阶段失败保留原证据。终态按本任务实际执行顺序拼接所有动作段（含恢复/重试），H264/yuv420p、60fps、2560×960，保留原动作时长，无卡片、文字、空白或旧录像替代；验证frames/PTS/完整decode。 / [Completed] Record process/task identities and monitor persisted outcomes. Review an actual first-stage frame, retain failures, and concatenate this task's real motion clips including recovery/retries in execution order. Produce unlabelled H264/yuv420p60fps2560×960 video with original duration and verify frame/timestamp/decode integrity. (local)
-- [docs] [docs] [完成] 按当前版本追加日志/report/Latest5实际结果，区分原373无运动测试、当前静态capture与新真实执行证据；运行期间不改已载入生产运动代码或全局服务配置，后续文档不commit/push，等待主审。 / [Completed] Append actual results and distinguish test, static-capture and live-execution evidence. Do not modify loaded motion code/global service settings or commit subsequent documents before review. (local)
-
-### 已启动事实 / Actual launch
-
-- [eval] [exp] [运行中] 唯一新任务`task_0c6254c467a44d06`，2026-11-26T13:40:29.924592+08:00启动launcher1398300，host1398303于13:40:29.956958启动，worker1398730；无observer。实际code0415b62b，creation_attempt1；13:42已完成R05 process_features/prepare_process_features并进入grasp_task_affordances。完整任务尚未完成。 / [Running] One fresh task launched with the recorded process identities and committed code, without an observer. Its initial R05 process-feature queries completed and grasp-affordance preparation is underway; the complete task is not finished. (local)
-
-### 新真实任务终态与收尾计划 / Live terminal result and closeout plan
-
-- [eval] [exp] 2026-11-26T14:07:57.912318+08:00：唯一任务于2026-11-26T14:06:22.500330+08:00终态failed；R05 acquire/pour/place均成功，R03 prepare_grasp_task_affordance返回stale、motion_authorized=false，未进入R03 Action，三个运行PID均退出。保留原始错误及历史恢复记录；不重启。 / The single task terminated failed after all three R05 phases succeeded. R03 grasp-affordance preparation returned stale without motion authorization or an R03 Action, and all three processes exited. Preserve raw errors and prior recovery evidence; do not restart. (local)
-- [eval] [exp] [完成] 按已授权收尾范围保存terminal/controller/task/receipts及精简摘要；本次最终视频仅拼接实际发生的三个R05动作段，明确R03未执行、整任务未完成，保持2560×960/60fps、H264/yuv420p、无文字/卡片/空白，核对7128帧与118.8秒、PTS和完整decode。主审独立诊断R03准备失败，本执行不改生产。 / [Completed] Archive terminal/controller/task/receipt evidence and compact summaries. Concatenate only the three actually executed R05 clips, explicitly record that R03 never executed and the full task did not complete, and verify7128frames/118.8seconds, PTS and full decoding. The parent diagnoses the R03 preparation failure; no production change is made. (local)
-- [eval] [fix] 合片首命令被本机FFmpeg拒绝：`-r60`与`-fps_mode passthrough`冲突，尚未产生视频。沿用源60fps时间戳、移除冗余输出`-r`后重试同一离线编码；不改源录像/动作。 / Local FFmpeg rejected the first composition command because output rate and passthrough timing conflict. Remove the redundant output-rate flag, preserve the source60fps timestamps, and retry encoding the same recordings without changing motion or source video. (local)
-
-### 实际终态、交付与验证 / Actual terminal result, delivery and validation
-
-- [chore] [docs] 主审确认实现0415b62b7cdb385e6a5165fd97295d6b6204a271已push至origin/feature/planning-loop；该代码是132940本轮实际运行来源。本次收尾尚未commit/push，交主审，之前“待启动/运行中”段落保留原记录时点。 / Parent confirmed the implementation was pushed and used by this run. Closeout documents remain uncommitted for review; earlier preparation/running statements retain their historical timestamps. (commit 0415b62b)
-- [eval] [exp] R05唯一Action tool_1767fc567c7b4e82完成，三阶段succeeded，empty且requires_replan=false。lift117/117 contact/grasp，rise60.074618104mm、末attachment0.047140511mm；tilt1.001442185rad、连续合格/对准保持2.816666814s；归位误差0.202404870mm。末retreat两指约0.04m，载荷/抓取均false，松夹后撤证据一致。 / R05's sole Action completed all three phases and released with empty possession. Lift validity was117/117, rise60.074618104mm, final attachment error0.047140511mm, tilt1.001442185rad and aligned continuous hold2.816666814s; return error0.202404870mm. Final open fingers and absent grasp/contact confirm release. (local)
-- [eval] [exp] 全任务failed；R03新鲜scene:3准备请求的calibration标识多一个0（bfe12131065…→bfe121310065…），Provider返回stale、error原文`task-affordance candidate set is stale`、motion_authorized=false；settlement失败、world_change_started=false，R03无Action/readiness/feedback/video。6 revisions中预算标记扣初始为1，controller却replans=0；分别保留，4条历史evidence_errors未删除。 / The full task failed before R03 motion after its preparation request altered the calibration reference by one extra zero. Preserve provider stale/error, failed no-motion settlement, both differing replan accounting values and all four historical recovery messages. (local)
-- [eval] [exp] `R05_全局与腕部_完整实跑.mp4`完整收入本轮3段原始双窗动作：2112/3561/1455帧，35.20/59.35/24.25s，共7128帧/118.8s；H264/yuv420p、2560×960、60fps，0章节，无文字/卡片/新增空白、无旧录像或重建替代。原腕相机方向保留。源段与receipt/目录一一对应；PTS最大误差0.333微秒，完整decode exit0且日志空，首末目视正常。 / The delivered video includes all three actual recordings, totalling7128frames/118.8s at2560×960/60fps in H264/yuv420p, with no added text/cards/blank frames and unchanged camera orientation. All source clips match receipts, PTS error is0.333microseconds, full decoding passes and first/last frames look normal. (local)
-- [eval] [docs] 新增本地terminal-summary、calibration-typo-summary、task/controller/receipts raw、phase-evidence、lineage-action-summary、final-release-evidence及视频manifest/编码脚本，原始失败acceptance保留。373无运动测试、静态预览和本轮真实R05执行分别记录；本轮未复跑生产测试，无液体transfer_verified=false，不声称六阶段成功。 / Preserve compact and raw terminal, lineage, release and video evidence. Separate373-test, static-capture and actual R05 evidence; no tests were rerun, no liquid transfer was verified and no six-stage success is claimed. (local)
-
-### 收尾文件与关键 Diff / Closeout files and key diff
-
-- [修改 / Modified] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L786-L816：追加真实启动、三阶段结果、R03准备失败与双窗视频交付 / append actual launch, three-phase result, R03 preparation failure and video delivery。 (local)
-- [修改 / Modified] `changelog/2026-11_part5.md` L433-L473、`CHANGELOG.md` L55-L152：本版本新启动计划标记完成并追加实际终态、提交来源及验证；Latest5完整同步，其他版本历史不改 / complete the current launch plan and append actual terminal, code receipt and validation; synchronize Latest5 without altering prior versions。 (local)
-- [本地 / Local] 132940的`compile_live_video.py` L1-L107、`extract_terminal_evidence.py` L1-L118、metadata.json L1-L37及launch-receipt、terminal/phase/lineage/release JSON、原视频/成片/首末PNG与manifest：仅本次实跑和编码工件，不stage整个out / this run's evidence/encoding artifacts only, without staging output directories。 (local)
-
-```diff
-- current launch/terminal archiving plan: pending
-+ code0415b62b pushed; one live task started and settled failed before R03 motion
-+ R05: acquire/pour/place succeeded; one Action; final possession empty
-+ R03 prepare: calibration reference contains an extra zero; stale; no motion
-+ final video: 3/3 actual clips, 7128 frames / 118.8 s, global+wrist
-+ H264/yuv420p, 2560x960, 60fps, no added text/cards/blank frames
-+ PTS max error 0.333 microseconds; full decode passed; first/last visually checked
-+ original failed acceptance, raw receipts and compact calibration mismatch preserved
-```

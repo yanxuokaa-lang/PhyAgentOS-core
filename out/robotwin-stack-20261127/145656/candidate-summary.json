@@ -1,0 +1,279 @@
+{
+  "source_directory": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158",
+  "source_capture_commit": "6479a0535eec9799ac0a8096fc9b06c228131607",
+  "seed": 0,
+  "candidate_configuration": {
+    "source_profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml",
+    "candidate_profile": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/stack-candidate.yaml",
+    "change": {
+      "position": {
+        "before": [
+          0,
+          -0.45,
+          0.85
+        ],
+        "after": [
+          0,
+          -0.7,
+          1.1
+        ]
+      },
+      "forward": {
+        "before": [
+          0,
+          1,
+          -0.1
+        ],
+        "after": [
+          0,
+          1,
+          -0.5
+        ]
+      }
+    },
+    "reason": "Measured scene bounds x[-.30,.23], y[-.09,.10], table z .74",
+    "seed": 0,
+    "motion_started": false,
+    "commit": "6479a0535eec9799ac0a8096fc9b06c228131607"
+  },
+  "commands": {
+    "cwd": "/home/yanxu/PhyAgentOS-forge",
+    "capture": {
+      "command": "PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime /home/yanxu/miniconda3/envs/RoboTwin20/bin/python /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/capture_dual.py > /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/capture.stdout 2> /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/capture.stderr",
+      "exit_code": 0
+    },
+    "visual": {
+      "command": "PYTHONPATH=/home/yanxu/PhyAgentOS-forge:/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/src:/home/yanxu/PhyAgentOS-forge/examples/forge-skills/pick-place-workflow/src .venv/bin/python /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/visual_front.py > /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/visual.stdout 2> /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/visual.stderr",
+      "exit_code": 0
+    },
+    "measurement": {
+      "command": "PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/measure_front.py > /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/measurement.stdout 2> /home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/measurement.stderr",
+      "exit_code": 0
+    }
+  },
+  "capture": {
+    "head": {
+      "captured_at": "2026-11-27 07:03:41.024775+00:00",
+      "scene_revision": "stack_blocks_three-0-1",
+      "frame_id": "head_camera",
+      "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+      "artifacts": [
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+          "kind": "rgb",
+          "media_type": "image/png"
+        },
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth",
+          "kind": "depth",
+          "media_type": "application/numpy"
+        },
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/state",
+          "kind": "state",
+          "media_type": "application/json"
+        }
+      ],
+      "sensor_available": true,
+      "observation_ref": "observation://stack_blocks_three-0-1/head_camera"
+    },
+    "front": {
+      "captured_at": "2026-11-27 07:03:41.024775+00:00",
+      "scene_revision": "stack_blocks_three-0-1",
+      "frame_id": "front_camera",
+      "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/calibration",
+      "artifacts": [
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/rgb",
+          "kind": "rgb",
+          "media_type": "image/png"
+        },
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/depth",
+          "kind": "depth",
+          "media_type": "application/numpy"
+        },
+        {
+          "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/state",
+          "kind": "state",
+          "media_type": "application/json"
+        }
+      ],
+      "sensor_available": true,
+      "observation_ref": "observation://stack_blocks_three-0-1/front_camera"
+    },
+    "same_timestamp_and_scene": true,
+    "motion_started": false
+  },
+  "visual": {
+    "status": "available",
+    "ambiguities": [],
+    "entities": [
+      {
+        "entity_ref": "entity://e1",
+        "category": "red cube",
+        "cloud_points": 732,
+        "mask_pixels": 732,
+        "bbox_xyxy_pixels": [
+          25,
+          93,
+          53,
+          124
+        ],
+        "margins_left_top_right_bottom_pixels": [
+          25,
+          93,
+          266,
+          115
+        ],
+        "touches_image_boundary": false,
+        "all_cloud_reprojects_inside_mask": true,
+        "production_world_dimensions_m": [
+          0.06285573391882904,
+          0.17471134588502302,
+          0.050028735121121715
+        ],
+        "table_band_count": 31,
+        "table_band_fraction": 0.04234972677595628
+      },
+      {
+        "entity_ref": "entity://e2",
+        "category": "green cube",
+        "cloud_points": 1079,
+        "mask_pixels": 1079,
+        "bbox_xyxy_pixels": [
+          60,
+          109,
+          96,
+          144
+        ],
+        "margins_left_top_right_bottom_pixels": [
+          60,
+          109,
+          223,
+          95
+        ],
+        "touches_image_boundary": false,
+        "all_cloud_reprojects_inside_mask": true,
+        "production_world_dimensions_m": [
+          0.06434810050719664,
+          0.15662140047832332,
+          0.050028367884459524
+        ],
+        "table_band_count": 51,
+        "table_band_fraction": 0.047265987025023166
+      },
+      {
+        "entity_ref": "entity://e3",
+        "category": "blue cube",
+        "cloud_points": 977,
+        "mask_pixels": 977,
+        "bbox_xyxy_pixels": [
+          235,
+          112,
+          266,
+          145
+        ],
+        "margins_left_top_right_bottom_pixels": [
+          235,
+          112,
+          53,
+          94
+        ],
+        "touches_image_boundary": false,
+        "all_cloud_reprojects_inside_mask": true,
+        "production_world_dimensions_m": [
+          0.08451189084976604,
+          0.1423152103592517,
+          0.0500068944464257
+        ],
+        "table_band_count": 30,
+        "table_band_fraction": 0.030706243602865915
+      }
+    ],
+    "context": {
+      "mode": "offline_static_capture",
+      "captured_at": "2026-11-27 07:03:41.024775+00:00",
+      "measured_age_ms": 63192,
+      "max_age_ms": 3600000,
+      "motion_authorized": false,
+      "note": "Existing scene capture; no fresh live scene claim, identity and timestamp retained."
+    },
+    "pipeline": "Existing Qwen3-VL semantic inference on localhost:8012 then production LocateAnything/SAM2/depth metric localization",
+    "raw_understanding": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/understanding.json",
+    "diagnostics": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/visual-diagnostics.jsonl"
+  },
+  "calibration": {
+    "path": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/artifacts/stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/calibration.json",
+    "image_shape_hw": [
+      240,
+      320
+    ],
+    "transform_inverse_max_residual": 2.220446049250313e-16
+  },
+  "support_measurement": {
+    "position_m": [
+      -0.0033170823142378014,
+      -0.0017303605999621219,
+      0.7410372405845479
+    ],
+    "orientation_wxyz": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "half_extents_m": [
+      0.4816941050113387,
+      0.3378307120616084,
+      0.0012013900500669195
+    ],
+    "evidence_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/derived/points-89a00c87232f0407",
+    "residual_boxes": [
+      {
+        "position_m": [
+          -0.30258668780279335,
+          0.037582702414749036,
+          0.7909091352998174
+        ],
+        "half_extents_m": [
+          0.0010000000000000009,
+          0.0010000000000000009,
+          0.0010000000000000009
+        ]
+      }
+    ],
+    "estimation": {
+      "method": "horizontal_consensus",
+      "policy": {
+        "inlier_distance_m": 0.002,
+        "minimum_inlier_fraction": 0.7,
+        "minimum_points": 30,
+        "residual_cell_m": 0.02,
+        "uncertainty_m": 0.001,
+        "maximum_slope": 0.02
+      },
+      "height_m": 0.740835850534481,
+      "point_count": 35899,
+      "inlier_count": 35898,
+      "residual_count": 1,
+      "fitted_slope": [
+        -5.356370529388693e-08,
+        0.001018254730593804
+      ]
+    }
+  },
+  "artifacts": {
+    "measurement": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/front-measurement.json",
+    "front_rgb": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/artifacts/stack_blocks_three-0-1/stack_blocks_three-0-1-000000/front_camera/rgb.png",
+    "head_rgb": "/home/yanxu/robotwin20-runtime/stack-blocks-three/front-fov-20261127-150158/artifacts/stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb.png"
+  },
+  "conclusion": {
+    "coverage": "All three instances fully visible in RGB and masks; no image-boundary contact. Default front prior run missed red and clipped green/blue.",
+    "geometry": "Coverage improved but masked table-depth contamination remains; no claim that geometry or stacking preparation passed.",
+    "point_integrity": "Original clouds and masks untouched; table-band classification is diagnostic only.",
+    "scope": "Single seed, single candidate observation, synchronized cameras; no fusion or motion performed.",
+    "remaining_work": "Metric-localization depth foreground selection must distinguish object surfaces from support-boundary points while retaining uncertainty/collision evidence; do not relax support-fit threshold or clip geometry in relation planning."
+  },
+  "gpu_after_workers_closed_mib": 1171
+}
