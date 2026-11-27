@@ -15,6 +15,7 @@ class BlocksRankingRgbTaskAdapter:
     """Expose task facts without taking over Agent planning or Action admission."""
 
     task_name = "blocks_ranking_rgb"
+    route_preparation_supported = True
     motion_execution_supported = True
     entities = (
         ("entity://block-red-1", "block1", "red-slot"),
@@ -224,6 +225,7 @@ class StackBlocksThreeTaskAdapter:
     """Expose stack relations and conservative simulator-derived target geometry."""
 
     task_name = "stack_blocks_three"
+    route_preparation_supported = True
     motion_execution_supported = False
     entities = (
         ("entity://stack-block-1", "block1", None),

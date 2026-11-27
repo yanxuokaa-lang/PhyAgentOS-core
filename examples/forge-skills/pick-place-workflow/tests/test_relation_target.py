@@ -1,10 +1,20 @@
+from pathlib import Path
+
 import pytest
+import yaml
+from jsonschema import validate
 
 from pick_place_workflow.relation_target import (
+    RELATION_TARGET_TOOL_SPEC,
     RelationTargetBindingError,
     RelationTargetQueryEndpoint,
     bind_relation_target_candidate,
 )
+
+
+def test_published_relation_target_contract_matches_runtime():
+    path = Path(__file__).resolve().parents[1] / "contracts" / "relation.target.tool.yaml"
+    assert yaml.safe_load(path.read_text(encoding="utf-8")) == RELATION_TARGET_TOOL_SPEC
 
 
 def _request(**overrides):
@@ -49,6 +59,23 @@ def test_relation_target_query_is_provider_substitutable_and_never_authorizes_mo
     assert result["scene_revision"] == "scene-8"
     assert result["candidates"][0]["destination_ref"].startswith("destination://")
     assert result["motion_authorized"] is False
+
+
+def test_relation_target_binding_input_reaches_provider_without_leaking_into_output():
+    seen = []
+
+    class BoundProvider(_RelationProvider):
+        def propose(self, request):
+            seen.append(request)
+            return super().propose(request)
+
+    request = _request(binding_ref="artifact://scene-8/binding")
+    validate(request, RELATION_TARGET_TOOL_SPEC["input_schema"])
+    result = RelationTargetQueryEndpoint(BoundProvider()).invoke(request)
+    assert seen == [request]
+    assert result["status"] == "available"
+    assert "binding_ref" not in result
+    validate(result, RELATION_TARGET_TOOL_SPEC["output_schema"])
 
 
 def test_relation_target_query_rejects_stale_observation_before_provider_call():

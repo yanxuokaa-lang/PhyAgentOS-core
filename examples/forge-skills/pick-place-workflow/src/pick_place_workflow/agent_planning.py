@@ -439,6 +439,7 @@ def compose_executable_relation_plan(
     available_evidence: tuple[str, ...],
     planner_decision_digest: str,
     policy_snapshot_digest: str,
+    relation_projection: dict[str, Any] | None = None,
 ) -> AgentComposedPlan:
     """Compile one current-scene relation segment with explicit evidence Queries.
 
@@ -465,11 +466,43 @@ def compose_executable_relation_plan(
         planner_decision_digest=planner_decision_digest, policy_snapshot_digest=policy_snapshot_digest,
     )
     action = semantic.graph.nodes[0]
+    if relation_projection is not None:
+        projection = relation_projection
+        if (not isinstance(projection, dict)
+                or set(projection) != {"entity_ref", "relation_target_ref", "evidence_refs", "scene_entity_refs"}):
+            raise AgentPlanningError("relation projection requires domain identities and evidence")
+        moving, target = projection["entity_ref"], projection["relation_target_ref"]
+        original_target = action.input_bindings["relation_target_ref"]
+        refs = projection["evidence_refs"]
+        scene_entities = projection["scene_entity_refs"]
+        if (not isinstance(moving, str) or not moving.startswith("entity://")
+                or not isinstance(target, str) or not target
+                or target.split("://", 1)[0] != original_target.split("://", 1)[0]
+                or (original_target.startswith("surface://") and target != original_target)
+                or moving == target or not isinstance(refs, (list, tuple)) or not refs
+                or any(not isinstance(ref, str) or not ref for ref in refs)
+                or not set(refs) <= set(available_evidence)
+                or not isinstance(scene_entities, (list, tuple)) or not scene_entities
+                or any(not isinstance(ref, str) or not ref.startswith("entity://") for ref in scene_entities)
+                or len(set(scene_entities)) != len(scene_entities)
+                or moving not in scene_entities
+                or (target.startswith("entity://") and target not in scene_entities)):
+            raise AgentPlanningError("relation projection identity or current evidence is invalid")
+        action = action.model_copy(update={
+            "input_bindings": {**action.input_bindings, "entity_ref": moving,
+                               "relation_target_ref": target},
+            "required_evidence": tuple(dict.fromkeys((*action.required_evidence, *refs))),
+        })
+    selected_entities = (list(relation_projection["scene_entity_refs"])
+                         if relation_projection is not None else [action.input_bindings["entity_ref"]])
+    if (action.input_bindings["relation_target_ref"].startswith("entity://")
+            and action.input_bindings["relation_target_ref"] not in selected_entities):
+        selected_entities.append(action.input_bindings["relation_target_ref"])
     identity = {key: action.input_bindings[key] for key in
                 ("scene_revision", "observation_ref", "calibration_ref")}
     evidence = tuple(dict.fromkeys((*action.required_evidence, understanding_evidence_ref)))
     query_inputs = {
-        "bind": {**identity, "entity_refs": [action.input_bindings["entity_ref"]]},
+        "bind": {**identity, "entity_refs": selected_entities},
         "grasp": {**identity, "entity_ref": action.input_bindings["entity_ref"],
                   "frame_id": observation_frame_id, "freshness_ms": freshness_ms, "max_age_ms": max_age_ms},
         "capabilities": identity,
@@ -482,7 +515,7 @@ def compose_executable_relation_plan(
                     "capabilities": "manipulation.capabilities", "relation_target": "relation.target"}
     nodes = [PlanNode(
         node_id=f"{subtask_id}.{suffix}", obligation_id=subtask_id, capability=capabilities[suffix],
-        dependencies=(f"{subtask_id}.bind",) if suffix == "grasp" else (),
+        dependencies=(f"{subtask_id}.bind",) if suffix in {"grasp", "relation_target"} else (),
         required_evidence=evidence, input_bindings=values,
     ) for suffix, values in query_inputs.items()]
     nodes.append(action.model_copy(update={

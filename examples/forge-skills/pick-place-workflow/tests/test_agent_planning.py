@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 from PhyAgentOS.planning import (
     AdmissionContext,
@@ -20,6 +22,7 @@ from pick_place_workflow.agent_planning import (
     bind_subtask_from_semantics,
     compose_agent_plan,
     compose_executable_pick_place_plan,
+    compose_executable_relation_plan,
     compose_relation_goal_plan,
     compose_subtask_plan,
     select_planning_mode,
@@ -364,6 +367,53 @@ def test_relation_planner_requires_fresh_scene_and_settled_support_evidence():
             **{**kwargs, "scene_revision": "", "observation_ref": "observation:///head_camera"},
             available_evidence=("support-relation:entity://stack-block-1:surface://table",),
         )
+
+
+@pytest.mark.parametrize("change", [None, "identity", "self_support", "target_kind",
+                                    "surface", "evidence", "scene_coverage", "duplicates"])
+def test_executable_relation_projection_preserves_goals_and_checks_domain_values(change):
+    goals = _stack_goal_facts()
+    before = deepcopy(goals)
+    projection = {"entity_ref": "entity://visual-red", "relation_target_ref": "surface://table",
+                  "evidence_refs": ["artifact://projection/current"],
+                  "scene_entity_refs": ["entity://visual-red", "entity://visual-green"]}
+    if change == "identity":
+        projection["entity_ref"] = "actor://red"
+    elif change == "self_support":
+        projection["relation_target_ref"] = projection["entity_ref"]
+    elif change == "target_kind":
+        projection["relation_target_ref"] = "entity://visual-green"
+    elif change == "surface":
+        projection["relation_target_ref"] = "surface://other"
+    elif change == "evidence":
+        projection["evidence_refs"] = ["artifact://projection/stale"]
+    elif change == "scene_coverage":
+        projection["scene_entity_refs"] = ["entity://visual-green"]
+    elif change == "duplicates":
+        projection["scene_entity_refs"].append("entity://visual-red")
+
+    def compile_segment():
+        return compose_executable_relation_plan(
+            "stack-task", "revision-1", goals, subtask_id="place_base",
+            scene_revision="scene-1", observation_ref="observation://scene-1/head_camera",
+            observation_frame_id="head_camera", calibration_ref="artifact://scene/calibration",
+            understanding_evidence_ref="tool:understanding", semantic_intent={"goal": "stack"},
+            freshness_ms=0, max_age_ms=1000,
+            available_evidence=("observation://scene-1/head_camera", "tool:understanding",
+                                "artifact://projection/current"),
+            planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
+            relation_projection=projection)
+
+    if change:
+        with pytest.raises(AgentPlanningError, match="relation projection"):
+            compile_segment()
+    else:
+        graph = compile_segment().graph
+        assert graph.nodes[0].input_bindings["entity_refs"] == projection["scene_entity_refs"]
+        assert graph.nodes[3].dependencies == ("place_base.bind",)
+        assert graph.nodes[-1].input_bindings["entity_ref"] == "entity://visual-red"
+        assert "artifact://projection/current" in graph.nodes[-1].required_evidence
+    assert goals == before
 
 
 def test_relation_planner_rejects_predecessors_without_settlement_evidence():

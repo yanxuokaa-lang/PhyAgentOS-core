@@ -16,13 +16,14 @@ from robotwin20_adapter.stack_relation_preparation import (
 )
 
 
-def composed(tmp_path, *, intent_override=None):
+def composed(tmp_path, *, intent_override=None, grounding_override=None):
     inputs, provider, routes = composition(tmp_path, intent_override=intent_override)
     intent = inputs["intent"]
     identity = {key: inputs[key] for key in ("scene_revision", "observation_ref", "calibration_ref")}
     provider.client.snapshot["scene_validity"] = "action_driven"
     # Grounding and preparation use the same current-scene client; no Action API exists.
-    grounding = Grounding(provider.client, tmp_path, None)
+    grounding = grounding_override or Grounding(provider.client, tmp_path, None)
+    grounding.client = provider.client
     source = np.eye(4)
     source[:3, 3] = [0.1, 0.2, 0.3]
     functional = source.copy()
@@ -34,10 +35,11 @@ def composed(tmp_path, *, intent_override=None):
         obj.pop(key)
     scene = _facts()
     scene.update(identity, schema_version=CURRENT_SCENE_FACTS_SCHEMA_VERSION, objects=[obj])
-    grounding.bindings[inputs["binding_ref"]] = {
-        **identity, "frame_id": inputs["frame_id"], "objects": {intent["entity_ref"]: obj},
-        "scene_facts": scene,
-    }
+    if grounding_override is None:
+        grounding.bindings[inputs["binding_ref"]] = {
+            **identity, "frame_id": inputs["frame_id"], "objects": {intent["entity_ref"]: obj},
+            "scene_facts": scene,
+        }
     target = np.eye(4)
     target[:3, :3] = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
     target[:3, 3] = [0.3, 0.4, 0.5]
@@ -59,7 +61,8 @@ def composed(tmp_path, *, intent_override=None):
     query = provider.client.query
     provider.client.query = lambda operation, arguments, **kw: (
         {} if operation == "bind_observed_entities" else query(operation, arguments, **kw))
-    grounding._observed_support = lambda binding: None
+    if grounding_override is None:
+        grounding._observed_support = lambda binding: None
     def build(arguments, **kwargs):
         facts = validate_scene_facts(grounding.scene_facts(arguments))
         seen.append(facts)

@@ -602,6 +602,33 @@ class Grounding:
             raise
         except ValueError as exc:
             raise _evidence_error("observed_support_unavailable", str(exc)) from exc
+        moving, score = self._free_support_target(binding, entity_ref, support)
+        value = {
+            **{key: binding[key] for key in IDENTITY_KEYS},
+            "binding_ref": binding_ref,
+            "requested_pose": {"method": "observed_free_support", "entity_ref": entity_ref},
+            "object": moving,
+            "support": deepcopy(support),
+            "clearance_m": score,
+            "motion_authorized": False,
+        }
+        evidence_ref = self._write("staging-targets", value)
+        destination_ref = evidence_ref.replace("artifact://", "destination://", 1)
+        self.targets[destination_ref] = value
+        return {
+            "status": "available", "motion_authorized": False,
+            "binding_ref": binding_ref, "entity_ref": entity_ref,
+            **{key: binding[key] for key in IDENTITY_KEYS},
+            "frame_id": "world", "unit": "m",
+            "destination_ref": destination_ref,
+            "world_T_object_target": moving["world_T_object_target"],
+            "support_evidence_ref": support["evidence_ref"],
+            "clearance_m": score,
+            "evidence_refs": [binding_ref, support["evidence_ref"], evidence_ref],
+        }
+
+    def _free_support_target(self, binding, entity_ref, support):
+        """Search the observed support with the existing staging clearance policy."""
         center = np.asarray(support.get("position_m"), dtype=float)
         support_half = np.asarray(support.get("half_extents_m"), dtype=float)
         moving = deepcopy(binding["objects"][entity_ref])
@@ -653,29 +680,7 @@ class Grounding:
                 @ rigid_transform(moving["world_T_functional_point"])
             ).reshape(-1).tolist(),
         )
-        value = {
-            **{key: binding[key] for key in IDENTITY_KEYS},
-            "binding_ref": binding_ref,
-            "requested_pose": {"method": "observed_free_support", "entity_ref": entity_ref},
-            "object": moving,
-            "support": deepcopy(support),
-            "clearance_m": score,
-            "motion_authorized": False,
-        }
-        evidence_ref = self._write("staging-targets", value)
-        destination_ref = evidence_ref.replace("artifact://", "destination://", 1)
-        self.targets[destination_ref] = value
-        return {
-            "status": "available", "motion_authorized": False,
-            "binding_ref": binding_ref, "entity_ref": entity_ref,
-            **{key: binding[key] for key in IDENTITY_KEYS},
-            "frame_id": "world", "unit": "m",
-            "destination_ref": destination_ref,
-            "world_T_object_target": moving["world_T_object_target"],
-            "support_evidence_ref": support["evidence_ref"],
-            "clearance_m": score,
-            "evidence_refs": [binding_ref, support["evidence_ref"], evidence_ref],
-        }
+        return moving, score
 
     def target(self, request):
         self._require_observation_owned_goal()
@@ -706,7 +711,6 @@ class Grounding:
 
     def bind_relation_target(self, binding_ref, relation, *, identity, geometry_source):
         """Register an Adapter-selected relation target with explicit provenance."""
-        self._require_observation_owned_goal()
         binding = self.bindings[binding_ref]
         self._current(binding)
         if any(binding[key] != identity.get(key) for key in IDENTITY_KEYS):
@@ -768,7 +772,11 @@ class Grounding:
         return reference
 
     def scene_facts(self, request, *, deadline=None):
-        if self.goal_source == "benchmark_task_definition":
+        registered = self.targets.get(request["destination_ref"])
+        if (registered is not None and "target_geometry_source" in registered
+                and registered.get("target_evidence_refs")):
+            value = registered
+        elif self.goal_source == "benchmark_task_definition":
             value = self._benchmark_goal_target(request, deadline=deadline)
         else:
             value = self.targets.get(request["destination_ref"])

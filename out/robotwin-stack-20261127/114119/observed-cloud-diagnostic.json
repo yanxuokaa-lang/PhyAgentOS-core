@@ -1,0 +1,264 @@
+{
+  "generated_at": "2026-11-27T11:41:19.574648+08:00",
+  "evidence_mode": "offline_saved_capture",
+  "current_scene_claim": false,
+  "motion_started": false,
+  "simulation_started": false,
+  "perception_rerun": false,
+  "analysis_head": "6be7fb350ea2767f17339499b557ae1a44fb3d21",
+  "analysis_worktree": "v18.2.0 in progress",
+  "source_run": {
+    "commit": "6be7fb350ea2767f17339499b557ae1a44fb3d21",
+    "profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20/profiles/robotwin20/stack-blocks-three.yaml",
+    "seed": 0,
+    "motion": false
+  },
+  "source_directory": "/home/yanxu/robotwin20-runtime/stack-blocks-three/continuation-20261126-174549",
+  "source_capture": {
+    "captured_at": "2026-11-26T09:48:52.061150Z",
+    "scene_revision": "stack_blocks_three-0-1",
+    "frame_id": "head_camera",
+    "calibration_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/calibration",
+    "artifacts": [
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/rgb",
+        "kind": "rgb",
+        "media_type": "image/png"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/depth",
+        "kind": "depth",
+        "media_type": "application/numpy"
+      },
+      {
+        "ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/state",
+        "kind": "state",
+        "media_type": "application/json"
+      }
+    ],
+    "sensor_available": true,
+    "observation_ref": "observation://stack_blocks_three-0-1/head_camera"
+  },
+  "seed": 0,
+  "support_policy": {
+    "inlier_distance_m": 0.002,
+    "minimum_inlier_fraction": 0.7,
+    "minimum_points": 30,
+    "residual_cell_m": 0.02,
+    "uncertainty_m": 0.001,
+    "maximum_slope": 0.02
+  },
+  "entities": [
+    {
+      "entity_ref": "entity://e1",
+      "point_cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-9e22e4ff233046d6",
+      "raw_point_count": 860,
+      "world_z_bounds_m": [
+        0.7405785206987676,
+        0.7905769390180418
+      ],
+      "original_full_cloud_estimation": {
+        "status": "unavailable",
+        "reason": "observed support has no dominant horizontal plane"
+      },
+      "highest_band": {
+        "width_m": 0.002,
+        "point_count": 458,
+        "footprint_xy_m": [
+          0.061531394720077515,
+          0.0617443978963052
+        ],
+        "support": {
+          "position_m": [
+            -0.2698809653520584,
+            0.02790441919719397,
+            0.7901052714153176
+          ],
+          "orientation_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "half_extents_m": [
+            0.030765697360038757,
+            0.0308721989481526,
+            0.0014716676027241582
+          ],
+          "evidence_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-9e22e4ff233046d6",
+          "residual_boxes": [],
+          "estimation": {
+            "method": "horizontal_consensus",
+            "policy": {
+              "inlier_distance_m": 0.002,
+              "minimum_inlier_fraction": 0.7,
+              "minimum_points": 30,
+              "residual_cell_m": 0.02,
+              "uncertainty_m": 0.001,
+              "maximum_slope": 0.02
+            },
+            "height_m": 0.7905615982841998,
+            "point_count": 458,
+            "inlier_count": 458,
+            "residual_count": 0,
+            "fitted_slope": [
+              -0.0014235346780149807,
+              0.0036408232554626663
+            ]
+          }
+        }
+      },
+      "camera_envelope_dimensions_m": [
+        0.06312068401709428,
+        0.08407211529420515,
+        0.10423944091796877
+      ],
+      "conservative_world_envelope_dimensions_m": [
+        0.06312068401709428,
+        0.12980135408421406,
+        0.13383481877622294
+      ]
+    },
+    {
+      "entity_ref": "entity://e2",
+      "point_cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-2c05f311a0680090",
+      "raw_point_count": 1095,
+      "world_z_bounds_m": [
+        0.7405383831891246,
+        0.7905356016051125
+      ],
+      "original_full_cloud_estimation": {
+        "status": "unavailable",
+        "reason": "observed support has no dominant horizontal plane"
+      },
+      "highest_band": {
+        "width_m": 0.002,
+        "point_count": 580,
+        "footprint_xy_m": [
+          0.06163956969976425,
+          0.06242077443702404
+        ],
+        "support": {
+          "position_m": [
+            -0.16467689350247383,
+            -0.05916955853146663,
+            0.7901349876641062
+          ],
+          "orientation_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "half_extents_m": [
+            0.030819784849882126,
+            0.03121038721851202,
+            0.001400613941006268
+          ],
+          "evidence_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-2c05f311a0680090",
+          "residual_boxes": [],
+          "estimation": {
+            "method": "horizontal_consensus",
+            "policy": {
+              "inlier_distance_m": 0.002,
+              "minimum_inlier_fraction": 0.7,
+              "minimum_points": 30,
+              "residual_cell_m": 0.02,
+              "uncertainty_m": 0.001,
+              "maximum_slope": 0.02
+            },
+            "height_m": 0.7905214238990219,
+            "point_count": 580,
+            "inlier_count": 580,
+            "residual_count": 0,
+            "fitted_slope": [
+              -0.0012360420944878565,
+              0.0032810956749234066
+            ]
+          }
+        }
+      },
+      "camera_envelope_dimensions_m": [
+        0.06435596856940021,
+        0.07872517421947454,
+        0.09986560058593741
+      ],
+      "conservative_world_envelope_dimensions_m": [
+        0.06435596856940021,
+        0.12289949718629596,
+        0.12712758200596422
+      ]
+    },
+    {
+      "entity_ref": "entity://e3",
+      "point_cloud_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-cc5daf07e2a6178d",
+      "raw_point_count": 1108,
+      "world_z_bounds_m": [
+        0.7405373281599376,
+        0.7905300881890189
+      ],
+      "original_full_cloud_estimation": {
+        "status": "unavailable",
+        "reason": "observed support has no dominant horizontal plane"
+      },
+      "highest_band": {
+        "width_m": 0.002,
+        "point_count": 600,
+        "footprint_xy_m": [
+          0.051459312438964844,
+          0.05021886184263796
+        ],
+        "support": {
+          "position_m": [
+            0.1776861697435379,
+            -0.0675673201576876,
+            0.7900469053934102
+          ],
+          "orientation_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "half_extents_m": [
+            0.025729656219482422,
+            0.02510943092131898,
+            0.0014831827956087729
+          ],
+          "evidence_ref": "artifact://stack_blocks_three-0-1/stack_blocks_three-0-1-000000/head_camera/derived/points-cc5daf07e2a6178d",
+          "residual_boxes": [],
+          "estimation": {
+            "method": "horizontal_consensus",
+            "policy": {
+              "inlier_distance_m": 0.002,
+              "minimum_inlier_fraction": 0.7,
+              "minimum_points": 30,
+              "residual_cell_m": 0.02,
+              "uncertainty_m": 0.001,
+              "maximum_slope": 0.02
+            },
+            "height_m": 0.7905175208027888,
+            "point_count": 600,
+            "inlier_count": 600,
+            "residual_count": 0,
+            "fitted_slope": [
+              0.001063355846800166,
+              0.003407438898819226
+            ]
+          }
+        }
+      },
+      "camera_envelope_dimensions_m": [
+        0.07372292447226156,
+        0.06876032623249158,
+        0.08880389404296873
+      ],
+      "conservative_world_envelope_dimensions_m": [
+        0.07372292447226156,
+        0.10829059518501324,
+        0.1122993083170204
+      ]
+    }
+  ],
+  "conclusion": "Highest observed bands fit the unchanged support policy. Conservatively transformed single-view camera envelopes exceed the measured block support footprint; full-footprint stacking remains unavailable. No current capture, motion qualification, route success or stack success is claimed."
+}

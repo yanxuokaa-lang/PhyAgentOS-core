@@ -496,7 +496,7 @@ class RoboTwinPersistentEngine:
             primary["views"] = views
             return primary
         if operation in {"route_readiness", "contact_qualification"}:
-            if not self.task_adapter.motion_execution_supported:
+            if getattr(self.task_adapter, "route_preparation_supported", False) is not True:
                 raise ValueError("task adapter does not support motion route preparation")
             from robotwin_route_planner import RoboTwinRouteEvaluator
             from robotwin_route_readiness_worker import _handle_factory

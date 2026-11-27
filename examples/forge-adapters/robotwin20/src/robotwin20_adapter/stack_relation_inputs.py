@@ -53,8 +53,6 @@ def build_stack_relation_preparation_inputs(artifact_root: Path, *, task_name: s
         matches = [entry for entry in entities if entry.get("entity_ref") == intent.entity_ref]
         if len(matches) != 1:
             raise StackRelationPreparationError("stack preparation entity is not uniquely scene-bound")
-        if matches[0].get("execution_entity_ref") != relation.get("entity_ref"):
-            raise StackRelationPreparationError("stack relation Provider requires observed-to-execution identity mapping")
         relation_arguments = queries["relation.target"]["arguments"]
         selected = bind_relation_target_candidate(
             relation, candidate_ref=request.get("candidate_ref"), expected=relation_arguments)
@@ -75,6 +73,25 @@ def build_stack_relation_preparation_inputs(artifact_root: Path, *, task_name: s
                     or not isinstance(evidence.get("geometry_source"), str)
                     or not evidence["geometry_source"].strip()):
                 raise StackRelationPreparationError("relation evidence artifact does not match persisted Query")
+            if evidence["geometry_source"] == "observation":
+                mappings = evidence.get("execution_mappings")
+                expected_mappings = [{"entity_ref": item.get("entity_ref"),
+                                      "execution_entity_ref": item.get("execution_entity_ref")}
+                                     for item in entities]
+                if (relation_arguments.get("binding_ref") != bound.get("binding_ref")
+                        or evidence.get("binding_ref") != bound.get("binding_ref")
+                        or mappings != expected_mappings
+                        or len({item["execution_entity_ref"] for item in expected_mappings}) != len(entities)
+                        or evidence.get("world_T_object_target") != selected["world_T_object_target"]
+                        or evidence.get("calibration_ref") != intent.calibration_ref
+                        or not evidence.get("cloud_refs") or not evidence.get("depth_ref")
+                        or not isinstance(evidence.get("support"), Mapping)):
+                    raise StackRelationPreparationError("observed relation evidence binding/mapping differs")
+                target = relation_arguments.get("relation_target_ref", "")
+                if target.startswith("entity://") and sum(item["entity_ref"] == target for item in entities) != 1:
+                    raise StackRelationPreparationError("observed relation support is not uniquely scene-bound")
+            elif matches[0].get("execution_entity_ref") != relation.get("entity_ref"):
+                raise StackRelationPreparationError("stack oracle relation requires execution identity")
             sources.add(evidence["geometry_source"])
         if len(sources) != 1:
             raise StackRelationPreparationError("relation evidence has ambiguous geometry sources")

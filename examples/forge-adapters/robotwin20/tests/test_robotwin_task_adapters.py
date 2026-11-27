@@ -196,16 +196,53 @@ def test_stack_table_relation_abstains_when_target_footprint_exceeds_tabletop(mo
     assert "geometry" in result["error"]
 
 
-def test_stack_adapter_cannot_enter_route_preparation_or_action():
+@pytest.mark.parametrize("operation", ["route_readiness", "contact_qualification"])
+def test_stack_adapter_allows_planning_queries_but_rejects_action(tmp_path, monkeypatch, operation):
+    import robotwin_persistent_engine as engine_module
+    import robotwin_route_planner
+    import robotwin_route_readiness_worker
     from robotwin_persistent_engine import RoboTwinPersistentEngine
 
     engine = object.__new__(RoboTwinPersistentEngine)
     engine.task_adapter = adapters.task_adapter("stack_blocks_three")
+    engine.root = tmp_path
+    engine.profile = {"runtime_root": str(tmp_path), "runtime_profile": str(tmp_path / "profile.yaml"),
+                      "simulation_action_mode": "runtime_monitored"}
+    engine.backend = object()
+    calls = []
+    result = {"status": "planning-only", "motion_authorized": False}
 
-    with pytest.raises(ValueError, match="does not support motion route preparation"):
-        engine._query("route_readiness", {})
+    def evaluator(*args, **kwargs):
+        calls.append((args, kwargs))
+        assert kwargs["backend"] is engine.backend
+        return lambda request: result
+
+    monkeypatch.setattr(robotwin_route_planner, "RoboTwinRouteEvaluator", evaluator)
+    monkeypatch.setattr(robotwin_route_readiness_worker, "_handle_factory",
+                        lambda *args, **kwargs: lambda request: result)
+    validated = []
+    monkeypatch.setattr(engine_module.probe, "validate_route_request", validated.append)
+    request = {"allowed_arms": ["left"], "timeout_s": 5, "route_request": {"candidate": "fixture"}}
+    assert engine._query(operation, request) == result
+    assert len(calls) == 1
+    assert bool(validated) is (operation == "contact_qualification")
+    assert engine.task_adapter.route_preparation_supported is True
+    assert engine.task_adapter.motion_execution_supported is False
     with pytest.raises(ValueError, match="does not support motion execution"):
         engine._prepare({})
+    with pytest.raises(ValueError, match="does not support motion route preparation"):
+        engine._query("oracle_grasp_candidates", {})
+
+
+def test_adapter_without_planning_capability_cannot_enter_route_query():
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.task_adapter = SimpleNamespace(motion_execution_supported=True)
+    with pytest.raises(ValueError, match="does not support motion route preparation"):
+        engine._query("route_readiness", {})
+    with pytest.raises(ValueError, match="does not support motion route preparation"):
+        engine._query("contact_qualification", {})
 
 
 def test_stack_relation_target_engine_binds_fresh_observation_and_evidence(tmp_path, monkeypatch):

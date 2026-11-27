@@ -52,6 +52,135 @@
 
 ## 最近五版本 / Latest five versions
 
+## v18.2.0 (2026-11-26 17:44) - codex
+
+### 计划与完成 / Plan and completion
+
+- [policy] [feat] [完成] 接续 2026-11-26 中断工作；relation.target 新增可选 binding_ref 和 scene.bind 直接前置参数来源，编译器保留四个 Query 依赖，Adapter 目标投影保留原 benchmark goal/subtask 及全部三个视觉实体。 / Resume the interrupted work with explicit binding evidence, four direct Queries and Adapter-owned goal projection that preserves benchmark semantics and complete scene coverage. (local)
+- [env] [feat] [完成] 新增观测关系目标 Provider，使用当前标定/点云/深度估计 block/table 支撑并核验视觉/执行对应；observed/oracle 按显式来源装配，准备解析器核对持久 Query、binding、映射、pose 与来源证据。 / Add observed block/table targets and validate current identity, geometry and persisted preparation evidence through explicit observed/oracle composition. (local)
+- [env] [fix] [完成] 最高 2 mm 顶面点带消除完整方块点云的侧面干扰，复用原点数/倾斜/污染/完整足迹限制；提取已有空闲支撑目标搜索，带来源的关系目标可用于 benchmark 语义准备。 / Select the highest observed 2 mm band using unchanged support constraints and reuse existing free-support search and provenance-bound relation targets. (local)
+- [env] [feat] [完成] 将无运动路线准备与执行能力分离，仅修改 engine 的 readiness/contact Query 能力判断；保留 Stack motion_execution_supported=False、实际 _prepare/oracle grasp 拒绝及原控制器校验。 / Separate planning-only support from execution through the Query boundary while preserving Stack motion rejection and controller validation. (local)
+- [eval] [exp] [完成] 补齐真实编译/选择/Coordinator 持久记录→Provider→artifact resolver→Preparation 贯通，覆盖不同视觉/执行身份、完整碰撞覆盖、证据漂移和几何失败；修复新测试 fixture 的先写后读与缓存变更。 / Exercise production preparation with differing identities and complete collision coverage, failure cases and corrected fixture creation/cache mutation. (local)
+- [policy] [fix] [完成] 主审发现本轮 relation.target 发布 YAML 漏同步；补齐来源和参数，保留既有 implementation_id/unknown_semantics 并同步 Runtime，新增完整相等和合法 binding 输入/严格输出回归。 / Resolve the review finding by synchronizing the published relation contract, retaining metadata and testing complete equality and normalized bound-query output. (local)
+- [eval] [exp] [完成] 保存 seed0 的真实历史 RGB-D 离线诊断：原采集 2026-11-26T09:48:52.061150Z，最高点带拟合成功，保守包络仍超过方块足迹。未启动新仿真、感知模型或 Action。 / Preserve an offline diagnostic of the original capture; top fitting succeeds but conservative envelopes still exceed support, with no new simulator, perception run or Action. (local)
+- [model] [docs] 所有权：通用层负责关系语义/依赖，Adapter 负责几何/身份/来源，Coordinator 独有任务修订/结算/恢复，Runtime/Gateway 独有执行/取消。新鲜度边界为当前 scene/observation/calibration/binding；最小贯通用例以不同视觉/执行实体准备成功，client.start=0；未新增 hash、gate 或并行状态库。 / Preserve domain and lifecycle owners and the existing evidence freshness boundary, verified through differing-identity preparation with zero starts and no new defensive mechanism. (local)
+
+### 文件变更详情 / Exact file changes
+
+- [env] [feat] [新增] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_relation_target.py` L1-L175：当前 binding/标定/完整映射、原目标投影、点云世界变换、最高顶面/table 支撑与来源工件。 / Implement current-binding identity projection, calibrated support geometry and source artifacts. (local)
+- [env] [refactor] [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L605-L631、L633-L683、L713-L745、L775-L780：提取复用空闲支撑搜索，允许带来源/证据的关系目标准备，并保留普通目标策略。 / Reuse support search and provenance-bound relation targets while preserving ordinary target policy. (local)
+- [env] [feat] [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L32、L393-L394：按 route_geometry_source 选择 observed/oracle Provider。 / Select the explicit geometry provider. (local)
+- [env] [feat] [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py` L53-L95：观测输入核对绑定/完整映射/目标 pose/标定/点云/深度/支撑工件，oracle 保留执行身份要求。 / Validate observed evidence while preserving oracle identity requirements. (local)
+- [env] [feat] [修改] `examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py` L18、L228；`examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L499：声明路线准备能力，两个准备 Query 消费该能力，实际执行能力不变。 / Declare planning capability without changing motion support. (local)
+- [policy] [feat] [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L442、L469-L500、L505、L518：可选领域 projection、证据与场景实体校验，bind 同时成为 grasp/target 依赖。 / Compile projected identities, full scene coverage and explicit binding dependencies. (local)
+- [policy] [fix] [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py` L17、L32-L37、L49、L97；`examples/forge-skills/pick-place-workflow/contracts/relation.target.tool.yaml` L10-L14、L17、L23：同步参数来源、可选 binding 与既有发布元数据/说明。 / Synchronize runtime and published relation specifications. (local)
+- [eval] [exp] [新增] `examples/forge-adapters/robotwin20/tests/test_observed_relation_target.py` L1-L179：真实绑定、保留 benchmark 目标、非单位相机位姿、block/table、密集侧面和 11 类失败。 / Test real binding, source retention, calibrated geometry and support failure cases. (local)
+- [eval] [exp] [修改] `examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py` L37-L42、L57-L396、L423-L467：真实选择/持久记录/Query 到 observed Preparation 贯通与 6 类工件漂移拒绝。 / Exercise durable production preparation and six artifact-drift cases. (local)
+- [eval] [refactor] [修改] `examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py` L19-L26、L38-L43、L64-L65：组合 fixture 接受真实 Grounding，保留原 oracle 用例。 / Let preparation fixtures use real observed Grounding. (local)
+- [eval] [exp] [修改] `examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py` L199-L245；`examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L11、L44-L45、L53、L128：验证无运动 Query/执行拒绝和显式来源装配。 / Verify planning-only entry, motion rejection and deployment source selection. (local)
+- [eval] [exp] [修改] `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L3-L4、L25、L372-L418；`examples/forge-skills/pick-place-workflow/tests/test_relation_target.py` L1-L17、L64-L78：projection 合法/非法值，发布完整一致性和 binding 规范输出。 / Test projected domain values and published bound-query behavior. (local)
+- [eval] [exp] [新增] `out/robotwin-stack-20261127/114119/observed-cloud-diagnostic.json` L1-L264：源采集时间/scene/calibration、源提交/分析 HEAD、seed、原全云失败、最高点带拟合、足迹与保守世界包络；offline_saved_capture / current_scene_claim=false / motion_started=false。 / Persist traceable offline geometry measurements and execution scope. (local)
+- [docs] [docs] [修改] `docs/forge/ROBOTWIN_STACK_CONTINUATION_20261126.md` L1-L110：当前实现、所有权、依赖、配置、真实负结果和下步路线；`changelog/2026-11_part5.md` L689-L816、`CHANGELOG.md` L55-L182：完整双语条目和最近五版本同步。 / Update continuation and synchronized detailed latest-five records. (local)
+
+### 关键 Diff / Key before-and-after diff
+
+```diff
+# Domain plan / Adapter target composition
+- bind only the moving entity; relation.target independent of scene.bind
++ preserve relation_projection.scene_entity_refs for all three observed objects
++ scene.bind -> grasp.propose and relation.target; four direct Queries -> relation.establish
+- PersistentRelationTargetProvider(client) for all route sources
++ ObservedRelationTargetProvider(grounding, task_name=task_name) if observed else existing oracle provider
+```
+
+```diff
+# Measured support and preparation
+- support = estimate_support(points, support_ref, policy)
++ top = points[points[:, 2] >= points[:, 2].max() - policy.inlier_distance_m]
++ support = estimate_support(top, support_ref, policy)
+- require relation entity identity to equal execution identity for all sources
++ observed evidence must match the persisted binding, complete execution mapping, pose and calibration
++ oracle evidence retains execution-identity equality
+- scene_facts always resolves benchmark target under benchmark_task_definition
++ an explicitly registered relation target with source evidence uses its selected geometry
+```
+
+```diff
+# Planning-only Runtime capability and publication
+- if not self.task_adapter.motion_execution_supported:  # readiness/contact Queries
++ if getattr(self.task_adapter, "route_preparation_supported", False) is not True:
++ Stack/RGB.route_preparation_supported = True
+# Stack.motion_execution_supported remains False; _prepare/oracle grasp checks remain.
++ relation.target optional binding_ref and scene.bind argument_source_requirements in YAML and runtime
++ retain implementation_id/unknown_semantics in both; assert parsed YAML == runtime ToolSpec
+- calibration = _artifact_path(tmp_path, not_yet_created_ref)
++ create fixture calibration path first; use strict artifact reads only after creation
+```
+
+### 真实离线测量与接续 / Offline measurements and continuation
+
+- [eval] [exp] 保存采集时间 **2026-11-26T09:48:52.061150Z**，scene `stack_blocks_three-0-1`，seed0；e1/e2/e3 原云 860/1095/1108 点，全云水平共识均失败；最高 2 mm 点带 458/580/600 点均通过既有支撑拟合。 / All three highest bands fit the unchanged policy after full-cloud side-face contamination is removed. (local)
+- [eval] [exp] 顶面 XY 依次为 0.06153×0.06174、0.06164×0.06242、0.05146×0.05022 m；原 camera envelope 的保守世界 Y 尺寸为 0.12980/0.12290/0.10829 m，完整足迹堆叠继续拒绝。保留原包络、阈值和原始采集新鲜度。 / Measured footprints remain smaller than conservative world envelopes, so stacking is unavailable under the unchanged full-footprint rule. (local)
+- [env] [docs] 既有 `/home/yanxu/robotwin20-runtime/stack-blocks-three/qualification-20261126-175135/old-qualification-compatibility.json` 记录 valid approved_pass，已确认旧控制器包兼容当前 sources/runtime；本轮未重跑控制器。后续先改善观测对象几何/稳定支撑，再实测 stack route/contact/stop，最后同一 AgentTask 连续三块。 / Existing controller qualification is compatible; observed geometry and stack-specific execution evidence are the remaining stages. (local)
+
+### 验证与已复现旧失败 / Validation and reproduced existing failures
+
+- [eval] [exp] 主审最终原 18 套件加 observed_relation_target / robotwin_task_adapters 共 **20 套件 564 passed in 20.99s**；覆盖 YAML/runtime equality 和新增合法 binding 回归。执行代理最终定向 relation_target/context **37 passed in 6.60s**，此前五套件 **96 passed in 6.84s**。 / Parent final review passed 564 scoped tests; implementation-agent focused validation passed 37 after contract synchronization and 96 in the preceding five-suite run. (local)
+- [eval] [exp] 主审在最后新增两个契约测试前扩大到 Adapter/Skill 两目录：**1802 passed, 15 failed, 1 skipped**。另一清单执行代理在隔离 HEAD `6be7fb35` 精确重跑同 15 项，**15 failed in 2.77s**；主审核对 `/tmp/robotwin-head-check-skfeu8qb` 的 import-proof/结果确认不是工作树导入。 / Every broad-run failure reproduces against the isolated original HEAD, with imports verified by the parent; the broad run is not green. (local)
+- [eval] [docs] 旧失败范围：persistent_task_video(1)、binding_freeze(1)、capabilities(1)、composite_manipulation(4)、full_workflow(1)、grasp_propose(2)、manipulation_prepare(1)、object_acquire(1)、persistent_runtime(1)、release_bundle(1)、task_verification_context(1)。保留这些旧 fixture、发布 schema/版本/锁和历史输出，不扩大本轮修改。 / These existing fixture, discovery, publication and release failures remain outside this observed-relation change. (local)
+- [chore] [fix] 主审对本任务全部 **15 个** 新增/修改 Python 文件执行完整 Ruff，全部通过；执行代理亦通过本轮文件 Ruff、git diff --check。Blocker/Major 已处理：发布 relation YAML 缺字段已修并加回归。 / All changed Python files pass full lint, and the review's relation-publication Major is resolved with a regression test. (local)
+- [eval] [docs] 契约/Provider 证据覆盖生产准备，外部规划/碰撞/接触/worker 由 fixture 替换；真实证据为历史采集的离线几何测量。client.start=0，未启动新仿真/感知/动作，尚无本轮 stack route/contact/stop 或三块连续执行成功证据。 / Preparation contracts and offline measurements have explicit evidence scope; stack execution qualification remains open. (local)
+
+```bash
+export PYTHONPATH=examples/forge-adapters/robotwin20/scripts:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src
+test_files=(
+  tests/test_planning_dispatch.py
+  tests/test_planning_loop.py
+  tests/test_planning_task_integration.py
+  tests/test_planning_projection.py
+  tests/test_planning_source_assembly.py
+  tests/test_planning_dispatch_bootstrap.py
+  tests/test_planning_end_to_end.py
+  examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_host.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+  examples/forge-adapters/robotwin20/tests/test_grounding.py
+  examples/forge-adapters/robotwin20/tests/test_route_inputs.py
+  examples/forge-adapters/robotwin20/tests/test_observed_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py
+)
+.venv/bin/python -m pytest -q "${test_files[@]}" --tb=short
+python_files=(
+  examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py
+  examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_relation_target.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py
+  examples/forge-adapters/robotwin20/tests/test_observed_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+  examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py
+  examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py
+  examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_target.py
+)
+.venv/bin/ruff check "${python_files[@]}"
+git diff --check
+```
+
+### Git 提交 / Git receipt
+
+- [chore] [docs] 当前分支 `feature/planning-loop`，来源 HEAD `6be7fb35`；代码、日志和精确离线诊断文件由主会话审核后提交/推送，真实 commit 与回执在提交后追加。 / The parent owns reviewed commit/push closeout on the current branch and records the actual receipt afterward. (local)
+
 ## v18.1.0 (2026-11-26 16:03) - codex
 
 ### 计划与完成 / Plan and completion
@@ -361,176 +490,4 @@ PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/ro
 + H264/yuv420p, 2560x960, 60fps, no added text/cards/blank frames
 + PTS max error 0.333 microseconds; full decode passed; first/last visually checked
 + original failed acceptance, raw receipts and compact calibration mismatch preserved
-```
-
-## v18.0.2 (2026-11-25 23:22) - codex
-
-### 准备计划 / Preparation plan
-
-- [eval] [exp] [准备完成] 主审已通过v18.0.1并授权准备完整Isaac无液体R05→R03复测；独立目录`out/labutopia-elevated-20261125/v18.0.2-r05-r03-fresh-process-232254`仅从204420复制13个启动/场景/config文件并替换运行路径，实际代码为357cb955。保持原指令、60/60N、0.02/0.2m/s、retain4mm、motion/oracle/阈值/budgets，不复制旧DB/artifacts。 / [Prepared] Prepare a new isolated complete task using exactly13 launch/scene/config files from204420, replacing run paths only and using reviewed code357cb955. Preserve the original instruction, physical and motion settings and budgets; do not copy old task state or artifacts. (local)
-- [env] [exp] [准备完成] 应用experiment-reproducibility，记录code/config/input、seed/checkpoint不适用、metrics位置与环境漂移；核对13文件路径归一、Python语法、所需路径、GPU/RAM/disk及无旧Isaac进程。准备后补report/Latest5、具体launch命令交主审并暂停，不启动、不改生产、不创建新任务线程。 / [Prepared] Record reproducibility metadata and validate path-only configuration, syntax, required paths and current resources/process state. Document the launch command and pause for review without simulation, production changes or a new thread. (local)
-
-### Git 提交 / Git Commit
-
-- 上轮 / Previous: `357cb955de4a156612a95727c15a8ae42954e7de`于2026-11-25T23:21:50+08:00 commit/push至feature/planning-loop；HEAD/origin/远端分支一致。本轮仅准备，待启动主审，无新commit/push。 / The reviewed implementation is committed and pushed with matching local/tracking/remote branch identities. This preparation awaits launch review without another commit/push.
-
-
-### 准备结果及文件详情 / Preparation results and file details
-
-- [env] [exp] 新目录`out/labutopia-elevated-20261125/v18.0.2-r05-r03-fresh-process-232254`，prepared_at2026-11-25T23:22:54.729504+08:00；code357cb955，状态not_started，无PID/task_id。相较223214仅新增v18.0.1当前场景/失败状态修复，累计外退保护与派生瓶口回退保留。 / The new isolated run uses code357cb955 and remains not_started with no process/task identity. Relative to223214, only the current-scene/status fix is new; the cumulative finger guard and derived-rim mechanism remain. (local)
-- [新增 / Added] 新目录 `command.json` L1-L14：仅2处运行路径替换 / 2 run-path substitutions only；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `host_with_replay_timeout.py` L1-L15：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-oracle-perception.json` L1-L19：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-elevated-motion.json` L1-L112：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-elevated.usda` L1-L96：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-physics.json` L1-L56：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-scene.usda` L1-L14：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-ridgebase-station.yaml` L1-L93：仅1处运行路径替换 / 1 run-path substitutions only；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `labutopia-simulator-truth.json` L1-L16：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `launch.py` L1-L57：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `profile.json` L1-L29：仅7处运行路径替换 / 7 run-path substitutions only；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `save_finished_phase.py` L1-L103：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `watch_progress.py` L1-L80：逐字节相同 / byte-identical；路径归一后与204420完全相同 / identical to204420 after path normalization. (local)
-- [新增 / Added] 新目录 `metadata.json` L1-L31：代码/版本/来源/配置/复现字段 / code, version, source, configuration and reproducibility fields。 (local)
-- [新增 / Added] 新目录 `preparation-review.json` L1-L281：逐文件比较/metadata差异/路径与语法验证 / per-file comparison, metadata differences, paths and syntax checks。 (local)
-- [新增 / Added] 新目录 `configuration-paths.diff` L1-L53：3文件10处路径差异 / ten path substitutions across three files。 (local)
-- [新增 / Added] 新目录 `preparation-resources.txt` L1-L15：启动准备时资源与进程状态 / resource and process snapshot at preparation。 (local)
-
-- [eval] [exp] 13文件归一比较通过：10字节一致、3仅路径变化，指令及全部配置参数保持；maxreplans4、provider retries12/delay15s、worker2700s、每subtask reconciliation3600s不变。required_paths全部存在，四脚本在Python3.13.5/3.11.17语法通过；没有复制旧DB/artifacts或执行脚本入口。 / All13 normalized comparisons pass, with ten byte-identical files and three path-only files; instructions, parameters and budgets are unchanged. All paths exist and four scripts parse under both interpreters without copied historical state or entry-point execution. (local)
-- [env] [exp] 23:24:27+08:00 GPU剩9510MiB/总16311MiB、RAM可用22GiB、swap剩8.1GiB、工作盘51GiB、/tmp11GiB；无旧Isaac/host/diagnostic/launcher进程，保留VLLM3061与CrossDesk3739。 / Preparation records available GPU/RAM/swap/disk resources and no old simulation process; existing services remain running. (local)
-- [docs] [docs] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L689-L705新增准备状态/来源/diff/资源/命令；Latest5更新18.0.2/18.0.1/18.0.0/17.10.15/17.10.14完整条目。本轮只准备，尚未启动；暂停写入供主审，无新生产修改/测试/线程/提交。 / Append preparation status, sources, differences, resources and command and synchronize Latest5. Preparation is complete but launch awaits review; pause without new production edits, tests, threads or commits. (local)
-
-### 关键 Diff / Key diff
-
-```diff
-- configuration source: v17.10.11-r05-r03-cumulative-guard-204420
-+ new run: v18.0.2-r05-r03-fresh-process-232254
-- command/profile/station paths point to204420
-+ same fields point to232254 (2+7+1 substitutions)
-  ten remaining launch/config files are byte-identical
-  60/60N,0.02/0.2m/s,retain4mm,motion/oracle/thresholds/instruction/budgets unchanged
-- comparison code:223214 /2b27db35
-+ actual code:357cb955 (live process-feature revision + Provider status fix)
-+ metadata: new code/version/time/source/reproducibility; no prior PID/start/task state
-+ launch_status:not_started; no Isaac execution
-```
-
-```bash
-/home/yanxu/PhyAgentOS-forge/.venv/bin/python -u /home/yanxu/PhyAgentOS-forge/out/labutopia-elevated-20261125/v18.0.2-r05-r03-fresh-process-232254/launch.py
-```
-
-
-### 启动授权 / Launch authorization
-
-- [env] [exp] [进行中] 2026-11-25T23:26:14.065739+08:00主会话审阅232254 metadata、13文件比较、完整路径diff、command及资源后批准启动该单次完整Isaac无液体R05→R03任务；代码357cb955及所有配置保持。接下来用原launch.py独立进程启动，记录launcher/host/observer/worker PID、时间、task ID与首个实际动作证据，再交主会话监控；不另开第二轮、不改生产、不commit。 / [In progress] Parent review approves this one complete prepared task with code357cb955 and unchanged configuration. Launch the original script independently, record process/task identities and first motion, then hand monitoring to the parent without another run, production change or commit. (local)
-
-
-### 启动回执及首阶段 / Launch receipt and initial phase
-
-- [env] [exp] [启动完成，任务进行中] 2026-11-25T23:26:14.437180+08:00 launcher874137启动；host874139于23:26:14.455479启动，observer874140、worker874562。实际code357cb955，task_id=`task_b62f628f0b344c34`，attempt1，同一任务R05→R03，所有参数保持。 / [Started; task running] Record launcher/host timestamps, four process IDs, code and task identity for the single unchanged complete task. (local)
-- [eval] [exp] R05 prepare_process_features临时no-progress由原有correction在23:28:01消解，23:28:11选定grasp_task_affordances，四准备查询成功后23:29:49.758选定R05 execute_subtask；未为临时警告增加机制。 / Existing correction resolved the temporary preparation warning, then all four preparation Queries succeeded and the R05 composite Action was selected without an additional mechanism. (local)
-- [eval] [exp] 首readiness464e49903fad47fc8b2bf3e6c681f100于23:32:36.126092+08:00记录R05 acquire156steps、kinematic/collision/workspace pass；video85d39faae5c5485b9ed3a2881f969e8a从23:33:01的3932204bytes增长至23:33:43.997617的11796524bytes，证明首实际动作，尚无阶段终态。 / Passing156-step R05 acquire readiness and growing video prove initial motion without claiming phase completion. (local)
-- [新增 / Added] 232254目录`launch-receipt.json` L1-L54、`launcher.pid` L1：保存启动命令/code/PID/time/task和readiness/video证据；metadata由原launch按既有行为加入运行字段。 / Save startup and initial-motion evidence; the unchanged launcher adds its existing runtime metadata. (local)
-- [docs] [docs] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L708-L718补启动和首阶段记录；Latest5同步。四PID交接时存活，任务仍进行中，主会话session6409继续只读监控；本代理暂停写入，无新运行/生产修改/commit。 / Append startup evidence and synchronize Latest5. All four processes are alive at handoff, the task continues under parent monitoring, and this agent pauses without another run, production edit or commit. (local)
-
-```diff
-- preparation snapshot: not_started; no PID/task_id
-+ actual launch:2026-11-25T23:26:14.437180+08:00; code357cb955
-+ launcher/host/observer/worker:874137/874139/874140/874562
-+ task_id:task_b62f628f0b344c34; initial motion:R05 acquire
-+ readiness:156steps/all checks pass; phase video growing
-+ state:running; monitoring owner:parent/session6409
-  all task/physics/config/budget settings unchanged
-```
-
-
-### 终态证据与可读合片计划 / Terminal evidence and readable review-video plan
-
-- [eval] [exp] [完成] 2026-11-26T00:18:53.150184+08:00主会话授权先准备本轮收尾脚本与证据索引：R05三阶段和R03 acquire/pour已报告成功，R03 place仍执行中；此时不宣称整任务或第六段成功。待主会话确认终态后再从acceptance、只读task/assignment数据库及反馈核对实际终态、重规划计数、fresh lineage、六阶段回执及derived rim选择。 / [Completed] Prepare closure scripts and an evidence index while five phases are reported successful and R03 place is still running. Confirm the final task state, actual replans, fresh lineage, phase receipts and derived-rim selection from persisted evidence only after parent terminal confirmation. (local)
-- [eval] [exp] [完成] 复用本轮现有闭合阶段视频及章节；新增清晰的对象/阶段/结果卡片，明确三视图右侧固定R01近景不作为R03执行证据，保留原始视频。终态确认后按真实发生顺序合片，核对逐段/全片帧数、时长、章节与PTS连续性并完整ffmpeg解码；巨大pour反馈只提取尾部metrics，必要样本按次读取，避免重复加载。 / [Completed] Reuse the current run's closed stage videos and chapters, add readable object/phase/result cards and identify the fixed R01 close-up limitation without altering source recordings. After terminal confirmation, compile actual phases, verify frame/duration/chapter/PTS continuity and fully decode the result; avoid repeatedly loading large pour feedback. (local)
-- [docs] [docs] [完成] 仅在232254独立目录准备本地脚本/config/证据清单；最终补当前v18.0.2报告、精确行号与关键diff并同步Latest5。保持历史启动时点文字；本阶段不改生产、不干扰模拟、不另开任务、不提交。 / [Completed] Prepare local scripts/configuration/evidence records in232254, then complete the current version's report, precise line references, key diff and Latest5 at terminal. Preserve historical startup statements and avoid production changes, simulation interference, another task or commit. (local)
-
-- [eval] [exp] [准备完成，等待终态] 232254本地`compile_task_review.py` L1-L164、`review-video-plan.json` L1-L76及`closed-five-phase-evidence.json` L1-L430已准备：前五段反馈仅各读尾64KiB，状态均succeeded；视频时长35.20/59.35/24.25/59.633333/65.383333s，编码均3840×960 mpeg4/yuv420p/60fps、timebase1/15360。计划在每阶段前加2.5s清晰卡片并在终态加5s结果卡，原始运动帧stream-copy不变；第六段与终态卡仍为空待确认。AST/JSON/帧数与时长检查通过，未执行合片入口或视频解码。 / [Prepared; awaiting terminal] Local compilation code, configuration and compact evidence are ready. Only each feedback's last64KiB was read; all five closed phases succeeded and their video formats/durations agree. The prepared compiler will insert readable2.5-second phase cards and a5-second terminal card while stream-copying original motion frames. The sixth phase and final card remain pending; syntax/JSON/frame-duration checks passed without invoking compilation or decode. (local)
-
-```diff
-+ closure preparation: five closed phase receipts and video metadata verified
-+ local compiler: readable object/stage/result cards; fixed R01 view explicitly identified
-+ original motion streams preserved; final frame/chapter/PTS/decode verification prepared
-+ sixth phase and final task result: pending parent terminal confirmation
-  no production/runtime/configuration changes; no commit
-```
-
-- [eval] [exp] [收尾完成] 2026-11-26T00:22:49.585037+08:00主会话确认本轮task于北京时间2026-11-26 00:21:25.072789成功终态，R03 place成功、四运行PID已退出，并授权执行证据保存、六阶段可读合片/完整验证及文档闭环；现有历史stale恢复信息必须保留，运动成功不代表液体转移已验证。不重跑、不改生产、不提交。 / [Closure completed] Parent confirms successful terminal settlement, successful R03 placement and exited runtime processes, and authorizes evidence preservation, the six-stage readable compilation, complete validation and documentation. Retain historical stale-recovery evidence and distinguish motion success from unverified liquid transfer; do not rerun, change production or commit. (local)
-
-
-### 终态验收与真实执行 / Terminal acceptance and live execution
-
-- [eval] [exp] [完成] task_b62f628f0b344c34的controller/task均succeeded，终态2026-11-25T16:21:25.072789Z＝北京时间2026-11-26 00:21:25.072789；只读DB完整task与acceptance一致，6revisions/1replan（预算4）、last_failure=null。四PID874137/874139/874140/874562均退出，主会话监控60713正常exit0。 / [Completed] Controller/task succeeded at the recorded UTC/local time; read-only database and acceptance match, with six revisions and one of four replans, null final failure and all four runtime processes exited. (local)
-- [policy] [exp] 原scene:0 R03 Query tool_ec9e09cd00244c9b返回stale，旧revision settlement为failed；events2138–2141触发原有重规划，scene.observe tool_e39e002d8deb4320得到scene:3，随后understand/grasp/capabilities/四准备Query沿用同一identity。task.evidence_errors保留两条历史恢复信息，不将终态last_failure=null描述成从未失败。 / The stale query produced a failed settlement, followed by existing replan and fresh scene:3 discovery/preparation. Two historical recovery messages remain; final success does not erase the recovered failure. (local)
-- [eval] [exp] R05 Action tool_be7db9439c4b41f1与R03 tool_93302ce7ae5b4e0e各唯一一次；两者completed/outcome_known=true/empty/requires_replan=false，最终scene:3/:6。R05旧Action及completed settlement保留，最终revision仅R03，六个物理阶段全部succeeded。 / Each bottle has exactly one composite Action with known completed/empty outcomes; original R05 history remains and the final revision contains only R03. All six physical phases succeeded. (local)
-- [eval] [exp] R05/R03 lift双侧载荷与grasp_valid分别117/117、119/119；升高60.074618104/60.112610999mm；attachment最大0.047767900/0.026054555mm、末帧0.047140511/0.025333750mm。倾角1.001442185/1.001374408rad，qualified/longest/aligned连续保持2.816666814/2.850000149s（170/172有效样本）；归位误差0.202404870/0.193503214mm。 / Both lifts retain valid bilateral load/grasp throughout, followed by the measured tilt/continuous hold and submillimeter placement. Peak/final attachment errors and lift-only rise are recorded separately. (local)
-- [eval] [exp] R03 pour assignment8a236524eff5402f81c9da6de206ffc1选中process_only_lowest_qualified_opening_rim，yaw0/azimuthπ/clearance0.048/offset0，134steps＝86transport+11process+37exit；六份readiness全部kinematic/collision/workspace pass。新pour_opening与request均scene:4，acquire context保留scene:3；source_lineage与新context、route.target与derived_tip均一致。原tip[0.006757905394,0.012683652783,0.039640719027]m→实际派生tip[-0.006765897442,-0.012682963933,0.039600071254]m，R05原路线无该selection。 / R03 executes the recorded process-only derived-rim route with fresh held context and matching actual target, while historical acquisition context and R05's original route remain. All existing readiness checks pass. (local)
-- [eval] [exp] 两瓶place回执empty；末retreat样本目标两指40mm，R05实测39.999656379/39.999667555mm、R03实测39.999645203/39.999634027mm，grasp_valid/contact_load_valid均false。主审已核对R03抬升、倾倒保持/扶正、归位开夹末帧；四张原图保存review-stills。 / Placement receipts and final open-finger/no-load retreat samples confirm release, consistent with parent-reviewed motion frames retained locally. (local)
-- [data] [exp] 原task/controller/两Action完整receipts、历史stale与恢复events、fresh lineage、六阶段metrics、路线target/selection及release末样本均保存232254；没有修改原acceptance/DB。acquire各读一次样本，巨大pour/place只从尾64KiB取metrics，place末样本从尾256KiB取出。 / Persist raw and compact evidence without editing source artifacts/databases; acquisition samples are read once and large pour/place evidence is extracted from bounded tails. (local)
-- [eval] [exp] 完整合片review-videos/232254_R05_R03_六阶段成功_同任务完整录像.mp4：原动作276.133333s/16568帧，六张2.5s阶段卡与5s终态卡共20s，总296.133333s/17768帧/39章节。大字号卡标明对象/阶段/结果，右侧固定R01近景不作为R03证据；原始运动流copy保留。 / The complete review video contains all original motion plus readable cards, explicitly identifying the fixed R01 view without relabeling it as R03 evidence. (local)
-- [eval] [exp] 逐段与全片帧/时长/章节/packet PTS连续性通过，完整ffmpeg decode exit0、零字节错误日志；R03 place的容器章节舍入差0.000333s按视频流1939帧/60fps处理，帧间隔误差<2微秒。主审独立manifest复核通过，并view_image确认phase-05/终态卡清晰无裁切；本代理亦确认终态卡。 / Segment/final frame, duration, chapter and timestamp checks and complete decoding pass. Exact stream durations avoid millisecond chapter-rounding gaps, and independent parent manifest/card review passes. (local)
-- [eval] [exp] 证据分层：既有v18.0.1的208项测试覆盖Provider当前revision、endpoint状态与legacy兼容/恢复组合，v17.10.15的439项覆盖派生几何/执行链；本轮新增真实同任务六阶段、fresh恢复与派生tip执行成功证据，不重复生产测试。task.verification.mode=off；成功取自既有Runtime/Coordinator及阶段回执。两瓶process_completed=true/result_meaning=motion_goal_reached，但liquid_amount=unmeasured、transfer_verified=false；不声称液体转移或多轮可靠性已验证。 / Separate prior contract/Provider tests from this live simulation. Existing lifecycle/phase receipts establish motion completion; no independent goal verifier, measured liquid transfer or repeated-run reliability is claimed. No production test is repeated. (local)
-
-### 收尾文件详情 / Closure file details
-
-- [docs] [docs] `docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md` L721-L769追加终态、恢复/lineage、六回执/测量、派生点/释放、完整视频和证据分层；当前月档L284-L357完成收尾，Latest5完整同步。历史准备/启动文字保持原时点。 / Append the complete terminal report and synchronize the current monthly entry and Latest5, retaining historical preparation/startup statements. (local)
-- [新增 / Added] 232254目录`extract_terminal_evidence.py` L1-L179：只读证据提取 / read-only evidence extraction。 (local)
-- [新增 / Added] 232254目录`compile_task_review.py` L1-L167：阶段卡/流拼接/完整验证 / cards, stream concatenation and verification。 (local)
-- [新增 / Added] 232254目录`review-video-plan.json` L1-L86：六段真实结果与卡片配置 / six actual phases and card configuration。 (local)
-- [新增 / Added] 232254目录`terminal-summary.json` L1-L112：终态及工件索引 / terminal state and evidence index。 (local)
-- [新增 / Added] 232254目录`task-record-raw.json` L1-L18363：原完整任务 / raw complete task。 (local)
-- [新增 / Added] 232254目录`controller-outcomes-raw.json` L1-L17：原控制器结果 / raw controller outcome。 (local)
-- [新增 / Added] 232254目录`subtask-receipts-raw.json` L1-L820：两瓶完整回执 / complete receipts for both bottles。 (local)
-- [新增 / Added] 232254目录`historical-recovery-evidence.json` L1-L219：stale与历史恢复 / stale and historical recovery。 (local)
-- [新增 / Added] 232254目录`lineage-action-summary.json` L1-L420：fresh identity与每瓶单次Action / fresh identity and one Action per bottle。 (local)
-- [新增 / Added] 232254目录`six-phase-evidence.json` L1-L452：六阶段metrics/反馈引用 / six-phase metrics and feedback references。 (local)
-- [新增 / Added] 232254目录`assignment-route-evidence.json` L1-L1355：原/派生tip、来源与完整路线 / original/derived tip, lineage and routes。 (local)
-- [新增 / Added] 232254目录`readiness-evidence.json` L1-L171：六次原准备检查 / six existing readiness checks。 (local)
-- [新增 / Added] 232254目录`final-release-evidence.json` L1-L152：末开夹后撤样本 / final release/retreat samples。 (local)
-- [新增 / Added] 232254目录`final-video-compilation.json` L1-L507：帧/章节/时间/解码及目视结果 / frame, chapter, time, decode and visual review。 (local)
-- [新增 / Added] 232254目录`task-review.ffconcat` L1-L27：实际帧时长拼接清单 / exact-frame-duration concatenation list。 (local)
-- [新增 / Added] 232254目录`task-review.ffmetadata` L1-L198：全片章节 / complete video chapters。 (local)
-- [新增 / Added] 232254目录`last-failure-raw.txt` L1为原null；`final-video-decode.log`为空且exit0；`review-cards/`保存七张说明卡及文本，`review-stills/`保存四张实跑原帧及两张卡片预览。 / Save the raw null final failure, successful empty decode log, seven cards/texts and original motion/card stills. (local)
-- [修改 / Modified] `out/labutopia-elevated-20261125/review-videos/README.md` L71-L83记录本轮六阶段与完整合片入口 / index the six phases and complete video。 (local)
-
-### 收尾关键 Diff / Closure key diff
-
-```diff
-- task state at startup handoff: running; initial R05 acquire evidence only
-+ task/controller: succeeded; terminal2026-11-26T00:21:25.072789+08:00
-+ 6 revisions / 1 replan of4; historical stale recovery retained; last_failure:null
-+ R05 completed history retained; R05/R03 each exactly1 Action; six phases succeeded
-+ R03 fresh scene:3 acquisition -> scene:4 qualified derived rim -> empty at scene:6
-+ derived tip is recorded and used by route.target; original selected feature remains lineage
-+ placement errors:R05 0.202404870mm / R03 0.193503214mm; final fingers open
-+ complete video:296.133333s /17768frames /39chapters; full decode exit0
-  code357cb955;13 launch/config files;60/60N,.02/.2m/s,retain4mm,budget4 unchanged
-+ no-liquid motion goals reached; liquid unmeasured / transfer_verified:false
-```
-
-### 收尾 Git 与交接 / Closure Git and handoff
-
-- [chore] [docs] 当前运行代码仍为已推送357cb955de4a156612a95727c15a8ae42954e7de。本轮只整理本地工件与三个文档，没有生产修改、重新运行、commit/push；完成后暂停写入供主会话审阅提交。 / The run still uses pushed code357cb955. Only local evidence and three documents changed; no production edit, rerun or commit/push. Pause writing for parent review and submission. (local)
-
-- [chore] [docs] [完成] 主会话已审阅并提交本轮三个文档；已按其明确hash记录真实commit/branch/时间并同步Latest5。本项由仅含两份日志的独立回执提交及当前feature/planning-loop推送收尾，实际回执提交hash与远端验证结果在交接报告列出，避免自引用提交。 / [Completed] Parent reviewed and committed the three experiment documents. Its actual commit/branch/time is recorded and Latest5 synchronized. A separate two-log receipt commit and push on the current branch close this step; report that commit and remote verification in the handoff without a self-referential log commit. (local)
-
-### 实验提交真实回执 / Actual experiment commit receipt
-
-- [chore] [docs] 主审实验提交 / Reviewed experiment commit: `ffa11b0537392e8fa7771d2c22fa9cbe842e0173`。
-- 分支 / Branch: `feature/planning-loop`；提交时间 / Commit time: `2026-11-26T00:36:10+08:00`。
-- 提交信息 / Message: `v18.0.2: [eval] 验证R05与R03同任务六阶段成功并归档录像证据`。
-- 范围 / Scope: `CHANGELOG.md`、`changelog/2026-11_part5.md`、`docs/forge/LABUTOPIA_R03_GRIP_CONTINUATION_20261125.md`；不含本地out工件或其他untracked文件 / excludes local out artifacts and other untracked files。
-- [docs] [docs] 本回执仅修改当期计划L357并追加本节L359-L373，同步`CHANGELOG.md`对应L209及L211-L225；不改其他历史条目。本地Git读取已确认上述hash/时间/分支/信息。 / This receipt updates only the current plan and appends this section, mirrored at the stated index lines; other history remains unchanged. Local Git confirms the recorded identity/time/branch/message. (local)
-
-```diff
-- current v18.0.2 receipt step: planned; awaiting parent experiment commit
-+ current receipt step: completed; actual reviewed experiment commit recorded
-+ commit:ffa11b0537392e8fa7771d2c22fa9cbe842e0173
-+ branch:feature/planning-loop; time:2026-11-26T00:36:10+08:00
-+ Latest5 synchronized; separate two-log receipt commit/push authorized
 ```

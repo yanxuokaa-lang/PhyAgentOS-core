@@ -1,63 +1,110 @@
-# RoboTwin stack continuation — 2026-11-26
+# RoboTwin stack continuation — v18.2.0
 
-状态 / Status: v18.1.0 已接通生产组合入口与无运动准备证据链。完整视觉 stack 尚未跑通：观测身份到执行身份的关系 Provider 映射、observed 支撑目标、真实路线/接触/停止和三块连续执行仍待完成。Motion remains disabled; no simulation or hardware action was started.
+状态 / Status（2026-11-27）：已完成观测驱动关系目标与视觉/执行身份映射的生产准备链。当前实测断点是单视角保守对象包络超过可用方块支撑足迹；运动保持关闭。 / Observation-driven relation targets and identity mapping now reach production preparation. The measured blocker is a conservative single-view object envelope larger than block support; motion remains disabled.
 
-## 已完成与归属 / Implementation and ownership
+## 当前实现与所有权 / Implementation and ownership
 
-v18.0.5 修复真实准备工厂删除 intent、丢失完整 route lineage 和错读 destination 的问题；选中的关系目标通过真实 Grounding 投影到对象与功能点，并经 `validate_scene_facts` 保留独立来源。 / v18.0.5 repaired the real preparation inputs and route lineage, and projected relation targets through Grounding with separate target provenance.
+`ObservedRelationTargetProvider` 由 Adapter 持有，使用当前 scene binding 的一对一视觉→执行映射。`project_relation_goal(...)` 保存原始 benchmark goal/subtask 与来源，只把执行实体投影为当前视觉实体；`task_goal_facts` 和原目标关系保持不变。 / The Adapter owns measured identity correspondence and preserves benchmark semantics and source evidence during goal projection.
 
-v18.1.0 的 Core 共用 `relation_manipulation_intent`，从冻结的节点语义/身份与当前 NodeContext 的成功直接前置 grasp Query 构造完整 intent；候选集必须来自持久查询，不在编译时捏造。`resolve_relation_context` 复用原 subtask 的 caller、活动 revision、执行记录、节点及输入绑定验证，再投影直接前置的完整 arguments/result；不扫描全任务的“最新结果”。已有权威持久 schema 拒绝跨 revision 记录，本轮没有新增 hash、gate 或全局 NodeContext 检查。 / Core owns trusted intent and active-plan evidence. The shared caller validation and existing authoritative store preserve revision boundaries; no latest-result scan or new hash/gate is added.
-
-首次 `ForgePlanActivateTool` 和恢复用 `AgentLoop.activate_planning_task` 都注入动态读取 Coordinator 的 NodeContextProvider。`relation.establish` 的公开参数仍只包含关系语义、已选 relation candidate/result 与可信 intent，原始 grasp candidates、binding、capability 与内部 `coordinator_context` 不进入公开 schema。 / Both activation paths receive the live read-only context port; preparation-only fields remain private.
-
-Adapter 的 `build_stack_relation_preparation_inputs` 从已解析的 Coordinator context 取得 scene.bind、grasp、capability、relation.target，核对实体、scene、observation、calibration、候选和坐标系，再用既有 `_artifact_path` 读取实际 JSON。artifact 的 schema/task_name/query/motion/source 必须与持久 Query 一致；pose/ref 取自持久 Query，artifact 本身没有这两个字段。 / The Adapter validates exact Query inputs/results and existing evidence JSON without inventing fields or paths.
-
-任务、计划、证据与节点结算继续归 Coordinator，工作流归 AgentLoop；Adapter 管理几何来源与目标投影，Preparation/selector/PreparedRoutes 管理准备机制；Runtime/Gateway/worker 保持动作生命周期、取消和执行结算所有权。 / Existing owners retain task/node and Action lifecycle responsibilities; no parallel scheduler or state store is introduced.
-
-## 可执行关系片段 / Executable relation segment
-
-新入口 `compose_executable_relation_plan(...)` 保留原 `compose_relation_goal_plan(...)` 的语义计划行为，另编译一个显式 DAG：
+通用 `compose_executable_relation_plan(...)` 接受可选领域 `relation_projection`，验证实体、目标种类、非自指、证据与场景覆盖。`scene_entity_refs` 保留本场景全部三个观测方块，避免准备时丢失支撑物或其他碰撞障碍。编译结果保留四个实际 Query 直接依赖： / The generic compiler validates domain values and preserves all three observed objects and four direct Query dependencies.
 
 ```text
-current observation + authorized understanding evidence
-    ├─ scene.bind ── grasp.propose ────────┐
-    ├─ manipulation.capabilities ─────────┤
-    └─ relation.target ───────────────────┤
-            scene.bind ─────────────────┤
-                            relation.establish
+current observation + authorized understanding + goal-projection evidence
+    ├─ scene.bind ── grasp.propose ──────────┐
+    │       └────── relation.target ────────┤
+    ├─ manipulation.capabilities ───────────┤
+    └─ scene.bind (direct evidence) ────────┤
+                                relation.establish
 ```
 
-调用方提供当前 observation/scene/frame/calibration、现有 understanding evidence ref、完整 semantic_intent、freshness/max_age；bind 与 grasp 通过既有 source projection 读取授权的 understanding。Action 的四个直接依赖均须实际完成并持久化，之后 dispatch 才读取 grasp 的 candidate_set。编译器不会创建已完成节点或原始抓取数组。 / The caller supplies current evidence and semantics. All four direct Queries execute before Action selection, and the candidate set is obtained only afterward.
+`relation.target` 的可选 `binding_ref` 由已有 `argument_source_requirements` 从直接前置 `scene.bind` 的持久结果解析。发布 YAML 与 Runtime ToolSpec 完整一致，并保留原 `implementation_id` / `unknown_semantics` 元数据。Endpoint 将 binding 交给 Provider，同时按严格输出 schema 返回规范结果。 / Existing source projection supplies the binding; packaged and runtime specifications agree, and normalized output preserves its strict schema.
 
-## 显式 host 配置 / Explicit host composition
+Core/Coordinator 继续持有当前 revision、可信 intent、直接前置记录、任务/节点结算和恢复；AgentLoop 驱动工作流。Adapter 持有来源、几何与映射，Preparation/selector/PreparedRoutes 持有准备机制，Runtime/Gateway/worker 持有执行、取消和执行结算。 / Lifecycle ownership remains with the existing components; no parallel state store or scheduler is introduced.
 
-在已有有效 host profile 上增加以下配置，Runtime profile 的 task_name 必须为 `stack_blocks_three`，同时保留有效 `coordinator_workspace` 与 `binding_request`：
+## 几何与准备边界 / Geometry and preparation
+
+- `route_geometry_source: observed` 装配 `ObservedRelationTargetProvider`；`oracle` 保留 `PersistentRelationTargetProvider`。观测模式的目标来自点云、深度、标定和当前 binding；原始 actor 数据只保留既有身份/漂移对应职责。 / Geometry-source selection composes the observed or oracle provider explicitly.
+- 方块支撑：从完整物体点云选取最高处现有 `inlier_distance_m=0.002` m 点带，再调用原 `estimate_support`。最小点数、水平度、倾斜、污染和完整足迹条件保持。桌面支撑复用未被对象掩码覆盖的场景深度与既有空闲支撑目标搜索。 / Block tops use the highest 2 mm band with unchanged support constraints; table goals reuse observed scene-depth support and free-space search.
+- 世界坐标以当前标定 `world_T_observation` 转换；输入点云、binding、observation、scene、camera frame 与 calibration 必须属于同一证据链。准备输入解析器核对持久 Query、目标 pose、来源和完整执行映射。 / Calibrated world geometry and preparation are bound to one current evidence lineage.
+- 带显式来源/证据的已注册关系目标可用于 benchmark 语义的 observed 准备；普通 `target` / `staging` 的目标策略继续生效。对象 `geometry_source` 与 `target_geometry_source` 分别保留。 / Registered relation geometry preserves benchmark semantics and independent object/target provenance.
+- Stack/RGB 声明 `route_preparation_supported=True`，engine 仅 `route_readiness` / `contact_qualification` Query 改用该能力；Stack 的 `motion_execution_supported=False`、oracle grasp 限制和实际 `_prepare` 执行拒绝保持。 / Planning capability is separate from motion admission and controller checks.
+
+## Host 装配 / Host composition
+
+在既有有效 stack host profile 上保持相同 Coordinator、`binding_request` 和 workspace： / Use the existing stack profile and the same Coordinator.
 
 ```yaml
 stack_relation_preparation_enabled: true
 simulation_action_mode: runtime_monitored
-# coordinator_workspace and binding_request remain the existing configured values.
+route_geometry_source: observed
 ```
 
-此开关默认 false；启用时 host 使用同一 Coordinator 装配 relation context、实际 artifact resolver 和 preparation factory。它拒绝与显式注入的 relation/subtask/perception ports 混用，也拒绝非 stack 任务。`runtime_monitored` 是现有准备 approval/任务定义装配的前提，关系 Provider 的 `motion_supported()` 仍恒为 False；注册工具不等于授权动作。 / The opt-in composes one Coordinator and the production factory; the existing action mode is required for preparation receipts, while relation motion remains explicitly unsupported.
+该组合复用 `build_stack_relation_execution_provider_factory(prepare_inputs=...)` 与 Coordinator 的 `resolve_relation_context`。四个 Query 实际完成并持久化后，关系 Action 才取得可信 intent；无运动准备通过独立 `prepare_route` 路径验证。Action 工厂的 `motion_supported()` 仍返回 False。 / The same production factory and context resolver feed preparation while relation motion admission remains closed.
 
-嵌入者仍可显式注入 `build_stack_relation_execution_provider_factory(prepare_inputs=...)` 与 Coordinator 的 `resolve_relation_context`，此时不要同时打开 profile 自动装配。原零参 factory 可构造关闭运动的 Provider，但直接调用 prepare_route 会明确报 resolver 未配置。内部 `build_coordinator_ports` 现返回 perception、subtask resolver、relation resolver 三项，两个 resolver 属于同一 Coordinator。 / Explicit injection remains supported; the zero-argument factory keeps its previous explicit failure on missing preparation inputs.
+## 保存采集的离线实测 / Offline analysis of a saved capture
 
-## 证据边界与后续 / Evidence boundaries and next work
+证据：`out/robotwin-stack-20261127/114119/observed-cloud-diagnostic.json`。来源采集时间为 **2026-11-26T09:48:52.061150Z**（北京时间 17:48:52），seed 0，scene `stack_blocks_three-0-1`。本轮读取原 RGB-D/understanding 和标定，保存源 refs、源提交、分析 HEAD、策略及逐对象结果；报告标明 `offline_saved_capture`、`current_scene_claim=false`、`motion_started=false`。 / This analysis reuses the timestamped capture and retains its original provenance; it starts no new simulator, perception run or Action.
 
-对象/碰撞的 `geometry_source` 与关系目标的 `target_geometry_source`/`target_evidence_refs` 独立保留。当前 relation artifact 来源为 `simulator_actor_geometry`，读取核验成功也不能称为 observed 支撑面。真实 scene.bind 使用 `frame_id=world` 和单独的 `observation_frame_id`；真实 grasp 响应使用 `frame.frame_id`，freshness/max_age 取自 Query arguments。 / Provenance and frame distinctions follow actual production payloads.
+| 视觉实体 / Entity | 全点云 / Raw points | 最高 2 mm 点数 / Top-band points | 顶面 XY / Top footprint (m) | 保守世界 Y 尺寸 / World-envelope Y (m) |
+|---|---:|---:|---|---:|
+| e1 | 860 | 458 | 0.06153 × 0.06174 | 0.12980 |
+| e2 | 1095 | 580 | 0.06164 × 0.06242 | 0.12290 |
+| e3 | 1108 | 600 | 0.05146 × 0.05022 | 0.10829 |
 
-当前直通 relation Provider 的 worker 消费 execution entity ref。本轮只接受 bind 的观测 entity_ref 与其 execution_entity_ref 能和 relation Query 同一身份的组合；遇到 visual/execution 不同明确拒绝，不伪造重命名。下一阶段应在 Adapter relation Provider 利用已有 scene.bind 测量映射完成转换，保持公共语义一致。随后补 observed support Provider，再验证真实 controller route/contact/stop，最后同一 AgentTask 连续执行三块。 / The remaining identity conversion belongs in the Adapter, followed by observed support and actual execution qualification.
+全物体点云含侧面，原全云水平共识三例均失败；最高点带三例均通过原支撑拟合。当前 camera-axis envelope 转世界坐标后的保守尺寸超过约 0.0502–0.0624 m 顶面足迹，完整足迹堆叠仍明确拒绝。下一步需要改善观测侧对象几何及稳定支撑建模，保留现有不确定性和足迹条件。 / Top selection resolves side-face contamination; conservative object geometry remains the measured stacking blocker.
+
+既有控制器资格包已在 `qualification-20261126-175135/old-qualification-compatibility.json` 完成兼容性审计，结果为 `valid approved_pass`。本轮未重跑 controller qualification；后续仍需实际 stack route/contact/stop 证据，然后在同一 AgentTask 内逐块重观察并连续执行三块。 / Existing controller qualification is compatible; stack-specific execution evidence and the three-block closed loop remain the next stages.
 
 ## 验证 / Validation
 
-新增贯通测试通过真实 compiler、五个 ToolSpec 的 ready/selection、bind/grasp source projection、持久 Coordinator records/settlements、实际 grasp/capability/relation endpoints、relation endpoint 内部上下文、实际 JSON 读取和真实 Grounding/validator/Preparation/selector/PreparedRoutes。外部 worker snapshot、规划、碰撞/接触反馈仍由 fixture 替换；这不是完整 GPU route readiness 或物理稳定性实测。`client.start` 为 0，motion gate 在准备之前拒绝。 / The integrated path uses production boundaries with substituted external mechanisms and proves no motion was started.
+执行代理：关系契约同步后的 `test_relation_target.py` + `test_stack_relation_context.py` **37 passed in 6.60s**；之前五个聚焦套件 **96 passed in 6.84s**。真实 compiler、选择、持久记录、Endpoint、Grounding、Preparation、selector 和 PreparedRoutes 执行，外部规划/碰撞/接触/worker 由 fixture 替换。测试覆盖 table/block、不同视觉/执行身份、三物体覆盖、过期/缺失/错误证据、倾斜/稀疏/高点、无运动 Query 与 Action 拒绝；`client.start=0`。 / The implementation agent exercised production preparation boundaries with substituted external mechanisms and zero Action starts.
 
-失败覆盖：缺失/错误 artifact、来源缺失、query/task/motion 漂移，候选/pose/frame/实体错误、visual/execution 不同、非直接前置、多匹配、失败 Query、未结算、旧 scene/caller、intent 变更；跨 revision 由真实 store schema 拒绝。 / Failures preserve explicit evidence and ownership boundaries before target publication or preparation.
+主审最终 20 套件回归为 **564 passed in 20.99s**，覆盖发布 YAML/runtime 完整一致性与合法 binding 参数；本任务全部 15 个 Python 文件完整 Ruff 通过。 / Final parent review passed 564 tests across 20 suites and all changed Python files pass Ruff.
 
-主审 18 套件共 **517 passed**；新增 context + host 定向组合 **63 passed**。Ruff 修复 4 处 import 顺序与新测试 15 处单行 if 后通过。额外 `test_planning_selection.py` 的 5 个旧 fixture 失败全部用 HEAD `planning.py` 动态载入复现相同错误，本轮不改；关联 subtask fixture 缺 `planning_selections` 也经 HEAD 复现后补初始化。 / All 517 scoped tests pass. Five additional selection-fixture failures are independently reproduced against HEAD and remain outside this change.
+主审在最后新增两个契约测试前的扩大回归得到 **1802 passed, 15 failed, 1 skipped**；全部 15 项在隔离 HEAD `6be7fb35` 精确复现（15 failed in 2.77s，`/tmp/robotwin-head-check-skfeu8qb`）。范围为旧视频 fixture、工具发现/版本、capability/composite/动作发布 schema、binding/release manifest 锁及 workflow/verifier fixture；本轮保持这些旧测试与发布产物原状。 / The parent reproduced every broad-suite failure against HEAD; the broad run is not reported as green.
 
 ```bash
-PYTHONPATH=examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q tests/test_planning_dispatch.py tests/test_planning_loop.py tests/test_planning_task_integration.py tests/test_planning_projection.py tests/test_planning_source_assembly.py tests/test_planning_dispatch_bootstrap.py tests/test_planning_end_to_end.py examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py examples/forge-skills/pick-place-workflow/tests/test_relation_target.py examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py examples/forge-adapters/robotwin20/tests/test_persistent_host.py examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py examples/forge-adapters/robotwin20/tests/test_grounding.py examples/forge-adapters/robotwin20/tests/test_route_inputs.py --tb=short
-.venv/bin/ruff check --select I,E701 PhyAgentOS/forge/task.py examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py
+export PYTHONPATH=examples/forge-adapters/robotwin20/scripts:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src
+test_files=(
+  tests/test_planning_dispatch.py
+  tests/test_planning_loop.py
+  tests/test_planning_task_integration.py
+  tests/test_planning_projection.py
+  tests/test_planning_source_assembly.py
+  tests/test_planning_dispatch_bootstrap.py
+  tests/test_planning_end_to_end.py
+  examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_execution.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_execution.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_host.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+  examples/forge-adapters/robotwin20/tests/test_grounding.py
+  examples/forge-adapters/robotwin20/tests/test_route_inputs.py
+  examples/forge-adapters/robotwin20/tests/test_observed_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py
+)
+.venv/bin/python -m pytest -q "${test_files[@]}" --tb=short
+python_files=(
+  examples/forge-adapters/robotwin20/runtime/robotwin_blocks_ranking_adapter.py
+  examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_relation_target.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py
+  examples/forge-adapters/robotwin20/src/robotwin20_adapter/stack_relation_inputs.py
+  examples/forge-adapters/robotwin20/tests/test_observed_relation_target.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_context.py
+  examples/forge-adapters/robotwin20/tests/test_stack_relation_preparation.py
+  examples/forge-adapters/robotwin20/tests/test_robotwin_task_adapters.py
+  examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+  examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py
+  examples/forge-skills/pick-place-workflow/src/pick_place_workflow/relation_target.py
+  examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py
+  examples/forge-skills/pick-place-workflow/tests/test_relation_target.py
+)
+.venv/bin/ruff check "${python_files[@]}"
+git diff --check
 ```

@@ -14,6 +14,7 @@ class RelationTargetProvider(Protocol):
 
 RELATION_TARGET_TOOL_SPEC = {
     "tool_id": "relation.target",
+    "implementation_id": "relation.target",
     "endpoint_id": "relation_target",
     "operation": "propose",
     "semantics": "query",
@@ -28,6 +29,12 @@ RELATION_TARGET_TOOL_SPEC = {
             "entity_ref", "goal_relation", "relation_target_ref", "observation_ref",
             "scene_revision", "frame_id", "calibration_ref",
         ],
+        "argument_source_requirements": [{
+            "when": {"goal_relation": "on"},
+            "keys": ["binding_ref"],
+            "source_tool_id": "scene.bind",
+            "source_paths": {"binding_ref": ["response", "data", "binding_ref"]},
+        }],
         "scene_write_behavior": "none",
         "requires_before_plan": True,
     },
@@ -39,6 +46,7 @@ RELATION_TARGET_TOOL_SPEC = {
             "scene_revision", "frame_id", "calibration_ref", "freshness_ms", "max_age_ms",
         ],
         "properties": {
+            "binding_ref": {"type": "string", "pattern": "^artifact://\\S+$"},
             "entity_ref": {"type": "string", "pattern": "^entity://[^/]+$"},
             "goal_relation": {"type": "string", "minLength": 1},
             "relation_target_ref": {"type": "string", "pattern": "^(entity|surface)://[^/]+$"},
@@ -86,6 +94,7 @@ RELATION_TARGET_TOOL_SPEC = {
             "error": {"type": "string"},
         },
     },
+    "unknown_semantics": "terminal_for_accounting_only",
 }
 
 _CANDIDATE_REF = re.compile(r"^relation-target://\S+$")

@@ -29,6 +29,7 @@ from .controller_qualification import (
 )
 from .grounding import Grounding, GroundingEndpoint, RememberObservation
 from .observed_collision import ObservedCollisionPolicy
+from .observed_relation_target import ObservedRelationTargetProvider
 from .observed_support import SupportEstimationPolicy
 from .persistent_action_approval import (
     DEFERRED_EXECUTION_CHECKS,
@@ -389,6 +390,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         routes,
         grounding,
         PersistentTaskGoalProvider(client, goal_source=goal_source),
-        PersistentRelationTargetProvider(client),
+        (ObservedRelationTargetProvider(grounding, task_name=task_name)
+         if route_geometry_source == "observed" else PersistentRelationTargetProvider(client)),
         task_name=task_name,
     )

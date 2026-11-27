@@ -8,6 +8,7 @@ from test_arm_candidates import _profile
 from test_controller_qualification import _plan
 
 from robotwin20_adapter.controller_qualification import qualification_capability_ref
+from robotwin20_adapter.observed_relation_target import ObservedRelationTargetProvider
 from robotwin20_adapter.persistent_action_approval import (
     PersistentSimulationActionApprover,
 )
@@ -40,6 +41,8 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
     assert deployment.capability_provider.client is client
     assert deployment.preparation_provider.route_builder.scene_source.__name__ == "scene_facts"
     assert deployment.grounding.depth_scale_to_m == pytest.approx(0.002)
+    assert isinstance(deployment.relation_target_provider, ObservedRelationTargetProvider)
+    assert deployment.relation_target_provider.grounding is deployment.grounding
     assert deployment.preparation_provider.route_builder.contact_qualification_mode == "observed_occupancy"
     oracle = build_persistent_deployment(
         client=client, artifact_root=tmp_path, scene_source=lambda request: None,
@@ -47,6 +50,7 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
         arm_profile_digest="a" * 64, route_geometry_source="oracle",
     )
     assert oracle.preparation_provider.route_builder.scene_source.__name__ == "oracle_scene_facts"
+    assert isinstance(oracle.relation_target_provider, PersistentRelationTargetProvider)
     assert oracle.preparation_provider.approval_issuer is None
     assert oracle.preparation_provider.selector.deferred_checks == frozenset()
     monitored = build_persistent_deployment(
@@ -121,7 +125,7 @@ def test_stack_blocks_three_profile_and_relation_provider_wiring(tmp_path):
         arm_profile_digest="a" * 64,
         task_name="stack_blocks_three",
     )
-    assert isinstance(deployment.relation_target_provider, PersistentRelationTargetProvider)
+    assert isinstance(deployment.relation_target_provider, ObservedRelationTargetProvider)
     assert deployment.runtime_arguments()["relation_target_provider"] is deployment.relation_target_provider
 def test_deployment_projects_qualification_capability_refs_into_both_consumers(tmp_path):
     arm = tmp_path / "arms.yaml"

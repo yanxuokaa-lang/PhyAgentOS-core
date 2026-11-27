@@ -34,9 +34,12 @@ from pick_place_workflow.relation_target import (
     RELATION_TARGET_TOOL_SPEC,
     RelationTargetQueryEndpoint,
 )
+from robotwin_blocks_ranking_adapter import StackBlocksThreeTaskAdapter
 from test_arm_candidates import _intent
+from test_observed_relation_target import observed_scene
 from test_stack_relation_preparation import composed
 
+from robotwin20_adapter.route_evidence import _artifact_path
 from robotwin20_adapter.stack_relation_inputs import build_stack_relation_preparation_inputs
 from robotwin20_adapter.stack_relation_preparation import (
     build_stack_relation_execution_provider_factory,
@@ -51,8 +54,10 @@ SPECS = (
 )
 
 
-def chain(tmp_path):
+def chain(tmp_path, *, observed=False, moving_execution=2):
     seed = _intent()
+    if observed:
+        seed = seed.model_copy(update={"node_id": "place_base" if moving_execution == 1 else "place_middle"})
     identity = {
         key: getattr(seed, key) for key in ("scene_revision", "observation_ref", "calibration_ref")
     }
@@ -61,10 +66,7 @@ def chain(tmp_path):
         for key, value in seed.model_dump(mode="json").items()
         if key in MANIPULATION_INTENT_SEMANTIC_KEYS
     }
-    graph = compose_executable_relation_plan(
-        seed.task_id,
-        seed.revision_id,
-        {
+    goals = {
             "schema_version": "paos-task-goals/v1",
             "motion_authorized": False,
             "goals": [
@@ -76,7 +78,26 @@ def chain(tmp_path):
                     "produced_evidence": ["support-established"],
                 }
             ],
-        },
+        }
+    projection = None
+    observed_state = None
+    available = (seed.observation_ref, "tool:understanding")
+    if observed:
+        observed_state = observed_scene(tmp_path, identity=identity, moving_execution=moving_execution)
+        goals = StackBlocksThreeTaskAdapter().goal_facts(None, seed=0)
+        goals["goal_ref"] = "artifact://task/goal"
+        projection = observed_state.provider.project_relation_goal(
+            goals, subtask_id=seed.node_id, binding_ref=observed_state.bound["binding_ref"],
+            identity=observed_state.request)
+        available = (*available, *projection["evidence_refs"])
+        # This segment starts after a successful predecessor fixture; no
+        # current-segment Query or future grasp is pre-completed.
+        selected_goal = next(goal for goal in goals["goals"] if goal["subtask_id"] == seed.node_id)
+        for goal in goals["goals"]:
+            if goal["subtask_id"] in selected_goal["depends_on"]:
+                available = (*available, *goal["produced_evidence"])
+    graph = compose_executable_relation_plan(
+        seed.task_id, seed.revision_id, goals,
         subtask_id=seed.node_id,
         **identity,
         observation_frame_id=seed.observation_frame_id,
@@ -84,12 +105,15 @@ def chain(tmp_path):
         semantic_intent=semantic,
         freshness_ms=0,
         max_age_ms=1000,
-        available_evidence=(seed.observation_ref, "tool:understanding"),
+        available_evidence=available,
         planner_decision_digest="1" * 64,
         policy_snapshot_digest="2" * 64,
+        relation_projection=projection,
     ).graph
     expected_intent = seed.model_copy(update={"node_digest": plan_node_digest(graph.nodes[-1])})
-    request, inputs, deployment, seen = composed(tmp_path, intent_override=expected_intent)
+    request, inputs, deployment, seen = composed(
+        tmp_path, intent_override=expected_intent,
+        grounding_override=observed_state.grounding if observed else None)
     coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
     coordinator.create_task(
         task_description="prepare one relation",
@@ -115,9 +139,12 @@ def chain(tmp_path):
             }
         ],
     }
+    if observed:
+        understanding = observed_state.understanding
+        provenance = understanding["spatial_envelopes"][moving_execution - 1]["provenance"]
 
     def discovery(task):
-        task.active_revision.discovery_evidence_refs = ("tool:understanding", seed.observation_ref)
+        task.active_revision.discovery_evidence_refs = available
         task.active_revision.execution_records.append(
             ToolExecutionRecord(
                 record_id="understanding",
@@ -159,7 +186,7 @@ def chain(tmp_path):
     def admission(_task):
         return AdmissionContext(
             scene_revision=seed.scene_revision,
-            evidence_refs=frozenset((seed.observation_ref, "tool:understanding")),
+            evidence_refs=frozenset(available),
             settlements={
                 item.node_id: item.status
                 for item in coordinator.effective_node_settlements(seed.task_id)
@@ -236,7 +263,7 @@ def chain(tmp_path):
         kwargs = {"arguments": dict(node.input_bindings)}
         if node.capability == "scene.bind":
             kwargs = {
-                "arguments": {"entity_refs": [seed.entity_ref]},
+                "arguments": {"entity_refs": node.input_bindings["entity_refs"]},
                 "projection_sources": {"understanding": {"record_id": "understanding"}},
             }
         elif node.capability == "grasp.propose":
@@ -255,6 +282,9 @@ def chain(tmp_path):
                     {"entity_ref": seed.entity_ref, "execution_entity_ref": seed.entity_ref}
                 ],
             }
+            if observed:
+                result = deployment.grounding.bind(args)
+                validate(result, BIND_TOOL_SPEC["output_schema"])
         elif node.capability == "grasp.propose":
             result = GraspProposalEndpoint(
                 SimpleNamespace(
@@ -274,6 +304,13 @@ def chain(tmp_path):
             result = CapabilitySnapshotEndpoint(
                 SimpleNamespace(describe=lambda _: capability)
             ).invoke(args)
+        elif observed:
+            result = RelationTargetQueryEndpoint(observed_state.provider).invoke(args)
+            validate(result, RELATION_TARGET_TOOL_SPEC["output_schema"])
+            assert result["status"] == "available", result
+            selected = result["candidates"][0]
+            request["candidate_ref"] = selected["candidate_ref"]
+            artifact_path = _artifact_path(tmp_path, selected["evidence_refs"][0])
         else:
             artifact_path.write_text(
                 json.dumps(
@@ -355,6 +392,8 @@ def chain(tmp_path):
         selected_nodes=selected_nodes,
         artifact_path=artifact_path,
         task_id=seed.task_id,
+        observed_state=observed_state,
+        goals=goals,
     )
 
 
@@ -379,6 +418,51 @@ def test_public_dispatch_durable_queries_endpoint_and_real_preparation(tmp_path)
         == state.request["relation_binding"]["world_T_object_target"]
     )
     assert starts == []
+
+
+@pytest.mark.parametrize("moving_execution", [1, 2])
+def test_observed_dispatch_prepares_visual_identity_and_full_collision_scene(tmp_path, moving_execution):
+    state = chain(tmp_path, observed=True, moving_execution=moving_execution)
+    before = deepcopy(state.goals)
+    starts = []
+    state.deployment.preparation_provider.client.start = lambda *args, **kwargs: starts.append(args)
+    route = state.provider.prepare_route(state.request, state.task_id)
+    assert state.goals == before
+    assert route["entity_ref"] == "entity://red-block"
+    assert route["assignment"]["motion_authorized"] is False
+    facts = state.seen[0]
+    assert facts["geometry_source"] == facts["target_geometry_source"] == "observation"
+    assert {obj["entity_ref"] for obj in facts["objects"]} == set(state.observed_state.visual.values())
+    context = state.request["coordinator_context"]["predecessor_queries"]
+    bound = context["scene.bind"]["result"]
+    assert context["relation.target"]["arguments"]["binding_ref"] == bound["binding_ref"]
+    mapping = next(item for item in bound["entities"] if item["entity_ref"] == route["entity_ref"])
+    assert mapping["execution_entity_ref"] == f"entity://stack-block-{moving_execution}"
+    assert mapping["execution_entity_ref"] != route["entity_ref"]
+    assert state.provider.motion_supported() is False
+    assert starts == []
+
+
+@pytest.mark.parametrize("change", ["binding", "mapping", "pose", "calibration", "clouds", "depth"])
+def test_observed_artifact_drift_rejects_before_preparation(tmp_path, change):
+    state = chain(tmp_path, observed=True)
+    evidence = json.loads(state.artifact_path.read_text())
+    if change == "binding":
+        evidence["binding_ref"] = "artifact://binding/wrong"
+    elif change == "mapping":
+        evidence["execution_mappings"][0]["execution_entity_ref"] = "entity://other"
+    elif change == "pose":
+        evidence["world_T_object_target"][3] += 0.1
+    elif change == "calibration":
+        evidence["calibration_ref"] = "artifact://calibration/wrong"
+    elif change == "clouds":
+        evidence["cloud_refs"] = []
+    else:
+        evidence.pop("depth_ref")
+    state.artifact_path.write_text(json.dumps(evidence))
+    with pytest.raises(ValueError, match="observed relation evidence"):
+        state.provider.prepare_route(state.request, state.task_id)
+    assert not state.seen and not state.deployment.grounding.targets
 
 
 @pytest.mark.parametrize("change", ["missing", "query", "source", "task", "motion"])
